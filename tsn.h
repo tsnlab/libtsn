@@ -10,24 +10,22 @@
  * @param priority from 1 to 7(3bit)
  * @return handle. if <0, error.
  */
-int tsn_sock_open(const char* ifname, const uint16_t vlanid, const uint8_t priority);
+int tsn_sock_open(const char* ifname, uint16_t vlanid, uint8_t priority);
 
 /**
  * Send TSN packet
  * @param sock socket handle created using @see tsn_sock_open
  * @param buf buffer
  * @param n buffer length
- * @param flags flags
  * @return send bytes or <0 if error.
  */
-int tsn_send(const int sock, const void* buf, const size_t n, const int flags);
+int tsn_send(int sock, const void* buf, size_t n);
 
 /**
  * Receive TSN packet
  * @param sock socket handle created using @see tsn_sock_open
  * @param buf buffer
  * @param n buffer length
- * @param flags flags
  * @return received bytes or <0 if error.
  */
-int tsn_recv(const int sock, void* buf, const size_t n, const int flags);
+int tsn_recv(int sock, void* buf, size_t n);

@@ -31,7 +31,7 @@ int main(int argc, char** argv) {
     }
 
     struct ethhdr *ethhdr = (struct ethhdr*) pkt;
-    uint8_t * payload = (uint8_t *)(pkt + sizeof(struct ethhdr));
+    // uint8_t * payload = (uint8_t *)(pkt + sizeof(struct ethhdr));
 
     ethhdr->h_dest[0] = 0xff;
     ethhdr->h_dest[1] = 0xff;
@@ -50,13 +50,13 @@ int main(int argc, char** argv) {
 
     ethhdr->h_proto = htons(0x0800);
 
-    int sent = tsn_send(sock, pkt, pkt_size, 0);
+    int sent = tsn_send(sock, pkt, pkt_size);
     if (sent < 0) {
         perror("Failed to send");
     }
     printf("Sent %d bytes\n", sent);
 
-    size_t recv_bytes = tsn_recv(sock, pkt, pkt_size, 0);
+    size_t recv_bytes = tsn_recv(sock, pkt, pkt_size);
     printf("Recv %lu bytes\n", recv_bytes);
 
     printf("proto: %04x\n", ntohs(ethhdr->h_proto));

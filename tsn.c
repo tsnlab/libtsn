@@ -12,7 +12,7 @@
 #include <sys/socket.h>
 
 
-int tsn_sock_open(const char* ifname, const uint16_t vlanid, const uint8_t priority) {
+int tsn_sock_open(const char* ifname, uint16_t vlanid, uint8_t priority) {
     int sock;
     int res;
     struct sockaddr_ll sock_ll;
@@ -50,10 +50,10 @@ int tsn_sock_open(const char* ifname, const uint16_t vlanid, const uint8_t prior
     return sock;
 }
 
-int tsn_send(const int sock, const void* buf, const size_t n, const int flags) {
-    return sendto(sock, buf, n, flags, NULL, 0);
+int tsn_send(int sock, const void* buf, size_t n) {
+    return sendto(sock, buf, n, 0 /* flags */, NULL, 0);
 }
 
-int tsn_recv(const int sock, void* buf, const size_t n, const int flags) {
-    return recvfrom(sock, buf, n, flags, NULL, 0);
+int tsn_recv(int sock, void* buf, size_t n) {
+    return recvfrom(sock, buf, n, 0 /* flags */, NULL, 0);
 }
