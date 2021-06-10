@@ -13,7 +13,6 @@
 
 struct tsn_socket {
     int fd;
-    int ifindex;
     uint16_t vlanid;
     uint8_t priority;
 };
@@ -74,7 +73,6 @@ int tsn_sock_open(const char* ifname, const uint16_t vlanid, const uint8_t prior
     }
 
     tsn_sockets[sock].fd = sock;
-    tsn_sockets[sock].ifindex = ifindex;
     tsn_sockets[sock].vlanid = vlanid;
     tsn_sockets[sock].priority = priority;
 
@@ -83,15 +81,6 @@ int tsn_sock_open(const char* ifname, const uint16_t vlanid, const uint8_t prior
 
 int tsn_send(const int sock, const void* buf, const size_t n, const int flags) {
     int res;
-
-
-    struct sockaddr_ll addr;
-    memset(&addr, 0, sizeof(addr));
-    // addr.sll_family = PF_PACKET;
-    // addr.sll_halen = ETH_ALEN;
-    // addr.sll_protocol = htons(ETH_P_8021Q);
-    addr.sll_ifindex = tsn_sockets[sock].ifindex;
-    printf("Use interface id %d\n", tsn_sockets[sock].ifindex);
 
     size_t new_size = n + VLAN_SIZE;
     struct eth_vlan_header* new_buf = malloc(new_size);
@@ -111,7 +100,7 @@ int tsn_send(const int sock, const void* buf, const size_t n, const int flags) {
     new_buf->vlan_proto = htons(ETH_P_8021Q);
     new_buf->vlan_tci = htons(make_vlan_tci(tsn_sockets[sock].priority, 0, tsn_sockets[sock].vlanid));
     memcpy((uint8_t*)new_buf + VLAN_OFFSET + VLAN_SIZE, (uint8_t*)buf + VLAN_OFFSET, n - VLAN_OFFSET);
-    res = sendto(tsn_sockets[sock].fd, new_buf, new_size, flags, (struct sockaddr*)&addr, sizeof(addr));
+    res = sendto(tsn_sockets[sock].fd, new_buf, new_size, flags, NULL, 0);
     free(new_buf);
     return res;
 }
