@@ -18,6 +18,7 @@ int tsn_sock_open(const char* ifname, uint16_t vlanid, uint8_t priority) {
     struct sockaddr_ll sock_ll;
     char vlan_ifname[40];
 
+    // eth0 with vlanid 5 → eth0.5
     sprintf(vlan_ifname, "%s.%d", ifname, vlanid);
     int ifindex = if_nametoindex(vlan_ifname);
 
@@ -29,7 +30,7 @@ int tsn_sock_open(const char* ifname, uint16_t vlanid, uint8_t priority) {
     if (sock < 0) {
         return sock;
     }
-    // sock = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_8021Q));
+
     uint32_t prio = priority;
     res = setsockopt(sock, SOL_SOCKET, SO_PRIORITY, &prio, sizeof(prio));
     if (res < 0) {

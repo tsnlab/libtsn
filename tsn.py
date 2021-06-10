@@ -1,16 +1,17 @@
 #!/usr/bin/env -S python3 -u
 
 import argparse
+import logging
 import shlex
 import subprocess
 import sys
-import functools
-import logging
-import os
 
 from contextlib import ExitStack
+from typing import Dict
 
-logger = logging.getLogger(__name__)
+import yaml
+
+logger = logging.getLogger("TSN")
 
 
 def run_cmd(cmd: str) -> str:
@@ -21,13 +22,19 @@ def vlan_ifname(ifname: str, vlanid: int) -> str:
     return f'{ifname}.{vlanid}'
 
 
-def make_vlan(ifname: str, vlanid: int):
+def make_vlan(ifname: str, vlanid: int, qosmap: Dict[int, int]):
     name = vlan_ifname(ifname, vlanid)
-    logger.info(f'Creating vlan interface {name}')
 
-    # TODO: set priority map
-    qos_map = ' '.join(f'{i}:{i}' for i in range(8))
-    run_cmd(f'ip link add link {ifname} name {name} type vlan id {vlanid} egress-qos-map')
+    qosmap_str = ' '.join(
+        f'{k}:{v}'
+        for k, v in qosmap.items()
+    )
+
+    logger.info(f'Creating vlan interface {name} with qosmap {qosmap_str}')
+
+    run_cmd(
+        f'ip link add link {ifname} name {name} type vlan id {vlanid} '
+        f'egress-qos-map {qosmap_str}')
     run_cmd(f'ip link set up {name}')
 
 
@@ -37,25 +44,47 @@ def del_vlan(ifname: str, vlanid: int):
     run_cmd(f'ip link delete {name}')
 
 
-def main():
-    loglevel = os.getenv('TSN_LOGLEVEL', 'INFO')
-    logging.basicConfig(
-        format='%(asctime)s:%(name)s:%(levelname)s: %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S %z',
-        level=loglevel)
-    logger.setLevel(loglevel)
+def setup(config):
+    logger.info("Setting up environments")
 
+    for nic in config.get('nics', []):
+        make_vlan(nic['ifname'], nic['vlanid'], nic['qosmap'])
+
+
+def cleanup(config):
+    logger.info("Cleaning up environments")
+
+    for nic in config.get('nics', []):
+        del_vlan(nic['ifname'], nic['vlanid'])
+
+
+def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-v', '--vlan', action='append', nargs=2, metavar=('ifname', 'vlanid'))
-    parser.add_argument('command', nargs='*')
+    parser.add_argument(
+        '-c', '--config',
+        default='config.yaml',
+        help='YAML config filename')
+    parser.add_argument(
+        'command', nargs='+',
+        help='Command to execute. prepend -- before command to prevent problems')
 
     parsed = parser.parse_args()
 
-    with ExitStack() as estack:
-        for vlan in parsed.vlan:
-            make_vlan(*vlan)
-            estack.callback(functools.partial(del_vlan, *vlan))
+    with open(parsed.config) as f:
+        config = yaml.load(f, Loader=yaml.FullLoader)
 
+    handler = logging.StreamHandler()
+    handler.formatter = logging.Formatter(
+        '%(asctime)s:%(name)s:%(levelname)s: %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S %z')
+    logger.addHandler(handler)
+    logger.setLevel(config.get('log_level', 'INFO'))
+
+    with ExitStack() as estack:
+        estack.callback(cleanup, config)
+        setup(config)
+
+        logger.info("Starting application")
         p = subprocess.Popen(parsed.command)
         p.wait()
 

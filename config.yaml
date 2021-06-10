@@ -1,3 +1,4 @@
+log_level: INFO
 nics:
   - ifname: enp37s0
     vlanid: 5
