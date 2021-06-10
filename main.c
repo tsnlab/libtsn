@@ -75,5 +75,7 @@ int main(int argc, char** argv) {
             ethhdr->h_dest[4],
             ethhdr->h_dest[5]);
 
+    tsn_sock_close(sock);
+
     return 0;
 }

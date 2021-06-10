@@ -13,6 +13,13 @@
 int tsn_sock_open(const char* ifname, uint16_t vlanid, uint8_t priority);
 
 /**
+ * Close TSN socket
+ * @param sock socket handle created using @see tsn_sock_open
+ * @return 0 if OK
+ */
+int tsn_sock_close(int sock);
+
+/**
  * Send TSN packet
  * @param sock socket handle created using @see tsn_sock_open
  * @param buf buffer

@@ -1,8 +1,7 @@
-log_level: INFO
 nics:
-  - ifname: enp37s0
-    vlanid: 5
-    qosmap:
-      # skb prio: vlan pri
-      2: 2
-      3: 3
+  enp37s0:  # ifname
+    egress-qos-map:
+      5:  # vlan id
+        # skb prio : vlan pri
+        2: 2
+        3: 3
