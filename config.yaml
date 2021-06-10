@@ -1,0 +1,7 @@
+nics:
+  - ifname: enp37s0
+    vlanid: 5
+    qosmap:
+      # skb prio: vlan pri
+      2: 2
+      3: 3

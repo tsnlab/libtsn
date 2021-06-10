@@ -56,9 +56,7 @@ int main(int argc, char** argv) {
     }
     printf("Sent %d bytes\n", sent);
 
-    return 0;
-
-    size_t recv_bytes = recvfrom(sock, pkt, pkt_size, 0, NULL, NULL);
+    size_t recv_bytes = tsn_recv(sock, pkt, pkt_size, 0);
     printf("Recv %lu bytes\n", recv_bytes);
 
     printf("proto: %04x\n", ntohs(ethhdr->h_proto));
