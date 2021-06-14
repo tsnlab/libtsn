@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <sys/socket.h>
 
 #include "tsn.h"
@@ -16,14 +17,16 @@ int main(int argc, char** argv) {
     const size_t pkt_size = 40;
     char pkt[pkt_size];
 
-    if (argc != 2) {
-        fprintf(stderr, "Usage: %s <ifname>\n", argv[0]);
+    if (argc != 4) {
+        fprintf(stderr, "Usage: %s <ifname> <vlanid> <priority>\n", argv[0]);
         exit(1);
     }
 
     char* ifname = argv[1];
+    int vlanid = atoi(argv[2]);
+    int prio = atoi(argv[3]);
 
-    sock = tsn_sock_open(ifname, 5, 2);
+    sock = tsn_sock_open(ifname, vlanid, prio);
 
     if (sock <= 0) {
         perror("socket create");
@@ -33,20 +36,21 @@ int main(int argc, char** argv) {
     struct ethhdr *ethhdr = (struct ethhdr*) pkt;
     // uint8_t * payload = (uint8_t *)(pkt + sizeof(struct ethhdr));
 
+    // Get MAC addr from device
+    struct ifreq ifr;
+    strcpy(ifr.ifr_name, ifname);
+    if (ioctl(sock, SIOCGIFHWADDR, &ifr) == 0) {
+        memcpy(ethhdr->h_source, ifr.ifr_addr.sa_data, 6);
+    } else {
+        printf("Failed to get mac adddr\n");
+    }
+
     ethhdr->h_dest[0] = 0xff;
     ethhdr->h_dest[1] = 0xff;
     ethhdr->h_dest[2] = 0xff;
     ethhdr->h_dest[3] = 0xff;
     ethhdr->h_dest[4] = 0xff;
     ethhdr->h_dest[5] = 0xff;
-
-    // TODO: get mac addr from hw
-    ethhdr->h_source[0] = 0x00;
-    ethhdr->h_source[1] = 0x00;
-    ethhdr->h_source[2] = 0x00;
-    ethhdr->h_source[3] = 0x00;
-    ethhdr->h_source[4] = 0x00;
-    ethhdr->h_source[5] = 0x00;
 
     ethhdr->h_proto = htons(0x0800);
 
