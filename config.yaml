@@ -5,3 +5,28 @@ nics:
         # skb prio : vlan pri
         2: 2
         3: 3
+    qdisc:
+      mqprio:
+        handle: 6666
+        num_tc: 3
+        map: [ 2, 2, 1, 0, 2, 2, 2, 2, 2, 2, 2, 2]
+        queues:
+          - 1@0  # 1 queue starting from 0
+          - 1@1  # 1 queue starting from 1
+          - 2@2  # 2 queue starting from 2 (2, 3)
+        hw: false
+      child:
+        1:
+          type: cbs
+          handle: 7777
+          idleslope: 98688
+          sendslope: -901312
+          hicredit: 153
+          locredit: -1389
+        2:
+          type: cbs
+          handle: 8888
+          idleslope: 3648
+          sendslope: -996352
+          hicredit: 12
+          locredit: -113
