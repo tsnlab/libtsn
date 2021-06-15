@@ -29,6 +29,11 @@ def create_vlan(ifname: str, vlanid: int) -> int:
             f'ip link add link {ifname} name {name} type vlan id {vlanid} '
             f'egress-qos-map {qos_map}'
         ))
+
+        subprocess.check_call(shlex.split(
+            f'ip link set up {name}'
+        ))
+
         # Set mqprio
         mqprio = ifconf['qdisc']['mqprio']
         root_handle = mqprio['handle']
@@ -71,10 +76,6 @@ def create_vlan(ifname: str, vlanid: int) -> int:
                 ))
             else:  # TODO: support taprio
                 raise ValueError(f'qdisc type {t} is not supported')
-
-        subprocess.check_call(shlex.split(
-            f'ip link set up {name}'
-        ))
     except subprocess.CalledProcessError as e:
         return e.returncode
     except KeyError as e:

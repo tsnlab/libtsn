@@ -1,14 +1,17 @@
 #include <argp.h>
 #include <arpa/inet.h>
 #include <error.h>
-#include <linux/if_packet.h>
-#include <net/ethernet.h>
-#include <net/if.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <time.h>
+
+#include <linux/if_packet.h>
+#include <net/ethernet.h>
+#include <net/if.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 
@@ -93,6 +96,9 @@ static struct argp argp = { options, parse_opt, args_doc, doc };
 void do_server(int sock, int size, bool verbose);
 void do_client(int sock, char* iface, int size, char* target, int count);
 
+void timespec_diff(struct timespec *start, struct timespec *stop,
+                   struct timespec *result);
+
 volatile sig_atomic_t running = 1;
 int sock;
 
@@ -170,7 +176,7 @@ void do_server(int sock, int size, bool verbose) {
 
     while (running) {
         size_t recv_bytes = tsn_recv(sock, pkt, size);
-        if (ethhdr->h_proto != ETHERTYPE_PERF) {
+        if (ntohs(ethhdr->h_proto) != ETHERTYPE_PERF) {
             fprintf(stderr, "Not ours, skip\n");
             continue;
         }
@@ -228,6 +234,8 @@ void do_client(int sock, char* iface, int size, char* target, int count) {
     dst_mac[4] = 0xff;
     dst_mac[5] = 0xff;
 
+    struct timespec tstart, tend, tdiff;
+
     for(int i = 0; i < count && running; i += 1) {
         memcpy(ethhdr->h_source, ifr.ifr_addr.sa_data, ETHER_ADDR_LEN);
         memcpy(ethhdr->h_dest, dst_mac, ETHER_ADDR_LEN);
@@ -235,26 +243,48 @@ void do_client(int sock, char* iface, int size, char* target, int count) {
         ethhdr->h_proto = htons(ETHERTYPE_PERF);
         payload->id = i;
 
+        clock_gettime(CLOCK_MONOTONIC, &tstart);
         // TODO: check start time
         int sent = tsn_send(sock, pkt, size);
         if (sent < 0) {
             perror("Failed to send");
         }
-        printf("Sent %d bytes\n", sent);
+        // printf("Sent %d bytes\n", sent);
 
         bool received = false;
         do {
             tsn_recv(sock, pkt, size);
             // TODO: check time
+            clock_gettime(CLOCK_MONOTONIC, &tend);
 
-            if (payload->id == i) {
+            // Check perf pkt
+            if (
+                    ntohs(ethhdr->h_proto) == ETHERTYPE_PERF &&
+                    payload->id == i) {
                 received = true;
-            } else {
-                fprintf(stderr, "Not ours, skip\n");
             }
         } while(!received && running);
 
         // TODO: print time
+        timespec_diff(&tstart, &tend, &tdiff);
+        uint64_t elapsed_ns = tdiff.tv_sec * 1000000000 + tdiff.tv_nsec;
+        printf("RTT: %lu.%03lu µs\n", elapsed_ns / 1000, elapsed_ns % 1000);
+
+        usleep(1000000);
     }
 
+}
+
+void timespec_diff(struct timespec *start, struct timespec *stop,
+                   struct timespec *result)
+{
+    if ((stop->tv_nsec - start->tv_nsec) < 0) {
+        result->tv_sec = stop->tv_sec - start->tv_sec - 1;
+        result->tv_nsec = stop->tv_nsec - start->tv_nsec + 1000000000;
+    } else {
+        result->tv_sec = stop->tv_sec - start->tv_sec;
+        result->tv_nsec = stop->tv_nsec - start->tv_nsec;
+    }
+
+    return;
 }
