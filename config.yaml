@@ -5,6 +5,8 @@ nics:
         # skb prio : vlan pri
         2: 2
         3: 3
+      10:
+        2: 2  # For perf test
     qdisc:
       mqprio:
         handle: 6666
