@@ -11,7 +11,7 @@ nics:
       mqprio:
         handle: 6666
         num_tc: 3
-        map: [ 2, 2, 1, 0, 2, 2, 2, 2, 2, 2, 2, 2]
+        map: [ 2, 2, 1, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2 ]
         queues:
           - 1@0  # 1 queue starting from 0
           - 1@1  # 1 queue starting from 1
