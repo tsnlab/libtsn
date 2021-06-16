@@ -99,6 +99,8 @@ void do_client(int sock, char* iface, int size, char* target, int count);
 void timespec_diff(struct timespec *start, struct timespec *stop,
                    struct timespec *result);
 
+bool strtomac(uint8_t* mac, const char* str);
+
 volatile sig_atomic_t running = 1;
 int sock;
 
@@ -227,12 +229,7 @@ void do_client(int sock, char* iface, int size, char* target, int count) {
         printf("Failed to get mac adddr\n");
     }
 
-    dst_mac[0] = 0xff;
-    dst_mac[1] = 0xff;
-    dst_mac[2] = 0xff;
-    dst_mac[3] = 0xff;
-    dst_mac[4] = 0xff;
-    dst_mac[5] = 0xff;
+    strtomac(dst_mac, target);
 
     struct timespec tstart, tend, tdiff;
 
@@ -290,4 +287,17 @@ void timespec_diff(struct timespec *start, struct timespec *stop,
     }
 
     return;
+}
+
+bool strtomac(uint8_t* mac, const char* str) {
+    int tmp[6];
+    int res = sscanf(
+        str, "%02x:%02x:%02x:%02x:%02x:%02x",
+        &tmp[0], &tmp[1], &tmp[2], &tmp[3], &tmp[4], &tmp[5]);
+
+    for (int i = 0; i < 6; i += 1) {
+        mac[i] = tmp[i];
+    }
+
+    return res == 6;
 }
