@@ -187,7 +187,7 @@ void do_server(int sock, int size, bool verbose) {
         memcpy(ethhdr->h_source, tmpmac, ETHER_ADDR_LEN);
         tsn_send(sock, pkt, recv_bytes);
 
-        printf("proto: %04x\n", ntohs(ethhdr->h_proto));
+        printf("id: %08x\n", ntohl(payload->id));
         printf("src: %02x:%02x:%02x:%02x:%02x:%02x\n",
                ethhdr->h_source[0],
                ethhdr->h_source[1],
@@ -236,12 +236,14 @@ void do_client(int sock, char* iface, int size, char* target, int count) {
 
     struct timespec tstart, tend, tdiff;
 
+    fprintf(stderr, "Starting\n");
+
     for(int i = 0; i < count && running; i += 1) {
         memcpy(ethhdr->h_source, ifr.ifr_addr.sa_data, ETHER_ADDR_LEN);
         memcpy(ethhdr->h_dest, dst_mac, ETHER_ADDR_LEN);
 
         ethhdr->h_proto = htons(ETHERTYPE_PERF);
-        payload->id = i;
+        payload->id = htonl(i);
 
         clock_gettime(CLOCK_MONOTONIC, &tstart);
         // TODO: check start time
@@ -260,7 +262,7 @@ void do_client(int sock, char* iface, int size, char* target, int count) {
             // Check perf pkt
             if (
                     ntohs(ethhdr->h_proto) == ETHERTYPE_PERF &&
-                    payload->id == i) {
+                    ntohl(payload->id) == i) {
                 received = true;
             }
         } while(!received && running);
@@ -269,8 +271,9 @@ void do_client(int sock, char* iface, int size, char* target, int count) {
         timespec_diff(&tstart, &tend, &tdiff);
         uint64_t elapsed_ns = tdiff.tv_sec * 1000000000 + tdiff.tv_nsec;
         printf("RTT: %lu.%03lu µs\n", elapsed_ns / 1000, elapsed_ns % 1000);
+        fflush(stdout);
 
-        usleep(1000000);
+        usleep(700 * 1000);
     }
 
 }
