@@ -26,7 +26,7 @@ struct pkt_perf_result {
     uint32_t pkt_count;
     uint32_t pkt_size;
     struct timespec elapsed;
-};
+} __attribute__((packed));
 
 struct pkt_perf {
     uint32_t id;
@@ -35,7 +35,10 @@ struct pkt_perf {
         struct pkt_perf_result result;
         uint8_t data[0];
     };
-};
+} __attribute__((packed));
+
+#define PERF_HDR_SIZE ((32 + 8) / 8)
+#define PERF_RESULT_SIZE (PERF_HDR_SIZE + sizeof(struct pkt_perf_result))
 
 enum perf_opcode {
     PERF_REQ_START = 0x00,
@@ -115,7 +118,7 @@ static struct argp argp = { options, parse_opt, args_doc, doc };
 
 void do_server(int sock, int size, bool verbose);
 void do_client(int sock, char* iface, int size, char* target, int time);
-bool send_perf(uint8_t* src, uint8_t* dst, uint32_t id, uint8_t op, uint8_t* pkt, size_t size);
+bool send_perf(const uint8_t* src, const uint8_t* dst, uint32_t id, uint8_t op, uint8_t* pkt, size_t size);
 bool recv_perf(uint32_t id, uint8_t op, uint8_t* pkt, size_t size);
 
 void timespec_diff(struct timespec *start, struct timespec *stop,
@@ -212,23 +215,29 @@ void do_server(int sock, int size, bool verbose) {
 
         uint32_t id;
 
+        // Prevent overwrite
+        uint8_t srcmac[ETHER_ADDR_LEN];
+        uint8_t dstmac[ETHER_ADDR_LEN];
+        memcpy(srcmac, ethhdr->h_dest, ETHER_ADDR_LEN);
+        memcpy(dstmac, ethhdr->h_source, ETHER_ADDR_LEN);
+
         switch (payload->op) {
         case PERF_REQ_START:
             pkt_count = 0;
             pkt_size = 0;
             id = ntohl(payload->id);
-            printf("Received start %08x\n", id);
+            fprintf(stderr, "Received start %08x\n", id);
             clock_gettime(CLOCK_MONOTONIC, &tstart);
 
             // TODO: Check already have instance
-            send_perf(ethhdr->h_dest, ethhdr->h_source, id, PERF_RES_START, pkt, size);
+            send_perf(srcmac, dstmac, id, PERF_RES_START, pkt, recv_bytes);
             break;
         case PERF_REQ_END:
             clock_gettime(CLOCK_MONOTONIC, &tend);
-            printf("Received end %08x\n", id);
+            fprintf(stderr, "Received end %08x\n", id);
 
             id = ntohl(payload->id);
-            send_perf(ethhdr->h_dest, ethhdr->h_source, id, PERF_RES_END, pkt, size);
+            send_perf(srcmac, dstmac, id, PERF_RES_END, pkt, recv_bytes);
             break;
         case PERF_DATA:
             pkt_count += 1;
@@ -243,7 +252,7 @@ void do_server(int sock, int size, bool verbose) {
             result->pkt_count = htonl(pkt_count);
             result->pkt_size = htonl(pkt_size);
 
-            send_perf(ethhdr->h_dest, ethhdr->h_source, id, PERF_RES_RESULT, pkt, size);
+            send_perf(srcmac, dstmac, id, PERF_RES_RESULT, pkt, PERF_RESULT_SIZE);
             break;
         }
     }
@@ -274,15 +283,16 @@ void do_client(int sock, char* iface, int size, char* target, int time) {
 
     struct timespec tstart, tend, tdiff;
 
-    fprintf(stderr, "Starting\n");
+    fprintf(stderr, "Starting client\n");
 
     const uint32_t custom_id = 0xdeadbeef;  // TODO: randomise?
 
-    send_perf(src_mac, dst_mac, custom_id, PERF_REQ_START, pkt, size);
+    send_perf(src_mac, dst_mac, custom_id, PERF_REQ_START, pkt, sizeof(struct ethhdr) + PERF_HDR_SIZE);
     recv_perf(custom_id, PERF_RES_START, pkt, size);
 
     // Now fire!
 
+    fprintf(stderr, "Fire\n");
     clock_gettime(CLOCK_MONOTONIC, &tstart);
 
     int sent_id = 0;
@@ -294,11 +304,11 @@ void do_client(int sock, char* iface, int size, char* target, int time) {
     } while (running && tdiff.tv_sec < time);
 
     fprintf(stderr, "Done\n");
-    send_perf(src_mac, dst_mac, custom_id, PERF_REQ_END, pkt, size);
+    send_perf(src_mac, dst_mac, custom_id, PERF_REQ_END, pkt, sizeof(struct ethhdr) + PERF_HDR_SIZE);
     recv_perf(custom_id, PERF_RES_END, pkt, size);
 
     // Get result
-    send_perf(src_mac, dst_mac, custom_id, PERF_REQ_RESULT, pkt, size);
+    send_perf(src_mac, dst_mac, custom_id, PERF_REQ_RESULT, pkt, sizeof(struct ethhdr) + PERF_HDR_SIZE);
     recv_perf(custom_id, PERF_RES_RESULT, pkt, size);
 
     struct pkt_perf_result* result = &payload->result;
@@ -313,7 +323,7 @@ void do_client(int sock, char* iface, int size, char* target, int time) {
     printf("Result %u pps, %u Bps\n", pps, bps);
 }
 
-bool send_perf(uint8_t* src, uint8_t* dst, uint32_t id, uint8_t op, uint8_t* pkt, size_t size) {
+bool send_perf(const uint8_t* src, const uint8_t* dst, uint32_t id, uint8_t op, uint8_t* pkt, size_t size) {
     struct ethhdr* ethhdr = (struct ethhdr*) pkt;
     struct pkt_perf* payload = (struct pkt_perf*)(pkt + sizeof(struct ethhdr));
 
