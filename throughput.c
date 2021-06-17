@@ -1,13 +1,14 @@
 #include <argp.h>
 #include <arpa/inet.h>
 #include <error.h>
+#include <pthread.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include <time.h>
+#include <unistd.h>
 
 #include <linux/if_packet.h>
 #include <net/ethernet.h>
@@ -48,6 +49,13 @@ enum perf_opcode {
     PERF_DATA = 0x30,
     PERF_REQ_RESULT = 0x40,
     PERF_RES_RESULT = 0x41,
+};
+
+struct stastics {
+    struct timespec start;
+    uint32_t pkt_count;
+    uint32_t total_bytes;
+    bool running;
 };
 
 
@@ -118,6 +126,7 @@ static struct argp argp = { options, parse_opt, args_doc, doc };
 
 void do_server(int sock, int size, bool verbose);
 void do_client(int sock, char* iface, int size, char* target, int time);
+void* statistics_thread(void* arg);
 bool send_perf(const uint8_t* src, const uint8_t* dst, uint32_t id, uint8_t op, uint8_t* pkt, size_t size);
 bool recv_perf(uint32_t id, uint8_t op, uint8_t* pkt, size_t size);
 
@@ -202,8 +211,9 @@ void do_server(int sock, int size, bool verbose) {
     struct pkt_perf* payload = (struct pkt_perf*)(pkt + sizeof(struct ethhdr));
 
     struct timespec tstart, tend, tdiff;
-    uint32_t pkt_count;
-    uint32_t pkt_size;
+
+    pthread_t thread;
+    struct stastics stats;
 
     fprintf(stderr, "Starting server\n");
 
@@ -223,11 +233,15 @@ void do_server(int sock, int size, bool verbose) {
 
         switch (payload->op) {
         case PERF_REQ_START:
-            pkt_count = 0;
-            pkt_size = 0;
             id = ntohl(payload->id);
             fprintf(stderr, "Received start %08x\n", id);
             clock_gettime(CLOCK_MONOTONIC, &tstart);
+
+            stats.start = tstart;
+            stats.pkt_count = 0;
+            stats.total_bytes = 0;
+            stats.running = true;
+            pthread_create(&thread, NULL, statistics_thread, &stats);
 
             // TODO: Check already have instance
             send_perf(srcmac, dstmac, id, PERF_RES_START, pkt, recv_bytes);
@@ -236,12 +250,16 @@ void do_server(int sock, int size, bool verbose) {
             clock_gettime(CLOCK_MONOTONIC, &tend);
             fprintf(stderr, "Received end %08x\n", id);
 
+            stats.running = false;
+            pthread_join(thread, NULL);
+
             id = ntohl(payload->id);
             send_perf(srcmac, dstmac, id, PERF_RES_END, pkt, recv_bytes);
             break;
         case PERF_DATA:
-            pkt_count += 1;
-            pkt_size += recv_bytes;
+            stats.pkt_count += 1;
+            stats.total_bytes += recv_bytes;
+            // TODO: check id and write loss
             break;
         case PERF_REQ_RESULT:
             timespec_diff(&tstart, &tend, &tdiff);
@@ -249,8 +267,8 @@ void do_server(int sock, int size, bool verbose) {
             payload->op = PERF_RES_RESULT;
             struct pkt_perf_result* result = &payload->result;
             result->elapsed = tdiff;
-            result->pkt_count = htonl(pkt_count);
-            result->pkt_size = htonl(pkt_size);
+            result->pkt_count = htonl(stats.pkt_count);
+            result->pkt_size = htonl(stats.total_bytes);
 
             send_perf(srcmac, dstmac, id, PERF_RES_RESULT, pkt, PERF_RESULT_SIZE);
             break;
@@ -321,6 +339,61 @@ void do_client(int sock, char* iface, int size, char* target, int time) {
     printf("Recieved %u pkts, %u bytes\n", pkt_count, pkt_size);
     printf("Sent %u pkts, Loss %.2f\n", sent_id, loss_rate);
     printf("Result %u pps, %u Bps\n", pps, bps);
+}
+
+void* statistics_thread(void* arg) {
+    struct stastics* stats = (struct stastics*)arg;
+    struct timespec tlast, tnow, tdiff;
+    tlast = stats->start;
+
+    uint32_t last_pkt_count = 0;
+    uint32_t last_total_bytes = 0;
+
+    const char format[] = "Stat %u %u pps %u Bps\n";
+
+    while (stats->running) {
+        clock_gettime(CLOCK_MONOTONIC, &tnow);
+        timespec_diff(&tlast, &tnow, &tdiff);
+        if (tdiff.tv_sec >= 1) {
+            tlast = tnow;
+            timespec_diff(&stats->start, &tnow, &tdiff);
+            uint16_t time_elapsed = tdiff.tv_sec;
+
+            // Save before
+            uint32_t current_pkt_count = stats->pkt_count;
+            uint32_t current_total_bytes = stats->total_bytes;
+
+            uint32_t diff_pkt_count = current_pkt_count - last_pkt_count;
+            uint32_t diff_total_bytes = current_total_bytes - last_total_bytes;
+            last_pkt_count = current_pkt_count;
+            last_total_bytes = current_total_bytes;
+
+            printf(format, time_elapsed, diff_pkt_count, diff_total_bytes);
+        } else {
+            long remaining_ns = (1000000000) - tdiff.tv_nsec;
+            usleep(remaining_ns / 1000);
+        }
+    }
+
+    // Final result
+    clock_gettime(CLOCK_MONOTONIC, &tnow);
+    timespec_diff(&tlast, &tnow, &tdiff);
+    if (tdiff.tv_sec >= 1) {
+        timespec_diff(&stats->start, &tnow, &tdiff);
+        uint16_t time_elapsed = tdiff.tv_sec;
+
+        uint32_t current_pkt_count = stats->pkt_count;
+        uint32_t current_total_bytes = stats->total_bytes;
+
+        uint32_t diff_pkt_count = current_pkt_count - last_pkt_count;
+        uint32_t diff_total_bytes = current_total_bytes - last_total_bytes;
+        last_pkt_count = current_pkt_count;
+        last_total_bytes = current_total_bytes;
+
+        printf(format, time_elapsed, diff_pkt_count, diff_total_bytes);
+    }
+
+    return NULL;
 }
 
 bool send_perf(const uint8_t* src, const uint8_t* dst, uint32_t id, uint8_t op, uint8_t* pkt, size_t size) {
