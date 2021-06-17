@@ -19,14 +19,22 @@
 
 #include "tsn.h"
 
+#ifdef WORDS_BIGENDIAN
+#define htonll(x)   (x)
+#define ntohll(x)   (x)
+#else
+#define htonll(x)   ((((uint64_t)htonl(x)) << 32) + htonl(x >> 32))
+#define ntohll(x)   ((((uint64_t)ntohl(x)) << 32) + ntohl(x >> 32))
+#endif
+
 #define VLAN_ID_PERF 10
 #define VLAN_PRI_PERF 2
 #define ETHERTYPE_PERF 0x1337
 
 
 struct pkt_perf_result {
-    uint32_t pkt_count;
-    uint32_t pkt_size;
+    uint64_t pkt_count;
+    uint64_t pkt_size;
     struct timespec elapsed;
 } __attribute__((packed));
 
@@ -54,8 +62,8 @@ enum perf_opcode {
 
 struct stastics {
     struct timespec start;
-    uint32_t pkt_count;
-    uint32_t total_bytes;
+    uint64_t pkt_count;
+    uint64_t total_bytes;
     uint32_t last_id;
     bool running;
 };
@@ -269,8 +277,8 @@ void do_server(int sock, int size, bool verbose) {
             payload->op = PERF_RES_RESULT;
             struct pkt_perf_result* result = &payload->result;
             result->elapsed = tdiff;
-            result->pkt_count = htonl(stats.pkt_count);
-            result->pkt_size = htonl(stats.total_bytes);
+            result->pkt_count = htonll(stats.pkt_count);
+            result->pkt_size = htonll(stats.total_bytes);
 
             send_perf(srcmac, dstmac, id, PERF_RES_RESULT, pkt, PERF_RESULT_SIZE);
             break;
@@ -332,15 +340,15 @@ void do_client(int sock, char* iface, int size, char* target, int time) {
     recv_perf(custom_id, PERF_RES_RESULT, pkt, size);
 
     struct pkt_perf_result* result = &payload->result;
-    uint32_t pkt_count = ntohl(result->pkt_count);
-    uint32_t pkt_size = ntohl(result->pkt_size);
-    uint32_t pps = pkt_count / result->elapsed.tv_sec;
-    uint32_t bps = pkt_size / result->elapsed.tv_sec * 8;
+    uint64_t pkt_count = ntohll(result->pkt_count);
+    uint64_t pkt_size = ntohll(result->pkt_size);
+    uint64_t pps = pkt_count / result->elapsed.tv_sec;
+    uint64_t bps = pkt_size / result->elapsed.tv_sec * 8;
     double loss_rate = (double) (sent_id - pkt_count) / sent_id;
     printf("Elapsed %lu.%09lu s\n", result->elapsed.tv_sec, result->elapsed.tv_nsec);
-    printf("Recieved %'u pkts, %u bytes\n", pkt_count, pkt_size);
+    printf("Recieved %'lu pkts, %'lu bytes\n", pkt_count, pkt_size);
     printf("Sent %u pkts, Loss %.3f%%\n", sent_id, loss_rate * 100);
-    printf("Result %'u pps, %'u bps\n", pps, bps);
+    printf("Result %'lu pps, %'lu bps\n", pps, bps);
 }
 
 void* statistics_thread(void* arg) {
@@ -349,10 +357,10 @@ void* statistics_thread(void* arg) {
     tlast = stats->start;
 
     uint32_t last_id = 0;
-    uint32_t last_pkt_count = 0;
-    uint32_t last_total_bytes = 0;
+    uint64_t last_pkt_count = 0;
+    uint64_t last_total_bytes = 0;
 
-    const char format[] = "Stat %u %'u pps %'u bps loss %.3f%%\n";
+    const char format[] = "Stat %u %'lu pps %'lu bps loss %.3f%%\n";
     setlocale(LC_NUMERIC, "");
 
     while (stats->running) {
@@ -364,12 +372,12 @@ void* statistics_thread(void* arg) {
             uint16_t time_elapsed = tdiff.tv_sec;
 
             // Save before
-            uint32_t current_pkt_count = stats->pkt_count;
-            uint32_t current_total_bytes = stats->total_bytes;
+            uint64_t current_pkt_count = stats->pkt_count;
+            uint64_t current_total_bytes = stats->total_bytes;
             uint32_t current_id = stats->last_id;
 
-            uint32_t diff_pkt_count = current_pkt_count - last_pkt_count;
-            uint32_t diff_total_bytes = current_total_bytes - last_total_bytes;
+            uint64_t diff_pkt_count = current_pkt_count - last_pkt_count;
+            uint64_t diff_total_bytes = current_total_bytes - last_total_bytes;
             double loss_rate = 1.0 - (double) diff_pkt_count / (current_id - last_id);
 
             last_pkt_count = current_pkt_count;
@@ -391,12 +399,12 @@ void* statistics_thread(void* arg) {
         timespec_diff(&stats->start, &tnow, &tdiff);
         uint16_t time_elapsed = tdiff.tv_sec;
 
-        uint32_t current_pkt_count = stats->pkt_count;
-        uint32_t current_total_bytes = stats->total_bytes;
+        uint64_t current_pkt_count = stats->pkt_count;
+        uint64_t current_total_bytes = stats->total_bytes;
         uint32_t current_id = stats->last_id;
 
-        uint32_t diff_pkt_count = current_pkt_count - last_pkt_count;
-        uint32_t diff_total_bytes = current_total_bytes - last_total_bytes;
+        uint64_t diff_pkt_count = current_pkt_count - last_pkt_count;
+        uint64_t diff_total_bytes = current_total_bytes - last_total_bytes;
         double loss_rate = 1.0 - (double) diff_pkt_count / (current_id - last_id);
         last_pkt_count = current_pkt_count;
         last_total_bytes = current_total_bytes;
