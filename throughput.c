@@ -1,6 +1,7 @@
 #include <argp.h>
 #include <arpa/inet.h>
 #include <error.h>
+#include <locale.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stdbool.h>
@@ -55,6 +56,7 @@ struct stastics {
     struct timespec start;
     uint32_t pkt_count;
     uint32_t total_bytes;
+    uint32_t last_id;
     bool running;
 };
 
@@ -258,8 +260,8 @@ void do_server(int sock, int size, bool verbose) {
             break;
         case PERF_DATA:
             stats.pkt_count += 1;
-            stats.total_bytes += recv_bytes;
-            // TODO: check id and write loss
+            stats.total_bytes += recv_bytes + 4;  // Add 4 for hidden vlan header
+            stats.last_id = ntohl(payload->id);
             break;
         case PERF_REQ_RESULT:
             timespec_diff(&tstart, &tend, &tdiff);
@@ -313,7 +315,7 @@ void do_client(int sock, char* iface, int size, char* target, int time) {
     fprintf(stderr, "Fire\n");
     clock_gettime(CLOCK_MONOTONIC, &tstart);
 
-    int sent_id = 0;
+    int sent_id = 1; // 1 based to calculate loss rate
     do {
         send_perf(src_mac, dst_mac, sent_id++, PERF_DATA, pkt, size);
 
@@ -333,12 +335,12 @@ void do_client(int sock, char* iface, int size, char* target, int time) {
     uint32_t pkt_count = ntohl(result->pkt_count);
     uint32_t pkt_size = ntohl(result->pkt_size);
     uint32_t pps = pkt_count / result->elapsed.tv_sec;
-    uint32_t bps = pkt_size / result->elapsed.tv_sec;
+    uint32_t bps = pkt_size / result->elapsed.tv_sec * 8;
     double loss_rate = (double) (sent_id - pkt_count) / sent_id;
     printf("Elapsed %lu.%09lu s\n", result->elapsed.tv_sec, result->elapsed.tv_nsec);
-    printf("Recieved %u pkts, %u bytes\n", pkt_count, pkt_size);
-    printf("Sent %u pkts, Loss %.2f\n", sent_id, loss_rate);
-    printf("Result %u pps, %u Bps\n", pps, bps);
+    printf("Recieved %'u pkts, %u bytes\n", pkt_count, pkt_size);
+    printf("Sent %u pkts, Loss %.3f%%\n", sent_id, loss_rate * 100);
+    printf("Result %'u pps, %'u bps\n", pps, bps);
 }
 
 void* statistics_thread(void* arg) {
@@ -346,10 +348,12 @@ void* statistics_thread(void* arg) {
     struct timespec tlast, tnow, tdiff;
     tlast = stats->start;
 
+    uint32_t last_id = 0;
     uint32_t last_pkt_count = 0;
     uint32_t last_total_bytes = 0;
 
-    const char format[] = "Stat %u %u pps %u Bps\n";
+    const char format[] = "Stat %u %'u pps %'u bps loss %.3f%%\n";
+    setlocale(LC_NUMERIC, "");
 
     while (stats->running) {
         clock_gettime(CLOCK_MONOTONIC, &tnow);
@@ -362,13 +366,18 @@ void* statistics_thread(void* arg) {
             // Save before
             uint32_t current_pkt_count = stats->pkt_count;
             uint32_t current_total_bytes = stats->total_bytes;
+            uint32_t current_id = stats->last_id;
 
             uint32_t diff_pkt_count = current_pkt_count - last_pkt_count;
             uint32_t diff_total_bytes = current_total_bytes - last_total_bytes;
+            double loss_rate = 1.0 - (double) diff_pkt_count / (current_id - last_id);
+
             last_pkt_count = current_pkt_count;
             last_total_bytes = current_total_bytes;
+            last_id = current_id;
 
-            printf(format, time_elapsed, diff_pkt_count, diff_total_bytes);
+            printf(format, time_elapsed, diff_pkt_count, diff_total_bytes * 8, loss_rate * 100);
+            fflush(stdout);
         } else {
             long remaining_ns = (1000000000) - tdiff.tv_nsec;
             usleep(remaining_ns / 1000);
@@ -384,13 +393,16 @@ void* statistics_thread(void* arg) {
 
         uint32_t current_pkt_count = stats->pkt_count;
         uint32_t current_total_bytes = stats->total_bytes;
+        uint32_t current_id = stats->last_id;
 
         uint32_t diff_pkt_count = current_pkt_count - last_pkt_count;
         uint32_t diff_total_bytes = current_total_bytes - last_total_bytes;
+        double loss_rate = 1.0 - (double) diff_pkt_count / (current_id - last_id);
         last_pkt_count = current_pkt_count;
         last_total_bytes = current_total_bytes;
 
-        printf(format, time_elapsed, diff_pkt_count, diff_total_bytes);
+        printf(format, time_elapsed, diff_pkt_count, diff_total_bytes * 8, loss_rate * 100);
+        fflush(stdout);
     }
 
     return NULL;
