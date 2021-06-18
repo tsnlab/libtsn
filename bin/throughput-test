@@ -1,0 +1,66 @@
+#!/bin/bash
+
+set -eo pipefail
+
+# GAP = warm time
+# Window 1 = TSN only
+# Window 2 = TSN + iperf
+# window 3 = iperf only
+
+# jq '.intervals[].streams | .[0].bits_per_second' iperf.json | xc
+# cat result.txt | cut -d' ' -f5
+print_help() {
+    echo "ERROR"
+    echo "Usage: $0 server <dev> <bindip>"
+    echo "Usage: $0 client <dev> <bindip> <targetip> <targetmac>"
+}
+
+GAP=5
+WINDOW=40
+
+server() {
+    local dev=$1
+    local bindip=$2
+    rm result.txt iperf.json || true
+    sudo ./throughput -s -i ${dev} -p $(( 1460 - 4 )) | tee result.txt &
+    pid=$!
+    sleep 10
+    iperf3 -s -B ${bindip} -J -1 --logfile=iperf.json
+
+    sudo killall -SIGINT throughput
+}
+
+client() {
+    local dev=$1
+    local bindip=$2
+    local targetip=$3
+    local targetmac=$4
+    sudo ./throughput -c -i ${dev} -t ${targetmac} -p $(( 1460 - 4 )) -T $(( $WINDOW * 2 + $GAP )) &
+    pid=$!
+    sleep $(( $WINDOW + $GAP ))
+    iperf3 -u -b0 -l $(( 1460 - 42 )) -B ${bindip} -c ${targetip} -t $(( $WINDOW * 2 ))
+    wait $pid
+}
+
+if [[ $# -eq 0 ]]; then
+    print_help
+    exit 1
+fi
+
+command=$1
+shift
+
+case $command in
+    server)
+        echo "Server"
+        server $@
+        ;;
+    client)
+        echo "Client"
+        client $@
+        ;;
+    *)
+        print_help
+        exit 1
+        ;;
+esac
