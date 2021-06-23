@@ -21,6 +21,7 @@
 #define VLAN_PRI_PERF 2
 #define ETHERTYPE_PERF 0x1337
 
+#define TIMEOUT_SEC 1
 
 struct pkt_perf {
     uint32_t id;
@@ -147,6 +148,12 @@ int main(int argc, char** argv) {
         exit(1);
     }
 
+    struct timeval timeout = {TIMEOUT_SEC, 0};
+    if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
+        perror("Set socket timeout");
+        exit(1);
+    }
+
     signal(SIGINT, sigint);
 
     switch (arguments.mode) {
@@ -252,12 +259,16 @@ void do_client(int sock, char* iface, int size, char* target, int count) {
 
         bool received = false;
         do {
-            tsn_recv(sock, pkt, size);
+            int len = tsn_recv(sock, pkt, size);
             // TODO: check time
             clock_gettime(CLOCK_MONOTONIC, &tend);
 
+            timespec_diff(&tstart, &tend, &tdiff);
             // Check perf pkt
-            if (
+            if (len < 0 && tdiff.tv_nsec >= TIMEOUT_SEC) {
+                // TIMEOUT
+                break;
+            } else if (
                     ntohs(ethhdr->h_proto) == ETHERTYPE_PERF &&
                     ntohl(payload->id) == i) {
                 received = true;
@@ -265,10 +276,14 @@ void do_client(int sock, char* iface, int size, char* target, int count) {
         } while(!received && running);
 
         // TODO: print time
-        timespec_diff(&tstart, &tend, &tdiff);
-        uint64_t elapsed_ns = tdiff.tv_sec * 1000000000 + tdiff.tv_nsec;
-        printf("RTT: %lu.%03lu µs\n", elapsed_ns / 1000, elapsed_ns % 1000);
-        fflush(stdout);
+        if (received) {
+            uint64_t elapsed_ns = tdiff.tv_sec * 1000000000 + tdiff.tv_nsec;
+            printf("RTT: %lu.%03lu µs\n", elapsed_ns / 1000, elapsed_ns % 1000);
+            fflush(stdout);
+        } else {
+            printf("TIMEOUT\n");
+            fflush(stdout);
+        }
 
         usleep(700 * 1000);
     }
