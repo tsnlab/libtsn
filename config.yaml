@@ -7,6 +7,7 @@ nics:
         3: 3
       10:
         2: 2  # For perf test
+        3: 3
     qdisc:
       mqprio:
         handle: 6666
@@ -21,14 +22,14 @@ nics:
         1:
           type: cbs
           handle: 7777
-          idleslope: 98688
-          sendslope: -901312
-          hicredit: 153
-          locredit: -1389
+          idleslope: 73248
+          sendslope: -26752
+          hicredit: 1130
+          locredit: -408
         2:
           type: cbs
           handle: 8888
-          idleslope: 3648
-          sendslope: -996352
-          hicredit: 12
-          locredit: -113
+          idleslope: 0
+          sendslope: -100000
+          hicredit: 0
+          locredit: 0

@@ -28,8 +28,10 @@
 #endif
 
 #define VLAN_ID_PERF 10
-#define VLAN_PRI_PERF 2
+#define VLAN_PRI_PERF 3
 #define ETHERTYPE_PERF 0x1337
+
+#define TIMEOUT_SEC 1
 
 
 struct pkt_perf_result {
@@ -293,6 +295,12 @@ void do_client(int sock, char* iface, int size, char* target, int time) {
         exit(1);
     }
 
+    struct timeval timeout = {TIMEOUT_SEC, 0};
+    if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
+        perror("Set socket timeout");
+        return;
+    }
+
     struct pkt_perf* payload = (struct pkt_perf*)(pkt + sizeof(struct ethhdr));
 
     uint8_t src_mac[ETHER_ADDR_LEN];
@@ -315,8 +323,11 @@ void do_client(int sock, char* iface, int size, char* target, int time) {
 
     const uint32_t custom_id = 0xdeadbeef;  // TODO: randomise?
 
-    send_perf(src_mac, dst_mac, custom_id, PERF_REQ_START, pkt, sizeof(struct ethhdr) + PERF_HDR_SIZE);
-    recv_perf(custom_id, PERF_RES_START, pkt, size);
+    bool succeed;
+    do {
+        send_perf(src_mac, dst_mac, custom_id, PERF_REQ_START, pkt, sizeof(struct ethhdr) + PERF_HDR_SIZE);
+        succeed = recv_perf(custom_id, PERF_RES_START, pkt, size);
+    } while (!succeed);
 
     // Now fire!
 
@@ -438,14 +449,22 @@ bool recv_perf(uint32_t id, uint8_t op, uint8_t* pkt, size_t size) {
     struct ethhdr* ethhdr = (struct ethhdr*) pkt;
     struct pkt_perf* payload = (struct pkt_perf*)(pkt + sizeof(struct ethhdr));
 
+    struct timespec tstart, tend, tdiff;
     bool received = false;
-    do {
-        tsn_recv(sock, pkt, size);
 
-        if (
-                ntohs(ethhdr->h_proto) == ETHERTYPE_PERF &&
-                ntohl(payload->id) == id &&
-                payload->op == op) {
+    clock_gettime(CLOCK_MONOTONIC, &tstart);
+    do {
+        int len = tsn_recv(sock, pkt, size);
+        clock_gettime(CLOCK_MONOTONIC, &tend);
+        timespec_diff(&tstart, &tend, &tdiff);
+
+        if (len < 0 && tdiff.tv_nsec >= TIMEOUT_SEC) {
+            break;
+        } else if (
+            ntohs(ethhdr->h_proto) == ETHERTYPE_PERF &&
+            ntohl(payload->id) == id &&
+            payload->op == op)
+        {
             received = true;
         }
     } while(!received && running);
