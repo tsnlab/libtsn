@@ -8,28 +8,45 @@ nics:
       10:
         2: 2  # For perf test
         3: 3
-    qdisc:
-      mqprio:
-        handle: 6666
+    qdisc:  # Specify mqprio or taprio exclusively
+      # mqprio:
+      #   handle: 6666
+      #   num_tc: 3
+      #   map: [ 2, 2, 1, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2 ]
+      #   queues:
+      #     - 1@0  # 1 queue starting from 0
+      #     - 1@1  # 1 queue starting from 1
+      #     - 2@2  # 2 queue starting from 2 (2, 3)
+      #   hw: false
+      # child:
+      #   1:
+      #     type: cbs
+      #     handle: 7777
+      #     idleslope: 73248
+      #     sendslope: -26752
+      #     hicredit: 1130
+      #     locredit: -408
+      #   2:
+      #     type: cbs
+      #     handle: 8888
+      #     idleslope: 0
+      #     sendslope: -100000
+      #     hicredit: 0
+      #     locredit: 0
+
+      taprio:
+        handle: 100
         num_tc: 3
         map: [ 2, 2, 1, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2 ]
         queues:
-          - 1@0  # 1 queue starting from 0
-          - 1@1  # 1 queue starting from 1
-          - 2@2  # 2 queue starting from 2 (2, 3)
-        hw: false
-      child:
-        1:
-          type: cbs
-          handle: 7777
-          idleslope: 73248
-          sendslope: -26752
-          hicredit: 1130
-          locredit: -408
-        2:
-          type: cbs
-          handle: 8888
-          idleslope: 0
-          sendslope: -100000
-          hicredit: 0
-          locredit: 0
+          - 1@0
+          - 1@0
+          - 1@0
+        base_time: 1000000000
+        sched_entries:
+          # S mask nanosec
+          - S 01 300000  # 01 → 0b0001 means open 0
+          - S 03 300000  # 03 → 0b0011 means open 0, 1
+          - S 04 400000  # 04 → 0b0100 means open 2
+        flags: 0x1
+        txtime_delay: 500000
