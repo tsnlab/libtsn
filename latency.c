@@ -148,12 +148,6 @@ int main(int argc, char** argv) {
         exit(1);
     }
 
-    struct timeval timeout = {TIMEOUT_SEC, 0};
-    if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
-        perror("Set socket timeout");
-        exit(1);
-    }
-
     signal(SIGINT, sigint);
 
     switch (arguments.mode) {
@@ -219,6 +213,12 @@ void do_client(int sock, char* iface, int size, char* target, int count) {
     if (pkt == NULL) {
         fprintf(stderr, "Failed to malloc pkt\n");
         exit(1);
+    }
+
+    struct timeval timeout = {TIMEOUT_SEC, 0};
+    if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
+        perror("Set socket timeout");
+        return;
     }
 
     struct ethhdr* ethhdr = (struct ethhdr*) pkt;
