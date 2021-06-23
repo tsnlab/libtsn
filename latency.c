@@ -18,7 +18,7 @@
 #include "tsn.h"
 
 #define VLAN_ID_PERF 10
-#define VLAN_PRI_PERF 2
+#define VLAN_PRI_PERF 3
 #define ETHERTYPE_PERF 0x1337
 
 #define TIMEOUT_SEC 1
