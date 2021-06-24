@@ -248,18 +248,32 @@ void do_client(int sock, char* iface, int size, char* target, int count, bool pr
     struct timespec request, error_gettime, error_nanosleep;
 
     if (precise) {
+        error_gettime.tv_sec = 0;
+        error_gettime.tv_nsec = 0;
+        error_nanosleep.tv_sec = 0;
+        error_nanosleep.tv_nsec = 0;
+
         fprintf(stderr, "Calculating error\n");
         // TODO: do this multiple times
-        clock_gettime(CLOCK_MONOTONIC, &tstart);
-        clock_gettime(CLOCK_MONOTONIC, &tend);
-        timespec_diff(&tstart, &tend, &error_gettime);
+        for (int i = 0; i < 10; i += 1) {
+            clock_gettime(CLOCK_MONOTONIC, &tstart);
+            clock_gettime(CLOCK_MONOTONIC, &tend);
+            timespec_diff(&tstart, &tend, &tdiff);
+            if (tdiff.tv_nsec > error_gettime.tv_nsec) {
+                error_gettime.tv_nsec = tdiff.tv_nsec;
+            }
+        }
 
-        clock_gettime(CLOCK_MONOTONIC, &request);
-        request.tv_sec = 0;
-        request.tv_nsec = 1000000000 - request.tv_nsec;
-        nanosleep(&request, NULL);
-        clock_gettime(CLOCK_MONOTONIC, &error_nanosleep);
-        error_nanosleep.tv_sec = 0;
+        for (int i = 0; i < 10; i += 1) {
+            clock_gettime(CLOCK_MONOTONIC, &request);
+            request.tv_sec = 0;
+            request.tv_nsec = 1000000000 - request.tv_nsec;
+            nanosleep(&request, NULL);
+            clock_gettime(CLOCK_MONOTONIC, &tdiff);
+            if (tdiff.tv_nsec > error_nanosleep.tv_nsec) {
+                error_nanosleep.tv_nsec = tdiff.tv_nsec;
+            }
+        }
 
         fprintf(stderr, "clock_gettime: %09lu, nanosleep: %09lu\n", error_gettime.tv_nsec, error_nanosleep.tv_nsec);
     }
@@ -277,7 +291,7 @@ void do_client(int sock, char* iface, int size, char* target, int count, bool pr
             // Sleep to x.000000000s
             clock_gettime(CLOCK_MONOTONIC, &tstart);
             request.tv_sec = 0;
-            request.tv_nsec = 1000000000 - tstart.tv_nsec - error_nanosleep.tv_nsec;
+            request.tv_nsec = 1000000000 - tstart.tv_nsec - error_nanosleep.tv_nsec - error_gettime.tv_nsec;
             nanosleep(&request, NULL);
             do
             {
@@ -321,7 +335,9 @@ void do_client(int sock, char* iface, int size, char* target, int count, bool pr
             fflush(stdout);
         }
 
-        usleep(700 * 1000);
+        if (!precise) {
+            usleep(700 * 1000);
+        }
     }
 
 }
