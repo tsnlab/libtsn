@@ -40,6 +40,7 @@ static struct argp_option options[] = {
     { "target", 't', "TARGET", 0, "Target MAC addr" },
     { "count", 'C', "COUNT", 0, "How many send packet" },
     { "size", 'p', "BYTES", 0, "Packet size in bytes" },
+    { "precise", 'X', 0, 0, "Send packet at precise 0ns" },
     { 0 },
 };
 
@@ -55,6 +56,7 @@ struct arguments {
     char* target;
     int count;
     int size;
+    bool precise;
 };
 
 static error_t parse_opt(int key, char* arg, struct argp_state *state) {
@@ -82,6 +84,9 @@ static error_t parse_opt(int key, char* arg, struct argp_state *state) {
     case 'p':
         arguments->size = atoi(arg);
         break;
+    case 'X':
+        arguments->precise = true;
+        break;
     case ARGP_KEY_ARG:
         argp_usage(state);
         break;
@@ -95,7 +100,7 @@ static error_t parse_opt(int key, char* arg, struct argp_state *state) {
 static struct argp argp = { options, parse_opt, args_doc, doc };
 
 void do_server(int sock, int size, bool verbose);
-void do_client(int sock, char* iface, int size, char* target, int count);
+void do_client(int sock, char* iface, int size, char* target, int count, bool precise);
 
 void timespec_diff(struct timespec *start, struct timespec *stop,
                    struct timespec *result);
@@ -121,6 +126,7 @@ int main(int argc, char** argv) {
     arguments.target = NULL;
     arguments.count = 120;
     arguments.size = 100;
+    arguments.precise = false;
 
     argp_parse(&argp, argc, argv, 0, 0, &arguments);
 
@@ -155,7 +161,7 @@ int main(int argc, char** argv) {
         do_server(sock, arguments.size, arguments.verbose);
         break;
     case RUN_CLIENT:
-        do_client(sock, arguments.iface, arguments.size, arguments.target, arguments.count);
+        do_client(sock, arguments.iface, arguments.size, arguments.target, arguments.count, arguments.precise);
         break;
     default:
         fprintf(stderr, "Unknown mode\n");
@@ -208,7 +214,7 @@ void do_server(int sock, int size, bool verbose) {
     }
 }
 
-void do_client(int sock, char* iface, int size, char* target, int count) {
+void do_client(int sock, char* iface, int size, char* target, int count, bool precise) {
     uint8_t* pkt = malloc(size);
     if (pkt == NULL) {
         fprintf(stderr, "Failed to malloc pkt\n");
@@ -239,6 +245,24 @@ void do_client(int sock, char* iface, int size, char* target, int count) {
     strtomac(dst_mac, target);
 
     struct timespec tstart, tend, tdiff;
+    struct timespec request, error_gettime, error_nanosleep;
+
+    if (precise) {
+        fprintf(stderr, "Calculating error\n");
+        // TODO: do this multiple times
+        clock_gettime(CLOCK_MONOTONIC, &tstart);
+        clock_gettime(CLOCK_MONOTONIC, &tend);
+        timespec_diff(&tstart, &tend, &error_gettime);
+
+        clock_gettime(CLOCK_MONOTONIC, &request);
+        request.tv_sec = 0;
+        request.tv_nsec = 1000000000 - request.tv_nsec;
+        nanosleep(&request, NULL);
+        clock_gettime(CLOCK_MONOTONIC, &error_nanosleep);
+        error_nanosleep.tv_sec = 0;
+
+        fprintf(stderr, "clock_gettime: %09lu, nanosleep: %09lu\n", error_gettime.tv_nsec, error_nanosleep.tv_nsec);
+    }
 
     fprintf(stderr, "Starting\n");
 
@@ -249,8 +273,20 @@ void do_client(int sock, char* iface, int size, char* target, int count) {
         ethhdr->h_proto = htons(ETHERTYPE_PERF);
         payload->id = htonl(i);
 
-        clock_gettime(CLOCK_MONOTONIC, &tstart);
-        // TODO: check start time
+        if (precise) {
+            // Sleep to x.000000000s
+            clock_gettime(CLOCK_MONOTONIC, &tstart);
+            request.tv_sec = 0;
+            request.tv_nsec = 1000000000 - tstart.tv_nsec - error_nanosleep.tv_nsec;
+            nanosleep(&request, NULL);
+            do
+            {
+                clock_gettime(CLOCK_MONOTONIC, &tstart);
+            } while (tstart.tv_nsec > error_gettime.tv_nsec);
+        } else {
+            clock_gettime(CLOCK_MONOTONIC, &tstart);
+        }
+
         int sent = tsn_send(sock, pkt, size);
         if (sent < 0) {
             perror("Failed to send");
@@ -278,7 +314,7 @@ void do_client(int sock, char* iface, int size, char* target, int count) {
         // TODO: print time
         if (received) {
             uint64_t elapsed_ns = tdiff.tv_sec * 1000000000 + tdiff.tv_nsec;
-            printf("RTT: %lu.%03lu µs\n", elapsed_ns / 1000, elapsed_ns % 1000);
+            printf("RTT: %lu.%03lu µs (%lu → %lu)\n", elapsed_ns / 1000, elapsed_ns % 1000, tstart.tv_nsec, tend.tv_nsec);
             fflush(stdout);
         } else {
             printf("TIMEOUT\n");
