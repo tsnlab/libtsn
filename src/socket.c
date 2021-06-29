@@ -1,4 +1,4 @@
-#include "tsn.h"
+#include <tsn/socket.h>
 
 #include <error.h>
 #include <stdio.h>
