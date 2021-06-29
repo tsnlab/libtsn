@@ -256,8 +256,8 @@ void do_client(int sock, char* iface, int size, char* target, int count, bool pr
         fprintf(stderr, "Calculating error\n");
         // TODO: do this multiple times
         for (int i = 0; i < 10; i += 1) {
-            clock_gettime(CLOCK_MONOTONIC, &tstart);
-            clock_gettime(CLOCK_MONOTONIC, &tend);
+            clock_gettime(CLOCK_MONOTONIC_RAW, &tstart);
+            clock_gettime(CLOCK_MONOTONIC_RAW, &tend);
             timespec_diff(&tstart, &tend, &tdiff);
             if (tdiff.tv_nsec > error_gettime.tv_nsec) {
                 error_gettime.tv_nsec = tdiff.tv_nsec;
@@ -265,11 +265,11 @@ void do_client(int sock, char* iface, int size, char* target, int count, bool pr
         }
 
         for (int i = 0; i < 10; i += 1) {
-            clock_gettime(CLOCK_MONOTONIC, &request);
+            clock_gettime(CLOCK_MONOTONIC_RAW, &request);
             request.tv_sec = 0;
             request.tv_nsec = 1000000000 - request.tv_nsec;
             nanosleep(&request, NULL);
-            clock_gettime(CLOCK_MONOTONIC, &tdiff);
+            clock_gettime(CLOCK_MONOTONIC_RAW, &tdiff);
             if (tdiff.tv_nsec > error_nanosleep.tv_nsec) {
                 error_nanosleep.tv_nsec = tdiff.tv_nsec;
             }
@@ -289,16 +289,16 @@ void do_client(int sock, char* iface, int size, char* target, int count, bool pr
 
         if (precise) {
             // Sleep to x.000000000s
-            clock_gettime(CLOCK_MONOTONIC, &tstart);
+            clock_gettime(CLOCK_MONOTONIC_RAW, &tstart);
             request.tv_sec = 0;
             request.tv_nsec = 1000000000 - tstart.tv_nsec - error_nanosleep.tv_nsec - error_gettime.tv_nsec;
             nanosleep(&request, NULL);
             do
             {
-                clock_gettime(CLOCK_MONOTONIC, &tstart);
+                clock_gettime(CLOCK_MONOTONIC_RAW, &tstart);
             } while (tstart.tv_nsec > error_gettime.tv_nsec);
         } else {
-            clock_gettime(CLOCK_MONOTONIC, &tstart);
+            clock_gettime(CLOCK_MONOTONIC_RAW, &tstart);
         }
 
         int sent = tsn_send(sock, pkt, size);
@@ -311,7 +311,7 @@ void do_client(int sock, char* iface, int size, char* target, int count, bool pr
         do {
             int len = tsn_recv(sock, pkt, size);
             // TODO: check time
-            clock_gettime(CLOCK_MONOTONIC, &tend);
+            clock_gettime(CLOCK_MONOTONIC_RAW, &tend);
 
             timespec_diff(&tstart, &tend, &tdiff);
             // Check perf pkt
@@ -331,7 +331,7 @@ void do_client(int sock, char* iface, int size, char* target, int count, bool pr
             printf("RTT: %lu.%03lu µs (%lu → %lu)\n", elapsed_ns / 1000, elapsed_ns % 1000, tstart.tv_nsec, tend.tv_nsec);
             fflush(stdout);
         } else {
-            printf("TIMEOUT\n");
+            printf("TIMEOUT: -1 µs (%lu → N/A)\n", tstart.tv_nsec);
             fflush(stdout);
         }
 
