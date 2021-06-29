@@ -15,7 +15,7 @@
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 
-#include "tsn.h"
+#include <tsn/socket.h>
 
 #define VLAN_ID_PERF 10
 #define VLAN_PRI_PERF 3

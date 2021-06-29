@@ -17,7 +17,7 @@
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 
-#include "tsn.h"
+#include <tsn/socket.h>
 
 #ifdef WORDS_BIGENDIAN
 #define htonll(x)   (x)
