@@ -1,5 +1,13 @@
-#include <argp.h>
+#include <tsn/socket.h>
+
 #include <arpa/inet.h>
+#include <linux/if_packet.h>
+#include <net/ethernet.h>
+#include <net/if.h>
+#include <sys/ioctl.h>
+#include <sys/socket.h>
+
+#include <argp.h>
 #include <error.h>
 #include <locale.h>
 #include <pthread.h>
@@ -11,20 +19,12 @@
 #include <time.h>
 #include <unistd.h>
 
-#include <linux/if_packet.h>
-#include <net/ethernet.h>
-#include <net/if.h>
-#include <sys/ioctl.h>
-#include <sys/socket.h>
-
-#include <tsn/socket.h>
-
 #ifdef WORDS_BIGENDIAN
-#define htonll(x)   (x)
-#define ntohll(x)   (x)
+#define htonll(x) (x)
+#define ntohll(x) (x)
 #else
-#define htonll(x)   ((((uint64_t)htonl(x)) << 32) + htonl(x >> 32))
-#define ntohll(x)   ((((uint64_t)ntohl(x)) << 32) + ntohl(x >> 32))
+#define htonll(x) ((((uint64_t)htonl(x)) << 32) + htonl(x >> 32))
+#define ntohll(x) ((((uint64_t)ntohl(x)) << 32) + ntohl(x >> 32))
 #endif
 
 #define VLAN_ID_PERF 10
@@ -32,7 +32,6 @@
 #define ETHERTYPE_PERF 0x1337
 
 #define TIMEOUT_SEC 1
-
 
 struct pkt_perf_result {
     uint64_t pkt_count;
@@ -70,19 +69,18 @@ struct stastics {
     bool running;
 };
 
-
 static char doc[] = "Example";
 static char args_doc[] = "";
 
 static struct argp_option options[] = {
-    { "verbose", 'v', 0, 0, "Produce verbose output" },
-    { "interface", 'i', "IFACE", 0, "Interface name to use" },
-    { "server", 's', 0, 0, "Server mode" },
-    { "client", 'c', 0, 0, "Client mode" },
-    { "target", 't', "TARGET", 0, "Target MAC addr" },
-    { "time", 'T', "SECONDS", 0, "Run time" },
-    { "size", 'p', "BYTES", 0, "Packet size in bytes" },
-    { 0 },
+    {"verbose", 'v', 0, 0, "Produce verbose output"},
+    {"interface", 'i', "IFACE", 0, "Interface name to use"},
+    {"server", 's', 0, 0, "Server mode"},
+    {"client", 'c', 0, 0, "Client mode"},
+    {"target", 't', "TARGET", 0, "Target MAC addr"},
+    {"time", 'T', "SECONDS", 0, "Run time"},
+    {"size", 'p', "BYTES", 0, "Packet size in bytes"},
+    {0},
 };
 
 enum run_mode {
@@ -99,10 +97,10 @@ struct arguments {
     int size;
 };
 
-static error_t parse_opt(int key, char* arg, struct argp_state *state) {
+static error_t parse_opt(int key, char* arg, struct argp_state* state) {
     struct arguments* arguments = state->input;
 
-    switch(key) {
+    switch (key) {
     case 'v':
         arguments->verbose = true;
         break;
@@ -134,7 +132,7 @@ static error_t parse_opt(int key, char* arg, struct argp_state *state) {
     return 0;
 }
 
-static struct argp argp = { options, parse_opt, args_doc, doc };
+static struct argp argp = {options, parse_opt, args_doc, doc};
 
 void do_server(int sock, int size, bool verbose);
 void do_client(int sock, char* iface, int size, char* target, int time);
@@ -142,8 +140,7 @@ void* statistics_thread(void* arg);
 bool send_perf(const uint8_t* src, const uint8_t* dst, uint32_t id, uint8_t op, uint8_t* pkt, size_t size);
 bool recv_perf(uint32_t id, uint8_t op, uint8_t* pkt, size_t size);
 
-void timespec_diff(struct timespec *start, struct timespec *stop,
-                   struct timespec *result);
+void timespec_diff(struct timespec* start, struct timespec* stop, struct timespec* result);
 
 bool strtomac(uint8_t* mac, const char* str);
 
@@ -219,7 +216,7 @@ void do_server(int sock, int size, bool verbose) {
         exit(1);
     }
 
-    struct ethhdr *ethhdr = (struct ethhdr*) pkt;
+    struct ethhdr* ethhdr = (struct ethhdr*)pkt;
     struct pkt_perf* payload = (struct pkt_perf*)(pkt + sizeof(struct ethhdr));
 
     struct timespec tstart, tend, tdiff;
@@ -231,9 +228,9 @@ void do_server(int sock, int size, bool verbose) {
 
     while (running) {
         size_t recv_bytes = tsn_recv(sock, pkt, size);
-        if (ntohs(ethhdr->h_proto) != ETHERTYPE_PERF) {
-            continue;
-        }
+        // if (ntohs(ethhdr->h_proto) != ETHERTYPE_PERF) {
+        //     continue;
+        // }
 
         uint32_t id;
 
@@ -270,7 +267,7 @@ void do_server(int sock, int size, bool verbose) {
             break;
         case PERF_DATA:
             stats.pkt_count += 1;
-            stats.total_bytes += recv_bytes + 4;  // Add 4 for hidden vlan header
+            stats.total_bytes += recv_bytes + 4; // Add 4 for hidden vlan header
             stats.last_id = ntohl(payload->id);
             break;
         case PERF_REQ_RESULT:
@@ -321,7 +318,7 @@ void do_client(int sock, char* iface, int size, char* target, int time) {
 
     fprintf(stderr, "Starting client\n");
 
-    const uint32_t custom_id = 0xdeadbeef;  // TODO: randomise?
+    const uint32_t custom_id = 0xdeadbeef; // TODO: randomise?
 
     bool succeed;
     do {
@@ -355,7 +352,7 @@ void do_client(int sock, char* iface, int size, char* target, int time) {
     uint64_t pkt_size = ntohll(result->pkt_size);
     uint64_t pps = pkt_count / result->elapsed.tv_sec;
     uint64_t bps = pkt_size / result->elapsed.tv_sec * 8;
-    double loss_rate = (double) (sent_id - pkt_count) / sent_id;
+    double loss_rate = (double)(sent_id - pkt_count) / sent_id;
     printf("Elapsed %lu.%09lu s\n", result->elapsed.tv_sec, result->elapsed.tv_nsec);
     printf("Recieved %'lu pkts, %'lu bytes\n", pkt_count, pkt_size);
     printf("Sent %u pkts, Loss %.3f%%\n", sent_id, loss_rate * 100);
@@ -389,7 +386,7 @@ void* statistics_thread(void* arg) {
 
             uint64_t diff_pkt_count = current_pkt_count - last_pkt_count;
             uint64_t diff_total_bytes = current_total_bytes - last_total_bytes;
-            double loss_rate = 1.0 - (double) diff_pkt_count / (current_id - last_id);
+            double loss_rate = 1.0 - (double)diff_pkt_count / (current_id - last_id);
 
             last_pkt_count = current_pkt_count;
             last_total_bytes = current_total_bytes;
@@ -416,7 +413,7 @@ void* statistics_thread(void* arg) {
 
         uint64_t diff_pkt_count = current_pkt_count - last_pkt_count;
         uint64_t diff_total_bytes = current_total_bytes - last_total_bytes;
-        double loss_rate = 1.0 - (double) diff_pkt_count / (current_id - last_id);
+        double loss_rate = 1.0 - (double)diff_pkt_count / (current_id - last_id);
         last_pkt_count = current_pkt_count;
         last_total_bytes = current_total_bytes;
 
@@ -428,7 +425,7 @@ void* statistics_thread(void* arg) {
 }
 
 bool send_perf(const uint8_t* src, const uint8_t* dst, uint32_t id, uint8_t op, uint8_t* pkt, size_t size) {
-    struct ethhdr* ethhdr = (struct ethhdr*) pkt;
+    struct ethhdr* ethhdr = (struct ethhdr*)pkt;
     struct pkt_perf* payload = (struct pkt_perf*)(pkt + sizeof(struct ethhdr));
 
     memcpy(ethhdr->h_source, src, ETHER_ADDR_LEN);
@@ -446,7 +443,7 @@ bool send_perf(const uint8_t* src, const uint8_t* dst, uint32_t id, uint8_t op, 
 }
 
 bool recv_perf(uint32_t id, uint8_t op, uint8_t* pkt, size_t size) {
-    struct ethhdr* ethhdr = (struct ethhdr*) pkt;
+    struct ethhdr* ethhdr = (struct ethhdr*)pkt;
     struct pkt_perf* payload = (struct pkt_perf*)(pkt + sizeof(struct ethhdr));
 
     struct timespec tstart, tend, tdiff;
@@ -461,20 +458,16 @@ bool recv_perf(uint32_t id, uint8_t op, uint8_t* pkt, size_t size) {
         if (len < 0 && tdiff.tv_nsec >= TIMEOUT_SEC) {
             break;
         } else if (
-            ntohs(ethhdr->h_proto) == ETHERTYPE_PERF &&
-            ntohl(payload->id) == id &&
-            payload->op == op)
-        {
+            /*ntohs(ethhdr->h_proto) == ETHERTYPE_PERF && */
+            ntohl(payload->id) == id && payload->op == op) {
             received = true;
         }
-    } while(!received && running);
+    } while (!received && running);
 
     return received;
 }
 
-void timespec_diff(struct timespec *start, struct timespec *stop,
-                   struct timespec *result)
-{
+void timespec_diff(struct timespec* start, struct timespec* stop, struct timespec* result) {
     if ((stop->tv_nsec - start->tv_nsec) < 0) {
         result->tv_sec = stop->tv_sec - start->tv_sec - 1;
         result->tv_nsec = stop->tv_nsec - start->tv_nsec + 1000000000;
@@ -488,9 +481,7 @@ void timespec_diff(struct timespec *start, struct timespec *stop,
 
 bool strtomac(uint8_t* mac, const char* str) {
     int tmp[6];
-    int res = sscanf(
-        str, "%02x:%02x:%02x:%02x:%02x:%02x",
-        &tmp[0], &tmp[1], &tmp[2], &tmp[3], &tmp[4], &tmp[5]);
+    int res = sscanf(str, "%02x:%02x:%02x:%02x:%02x:%02x", &tmp[0], &tmp[1], &tmp[2], &tmp[3], &tmp[4], &tmp[5]);
 
     for (int i = 0; i < 6; i += 1) {
         mac[i] = tmp[i];
@@ -498,4 +489,3 @@ bool strtomac(uint8_t* mac, const char* str) {
 
     return res == 6;
 }
-

@@ -1,17 +1,17 @@
 #include <tsn/socket.h>
 
-#include <error.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-
 #include <arpa/inet.h>
 #include <linux/if_packet.h>
 #include <net/ethernet.h>
 #include <net/if.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
+
+#include <error.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 
 struct tsn_socket {
     int fd;
@@ -20,7 +20,6 @@ struct tsn_socket {
 };
 
 static struct tsn_socket sockets[20];
-
 
 static int create_vlan(const char* ifname, uint16_t vlanid) {
     long pid = fork();
@@ -32,11 +31,11 @@ static int create_vlan(const char* ifname, uint16_t vlanid) {
         char vlanid_str[5];
         snprintf(vlanid_str, 5, "%u", vlanid);
         execl("./vlan.py", "vlan.py", "create", ifname, vlanid_str, NULL);
-        return 0;  // Never reach
+        return 0; // Never reach
     } else {
         int status;
         waitpid(pid, &status, 0);
-        if(WIFEXITED(status)) {
+        if (WIFEXITED(status)) {
             return -WEXITSTATUS(status);
         } else if (WIFSIGNALED(status)) {
             return -1;
@@ -58,11 +57,11 @@ static int delete_vlan(const char* ifname, uint16_t vlanid) {
         char vlanid_str[5];
         snprintf(vlanid_str, 5, "%u", vlanid);
         execl("./vlan.py", "vlan.py", "delete", ifname, vlanid_str, NULL);
-        return 0;  // Never reach
+        return 0; // Never reach
     } else {
         int status;
         waitpid(pid, &status, 0);
-        if(WIFEXITED(status)) {
+        if (WIFEXITED(status)) {
             return -WEXITSTATUS(status);
         } else if (WIFSIGNALED(status)) {
             return -1;
@@ -71,7 +70,6 @@ static int delete_vlan(const char* ifname, uint16_t vlanid) {
         return -1;
     }
 }
-
 
 int tsn_sock_open(const char* ifname, uint16_t vlanid, uint8_t priority, uint16_t proto) {
     int sock;
@@ -110,7 +108,7 @@ int tsn_sock_open(const char* ifname, uint16_t vlanid, uint8_t priority, uint16_
     sock_ll.sll_family = AF_PACKET;
     // dst.sll_protocol = htons(ETH_P_8021Q);
     sock_ll.sll_ifindex = ifindex;
-    res = bind(sock, (struct sockaddr *)&sock_ll, sizeof(sock_ll));
+    res = bind(sock, (struct sockaddr*)&sock_ll, sizeof(sock_ll));
     if (res < 0) {
         return res;
     }

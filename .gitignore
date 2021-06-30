@@ -1,5 +1,1 @@
-main
-latency
-throughput
-obj
-libtsn.a
+build/
