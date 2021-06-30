@@ -355,7 +355,7 @@ void do_client(int sock, char* iface, int size, char* target, int count, bool pr
         }
     }
 
-    tsn_time_phc_close(phc_device);
+    tsn_time_phc_close(clkid);
 
 }
 
