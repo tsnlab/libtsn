@@ -1,10 +1,16 @@
 #!/usr/bin/env -S python3 -u
-import argparse
+
+import contextlib
+import os
+import re
 import shlex
+import socket
 import subprocess
 import sys
 
 import yaml
+
+SOCKET_PATH = '/var/run/tsn.sock'
 
 
 def run_cmd(cmd: str):
@@ -147,17 +153,34 @@ def delete_vlan(ifname: str, vlanid: int) -> int:
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('command', choices=('create', 'delete'))
-    parser.add_argument('ifname')
-    parser.add_argument('vlanid', type=int)
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    server.bind(SOCKET_PATH)
+    server.listen(1)
+    pattern = re.compile(r'(?P<cmd>create|delete) (?P<ifname>\w+) (?P<vlanid>\d+)')
+    with contextlib.ExitStack() as es:
+        def cleanup():
+            server.close()
+            os.remove(SOCKET_PATH)
 
-    args = parser.parse_args()
+        es.callback(cleanup)
 
-    {
-        'create': create_vlan,
-        'delete': delete_vlan,
-    }[args.command](args.ifname, args.vlanid)
+        while True:
+            conn, addr = server.accept()
+            line = conn.makefile().readline()
+            print(f'{line=}')
+            matched = pattern.match(line)
+            if not matched:
+                conn.send(b'-1')
+            else:
+                cmd = matched.group('cmd')
+                ifname = matched.group('ifname')
+                vlanid = int(matched.group('vlanid'))
+                res = {
+                    'create': create_vlan,
+                    'delete': delete_vlan,
+                }[cmd](ifname, vlanid)
+                conn.send(f'{res}'.encode())
+            conn.close()
 
 
 if __name__ == '__main__':
