@@ -15,6 +15,7 @@ def run_cmd(cmd: str):
 def vlan_name(ifname: str, vlanid) -> str:
     return f'{ifname}.{vlanid}'
 
+
 def setup_mqprio(ifname: str, ifconf: dict):
     mqprio = ifconf['qdisc']['mqprio']
     root_handle = mqprio['handle']

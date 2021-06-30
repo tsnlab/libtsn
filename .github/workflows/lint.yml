@@ -1,0 +1,22 @@
+name: Lint
+
+on:
+  - push
+  - pull_request
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@master
+      - name: Install clang-format
+        run: sudo apt install -qqy --no-install-recommends clang-format
+      - name: Run clang-format
+        run: clang-format-10 --dry-run -Werror $(find src include -type f)
+      - name: Setup python
+        uses: actions/setup-python@v1
+        with:
+          python-version: "3.9"
+      - name: Flake8
+        uses: py-actions/flake8@v1
