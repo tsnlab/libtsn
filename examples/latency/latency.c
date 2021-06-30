@@ -1,22 +1,22 @@
-#include <argp.h>
-#include <arpa/inet.h>
-#include <error.h>
-#include <signal.h>
-#include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <time.h>
+#include <tsn/socket.h>
+#include <tsn/time.h>
 
+#include <arpa/inet.h>
 #include <linux/if_packet.h>
 #include <net/ethernet.h>
 #include <net/if.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 
-#include <tsn/socket.h>
-#include <tsn/time.h>
+#include <argp.h>
+#include <error.h>
+#include <signal.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include <unistd.h>
 
 #define VLAN_ID_PERF 10
 #define VLAN_PRI_PERF 3
@@ -29,20 +29,19 @@ struct pkt_perf {
     uint8_t data[];
 };
 
-
 static char doc[] = "Example";
 static char args_doc[] = "";
 
 static struct argp_option options[] = {
-    { "verbose", 'v', 0, 0, "Produce verbose output" },
-    { "interface", 'i', "IFACE", 0, "Interface name to use" },
-    { "server", 's', 0, 0, "Server mode" },
-    { "client", 'c', 0, 0, "Client mode" },
-    { "target", 't', "TARGET", 0, "Target MAC addr" },
-    { "count", 'C', "COUNT", 0, "How many send packet" },
-    { "size", 'p', "BYTES", 0, "Packet size in bytes" },
-    { "precise", 'X', 0, 0, "Send packet at precise 0ns" },
-    { 0 },
+    {"verbose", 'v', 0, 0, "Produce verbose output"},
+    {"interface", 'i', "IFACE", 0, "Interface name to use"},
+    {"server", 's', 0, 0, "Server mode"},
+    {"client", 'c', 0, 0, "Client mode"},
+    {"target", 't', "TARGET", 0, "Target MAC addr"},
+    {"count", 'C', "COUNT", 0, "How many send packet"},
+    {"size", 'p', "BYTES", 0, "Packet size in bytes"},
+    {"precise", 'X', 0, 0, "Send packet at precise 0ns"},
+    {0},
 };
 
 enum run_mode {
@@ -60,10 +59,10 @@ struct arguments {
     bool precise;
 };
 
-static error_t parse_opt(int key, char* arg, struct argp_state *state) {
+static error_t parse_opt(int key, char* arg, struct argp_state* state) {
     struct arguments* arguments = state->input;
 
-    switch(key) {
+    switch (key) {
     case 'v':
         arguments->verbose = true;
         break;
@@ -98,13 +97,12 @@ static error_t parse_opt(int key, char* arg, struct argp_state *state) {
     return 0;
 }
 
-static struct argp argp = { options, parse_opt, args_doc, doc };
+static struct argp argp = {options, parse_opt, args_doc, doc};
 
 void do_server(int sock, int size, bool verbose);
 void do_client(int sock, char* iface, int size, char* target, int count, bool precise);
 
-void timespec_diff(struct timespec *start, struct timespec *stop,
-                   struct timespec *result);
+void timespec_diff(struct timespec* start, struct timespec* stop, struct timespec* result);
 
 bool strtomac(uint8_t* mac, const char* str);
 
@@ -181,7 +179,7 @@ void do_server(int sock, int size, bool verbose) {
         exit(1);
     }
 
-    struct ethhdr *ethhdr = (struct ethhdr*) pkt;
+    struct ethhdr* ethhdr = (struct ethhdr*)pkt;
     struct pkt_perf* payload = (struct pkt_perf*)(pkt + sizeof(struct ethhdr));
 
     while (running) {
@@ -198,20 +196,10 @@ void do_server(int sock, int size, bool verbose) {
         tsn_send(sock, pkt, recv_bytes);
 
         printf("id: %08x\n", ntohl(payload->id));
-        printf("src: %02x:%02x:%02x:%02x:%02x:%02x\n",
-               ethhdr->h_source[0],
-               ethhdr->h_source[1],
-               ethhdr->h_source[2],
-               ethhdr->h_source[3],
-               ethhdr->h_source[4],
-               ethhdr->h_source[5]);
-        printf("dst: %02x:%02x:%02x:%02x:%02x:%02x\n",
-               ethhdr->h_dest[0],
-               ethhdr->h_dest[1],
-               ethhdr->h_dest[2],
-               ethhdr->h_dest[3],
-               ethhdr->h_dest[4],
-               ethhdr->h_dest[5]);
+        printf("src: %02x:%02x:%02x:%02x:%02x:%02x\n", ethhdr->h_source[0], ethhdr->h_source[1], ethhdr->h_source[2],
+               ethhdr->h_source[3], ethhdr->h_source[4], ethhdr->h_source[5]);
+        printf("dst: %02x:%02x:%02x:%02x:%02x:%02x\n", ethhdr->h_dest[0], ethhdr->h_dest[1], ethhdr->h_dest[2],
+               ethhdr->h_dest[3], ethhdr->h_dest[4], ethhdr->h_dest[5]);
     }
 }
 
@@ -228,7 +216,7 @@ void do_client(int sock, char* iface, int size, char* target, int count, bool pr
         return;
     }
 
-    struct ethhdr* ethhdr = (struct ethhdr*) pkt;
+    struct ethhdr* ethhdr = (struct ethhdr*)pkt;
     struct pkt_perf* payload = (struct pkt_perf*)(pkt + sizeof(struct ethhdr));
 
     uint8_t src_mac[ETHER_ADDR_LEN];
@@ -281,7 +269,7 @@ void do_client(int sock, char* iface, int size, char* target, int count, bool pr
 
     fprintf(stderr, "Starting\n");
 
-    for(int i = 0; i < count && running; i += 1) {
+    for (int i = 0; i < count && running; i += 1) {
         memcpy(ethhdr->h_source, ifr.ifr_addr.sa_data, ETHER_ADDR_LEN);
         memcpy(ethhdr->h_dest, dst_mac, ETHER_ADDR_LEN);
 
@@ -294,8 +282,7 @@ void do_client(int sock, char* iface, int size, char* target, int count, bool pr
             request.tv_sec = 0;
             request.tv_nsec = 1000000000 - tstart.tv_nsec - error_nanosleep.tv_nsec - error_gettime.tv_nsec;
             nanosleep(&request, NULL);
-            do
-            {
+            do {
                 clock_gettime(CLOCK_REALTIME, &tstart);
             } while (tstart.tv_nsec > error_gettime.tv_nsec);
         } else {
@@ -320,16 +307,17 @@ void do_client(int sock, char* iface, int size, char* target, int count, bool pr
                 // TIMEOUT
                 break;
             } else if (
-                    // ntohs(ethhdr->h_proto) == ETHERTYPE_PERF &&
-                    ntohl(payload->id) == i) {
+                // ntohs(ethhdr->h_proto) == ETHERTYPE_PERF &&
+                ntohl(payload->id) == i) {
                 received = true;
             }
-        } while(!received && running);
+        } while (!received && running);
 
         // TODO: print time
         if (received) {
             uint64_t elapsed_ns = tdiff.tv_sec * 1000000000 + tdiff.tv_nsec;
-            printf("RTT: %lu.%03lu µs (%lu → %lu)\n", elapsed_ns / 1000, elapsed_ns % 1000, tstart.tv_nsec, tend.tv_nsec);
+            printf("RTT: %lu.%03lu µs (%lu → %lu)\n", elapsed_ns / 1000, elapsed_ns % 1000, tstart.tv_nsec,
+                   tend.tv_nsec);
             fflush(stdout);
         } else {
             printf("TIMEOUT: -1 µs (%lu → N/A)\n", tstart.tv_nsec);
@@ -340,12 +328,9 @@ void do_client(int sock, char* iface, int size, char* target, int count, bool pr
             usleep(300 * 1000);
         }
     }
-
 }
 
-void timespec_diff(struct timespec *start, struct timespec *stop,
-                   struct timespec *result)
-{
+void timespec_diff(struct timespec* start, struct timespec* stop, struct timespec* result) {
     if ((stop->tv_nsec - start->tv_nsec) < 0) {
         result->tv_sec = stop->tv_sec - start->tv_sec - 1;
         result->tv_nsec = stop->tv_nsec - start->tv_nsec + 1000000000;
@@ -359,9 +344,7 @@ void timespec_diff(struct timespec *start, struct timespec *stop,
 
 bool strtomac(uint8_t* mac, const char* str) {
     int tmp[6];
-    int res = sscanf(
-        str, "%02x:%02x:%02x:%02x:%02x:%02x",
-        &tmp[0], &tmp[1], &tmp[2], &tmp[3], &tmp[4], &tmp[5]);
+    int res = sscanf(str, "%02x:%02x:%02x:%02x:%02x:%02x", &tmp[0], &tmp[1], &tmp[2], &tmp[3], &tmp[4], &tmp[5]);
 
     for (int i = 0; i < 6; i += 1) {
         mac[i] = tmp[i];
