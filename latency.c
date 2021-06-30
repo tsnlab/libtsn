@@ -248,20 +248,6 @@ void do_client(int sock, char* iface, int size, char* target, int count, bool pr
     struct timespec tstart, tend, tdiff;
     struct timespec request, error_gettime, error_nanosleep;
 
-    int phc_index;
-    clockid_t clkid;
-
-    phc_index = tsn_time_phc_get_index(iface);
-    if (phc_index < 0) {
-        fprintf(stderr, "Failed to get phc index of %s\n", iface);
-    }
-    char phc_device[19];
-    sprintf(phc_device, "/dev/ptp%d", phc_index);
-    clkid = tsn_time_phc_open(phc_device);
-    if (clkid >= 0) {
-        fprintf(stderr, "Failed to open phc %d\n", phc_index);
-    }
-
     if (precise) {
         error_gettime.tv_sec = 0;
         error_gettime.tv_nsec = 0;
@@ -271,8 +257,8 @@ void do_client(int sock, char* iface, int size, char* target, int count, bool pr
         fprintf(stderr, "Calculating error\n");
         // TODO: do this multiple times
         for (int i = 0; i < 10; i += 1) {
-            clock_gettime(clkid, &tstart);
-            clock_gettime(clkid, &tend);
+            clock_gettime(CLOCK_REALTIME, &tstart);
+            clock_gettime(CLOCK_REALTIME, &tend);
             timespec_diff(&tstart, &tend, &tdiff);
             if (tdiff.tv_nsec > error_gettime.tv_nsec) {
                 error_gettime.tv_nsec = tdiff.tv_nsec;
@@ -280,11 +266,11 @@ void do_client(int sock, char* iface, int size, char* target, int count, bool pr
         }
 
         for (int i = 0; i < 10; i += 1) {
-            clock_gettime(clkid, &request);
+            clock_gettime(CLOCK_REALTIME, &request);
             request.tv_sec = 0;
             request.tv_nsec = 1000000000 - request.tv_nsec;
             nanosleep(&request, NULL);
-            clock_gettime(clkid, &tdiff);
+            clock_gettime(CLOCK_REALTIME, &tdiff);
             if (tdiff.tv_nsec > error_nanosleep.tv_nsec) {
                 error_nanosleep.tv_nsec = tdiff.tv_nsec;
             }
@@ -304,16 +290,16 @@ void do_client(int sock, char* iface, int size, char* target, int count, bool pr
 
         if (precise) {
             // Sleep to x.000000000s
-            clock_gettime(clkid, &tstart);
+            clock_gettime(CLOCK_REALTIME, &tstart);
             request.tv_sec = 0;
             request.tv_nsec = 1000000000 - tstart.tv_nsec - error_nanosleep.tv_nsec - error_gettime.tv_nsec;
             nanosleep(&request, NULL);
             do
             {
-                clock_gettime(clkid, &tstart);
+                clock_gettime(CLOCK_REALTIME, &tstart);
             } while (tstart.tv_nsec > error_gettime.tv_nsec);
         } else {
-            clock_gettime(clkid, &tstart);
+            clock_gettime(CLOCK_REALTIME, &tstart);
         }
 
         int sent = tsn_send(sock, pkt, size);
@@ -326,7 +312,7 @@ void do_client(int sock, char* iface, int size, char* target, int count, bool pr
         do {
             int len = tsn_recv(sock, pkt, size);
             // TODO: check time
-            clock_gettime(clkid, &tend);
+            clock_gettime(CLOCK_REALTIME, &tend);
 
             timespec_diff(&tstart, &tend, &tdiff);
             // Check perf pkt
@@ -354,8 +340,6 @@ void do_client(int sock, char* iface, int size, char* target, int count, bool pr
             usleep(700 * 1000);
         }
     }
-
-    tsn_time_phc_close(clkid);
 
 }
 
