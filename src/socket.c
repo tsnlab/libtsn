@@ -28,8 +28,8 @@ static int create_vlan(const char* ifname, uint16_t vlanid) {
     }
 
     if (pid == 0) {
-        char vlanid_str[5];
-        snprintf(vlanid_str, 5, "%u", vlanid);
+        char vlanid_str[6];
+        snprintf(vlanid_str, 6, "%u", vlanid);
         execl("./vlan.py", "vlan.py", "create", ifname, vlanid_str, NULL);
         return 0; // Never reach
     } else {
@@ -54,8 +54,8 @@ static int delete_vlan(const char* ifname, uint16_t vlanid) {
     }
 
     if (pid == 0) {
-        char vlanid_str[5];
-        snprintf(vlanid_str, 5, "%u", vlanid);
+        char vlanid_str[6];
+        snprintf(vlanid_str, 6, "%u", vlanid);
         execl("./vlan.py", "vlan.py", "delete", ifname, vlanid_str, NULL);
         return 0; // Never reach
     } else {
