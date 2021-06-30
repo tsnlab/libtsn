@@ -8,9 +8,10 @@
  * @param ifname interface name. NULL to unspecify.
  * @param vlanid from 0 to 4095(12bit)
  * @param priority from 1 to 7(3bit)
+ * @param proto ethtype
  * @return handle. if <0, error.
  */
-int tsn_sock_open(const char* ifname, uint16_t vlanid, uint8_t priority);
+int tsn_sock_open(const char* ifname, uint16_t vlanid, uint8_t priority, uint16_t proto);
 
 /**
  * Close TSN socket

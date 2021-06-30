@@ -148,7 +148,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    sock = tsn_sock_open(arguments.iface, VLAN_ID_PERF, VLAN_PRI_PERF);
+    sock = tsn_sock_open(arguments.iface, VLAN_ID_PERF, VLAN_PRI_PERF, ETHERTYPE_PERF);
 
     if (sock <= 0) {
         perror("socket create");
@@ -186,10 +186,10 @@ void do_server(int sock, int size, bool verbose) {
 
     while (running) {
         size_t recv_bytes = tsn_recv(sock, pkt, size);
-        if (ntohs(ethhdr->h_proto) != ETHERTYPE_PERF) {
-            fprintf(stderr, "Not ours, skip\n");
-            continue;
-        }
+        // if (ntohs(ethhdr->h_proto) != ETHERTYPE_PERF) {
+        //     fprintf(stderr, "Not ours, skip\n");
+        //     continue;
+        // }
 
         uint8_t tmpmac[ETHER_ADDR_LEN];
         memcpy(tmpmac, ethhdr->h_dest, ETHER_ADDR_LEN);
@@ -334,7 +334,7 @@ void do_client(int sock, char* iface, int size, char* target, int count, bool pr
                 // TIMEOUT
                 break;
             } else if (
-                    ntohs(ethhdr->h_proto) == ETHERTYPE_PERF &&
+                    // ntohs(ethhdr->h_proto) == ETHERTYPE_PERF &&
                     ntohl(payload->id) == i) {
                 received = true;
             }
