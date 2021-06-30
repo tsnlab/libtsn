@@ -4,7 +4,7 @@
 
 #define CLOCK_INVALID -1
 
-clockid_t phc_open(const char* phc);
-void phc_close(clockid_t clkid);
+clockid_t tsn_time_phc_open(const char* phc);
+void tsn_time_phc_close(clockid_t clkid);
 
-int get_phc_index(const char* dev);
+int tsn_time_phc_get_index(const char* dev);

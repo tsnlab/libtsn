@@ -21,7 +21,7 @@ static inline int clock_adjtime(clockid_t id, struct timex *tx)
     return syscall(__NR_clock_adjtime, id, tx);
 }
 
-clockid_t phc_open(const char* phc) {
+clockid_t tsn_time_phc_open(const char* phc) {
     clockid_t clkid;
     struct timespec ts;
 	struct timex tx;
@@ -47,7 +47,7 @@ clockid_t phc_open(const char* phc) {
 	return clkid;
 }
 
-void phc_close(clockid_t clkid) {
+void tsn_time_phc_close(clockid_t clkid) {
 	if (clkid == CLOCK_INVALID)
 	{
 		return;
@@ -55,7 +55,7 @@ void phc_close(clockid_t clkid) {
 	close(CLOCKID_TO_FD(clkid));
 }
 
-int get_phc_index(const char* dev) {
+int tsn_time_phc_get_index(const char* dev) {
 	struct ethtool_ts_info info;
 	struct ifreq ifr;
 	int fd, err;
