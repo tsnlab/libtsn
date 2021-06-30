@@ -20,3 +20,15 @@ jobs:
           python-version: "3.9"
       - name: Flake8
         uses: py-actions/flake8@v1
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: install build tools
+        run: sudo apt install -qqy --no-install-recommends gcc cmake ninja-build
+      - name: Checkout
+        uses: actions/checkout@master
+      - name: build
+        run: |
+          cmake -B build -G Ninja .
+          cmake --build build
