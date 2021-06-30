@@ -337,7 +337,7 @@ void do_client(int sock, char* iface, int size, char* target, int count, bool pr
         }
 
         if (!precise) {
-            usleep(700 * 1000);
+            usleep(300 * 1000);
         }
     }
 
