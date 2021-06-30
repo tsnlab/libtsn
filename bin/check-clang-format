@@ -3,7 +3,11 @@
 set -eo pipefail
 
 files=$(find src include examples -type f \( -name '*.c' -or -name '*.h' \))
+result=0
 for fname in $files; do
-    diff --color -u $fname <(clang-format $fname)
+    if ! diff --color -u $fname <(clang-format $fname); then
+        result=1
+    fi
 done
 
+exit $result

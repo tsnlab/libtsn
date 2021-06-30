@@ -13,9 +13,7 @@ jobs:
       - name: Install clang-format
         run: sudo apt install -qqy --no-install-recommends clang-format
       - name: Run clang-format
-        run: |
-          bin/check-clang-format
-          clang-format-10 --dry-run -Werror $(find src include examples -type f \( -name '*.c' -or -name '*.h' \) )
+        run: bin/check-clang-format
       - name: Setup python
         uses: actions/setup-python@v1
         with:
