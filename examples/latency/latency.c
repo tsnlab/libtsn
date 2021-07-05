@@ -102,8 +102,6 @@ static struct argp argp = {options, parse_opt, args_doc, doc};
 void do_server(int sock, int size, bool verbose);
 void do_client(int sock, char* iface, int size, char* target, int count, bool precise);
 
-void timespec_diff(struct timespec* start, struct timespec* stop, struct timespec* result);
-
 bool strtomac(uint8_t* mac, const char* str);
 
 volatile sig_atomic_t running = 1;
@@ -184,10 +182,6 @@ void do_server(int sock, int size, bool verbose) {
 
     while (running) {
         size_t recv_bytes = tsn_recv(sock, pkt, size);
-        // if (ntohs(ethhdr->h_proto) != ETHERTYPE_PERF) {
-        //     fprintf(stderr, "Not ours, skip\n");
-        //     continue;
-        // }
 
         uint8_t tmpmac[ETHER_ADDR_LEN];
         memcpy(tmpmac, ethhdr->h_dest, ETHER_ADDR_LEN);
@@ -247,7 +241,7 @@ void do_client(int sock, char* iface, int size, char* target, int count, bool pr
         for (int i = 0; i < 10; i += 1) {
             clock_gettime(CLOCK_REALTIME, &tstart);
             clock_gettime(CLOCK_REALTIME, &tend);
-            timespec_diff(&tstart, &tend, &tdiff);
+            tsn_timespec_diff(&tstart, &tend, &tdiff);
             if (tdiff.tv_nsec > error_gettime.tv_nsec) {
                 error_gettime.tv_nsec = tdiff.tv_nsec;
             }
@@ -278,16 +272,13 @@ void do_client(int sock, char* iface, int size, char* target, int count, bool pr
 
         if (precise) {
             // Sleep to x.000000000s
-            clock_gettime(CLOCK_REALTIME, &tstart);
-            request.tv_sec = 0;
-            request.tv_nsec = 1000000000 - tstart.tv_nsec - error_nanosleep.tv_nsec - error_gettime.tv_nsec;
-            nanosleep(&request, NULL);
-            do {
-                clock_gettime(CLOCK_REALTIME, &tstart);
-            } while (tstart.tv_nsec > error_gettime.tv_nsec);
-        } else {
-            clock_gettime(CLOCK_REALTIME, &tstart);
+            clock_gettime(CLOCK_REALTIME, &request);
+            request.tv_sec += 1;
+            request.tv_nsec = 0;
+            tsn_time_sleep_until(&request);
         }
+
+        clock_gettime(CLOCK_REALTIME, &tstart);
 
         int sent = tsn_send(sock, pkt, size);
         if (sent < 0) {
@@ -301,14 +292,12 @@ void do_client(int sock, char* iface, int size, char* target, int count, bool pr
             // TODO: check time
             clock_gettime(CLOCK_REALTIME, &tend);
 
-            timespec_diff(&tstart, &tend, &tdiff);
+            tsn_timespec_diff(&tstart, &tend, &tdiff);
             // Check perf pkt
             if (len < 0 && tdiff.tv_nsec >= TIMEOUT_SEC) {
                 // TIMEOUT
                 break;
-            } else if (
-                // ntohs(ethhdr->h_proto) == ETHERTYPE_PERF &&
-                ntohl(payload->id) == i) {
+            } else if (ntohl(payload->id) == i) {
                 received = true;
             }
         } while (!received && running);
@@ -325,21 +314,11 @@ void do_client(int sock, char* iface, int size, char* target, int count, bool pr
         }
 
         if (!precise) {
-            usleep(300 * 1000);
+            request.tv_sec = 0;
+            request.tv_nsec = 300 * 1000 * 1000 + (random() % 10000000);
+            nanosleep(&request, NULL);
         }
     }
-}
-
-void timespec_diff(struct timespec* start, struct timespec* stop, struct timespec* result) {
-    if ((stop->tv_nsec - start->tv_nsec) < 0) {
-        result->tv_sec = stop->tv_sec - start->tv_sec - 1;
-        result->tv_nsec = stop->tv_nsec - start->tv_nsec + 1000000000;
-    } else {
-        result->tv_sec = stop->tv_sec - start->tv_sec;
-        result->tv_nsec = stop->tv_nsec - start->tv_nsec;
-    }
-
-    return;
 }
 
 bool strtomac(uint8_t* mac, const char* str) {

@@ -7,6 +7,7 @@
 #include <sys/timex.h>
 
 #include <fcntl.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 #include <syscall.h>
@@ -16,6 +17,13 @@
 #define CLOCKFD 3
 #define FD_TO_CLOCKID(fd) ((clockid_t)((((unsigned int)~fd) << 3) | CLOCKFD))
 #define CLOCKID_TO_FD(clk) ((unsigned int)~((clk) >> 3))
+
+static struct timespec error_clock_gettime = {-1, 0};
+static struct timespec error_nanosleep = {-1, 0};
+
+static inline bool is_analysed() {
+    return (error_clock_gettime.tv_sec == -1 && error_nanosleep.tv_sec == -1);
+}
 
 static inline int clock_adjtime(clockid_t id, struct timex* tx) {
     return syscall(__NR_clock_adjtime, id, tx);
@@ -76,4 +84,77 @@ int tsn_time_phc_get_index(const char* dev) {
 
     close(fd);
     return info.phc_index;
+}
+
+void tsn_time_analyze() {
+    if (is_analysed()) {
+        return;
+    }
+
+    const int count = 10;
+    struct timespec start, end, diff;
+
+    // Analyse gettime
+    clock_gettime(CLOCK_REALTIME, &start);
+    for (int i = 0; i < count; i += 1) {
+        clock_gettime(CLOCK_REALTIME, &end);
+    }
+
+    tsn_timespec_diff(&start, &end, &diff);
+
+    // Analyse nanosleep
+    struct timespec request = {1, 0};
+    for (int i = 0; i < count; i += 1) {
+        clock_gettime(CLOCK_REALTIME, &start);
+        nanosleep(&request, NULL);
+        clock_gettime(CLOCK_REALTIME, &end);
+    }
+}
+
+int tsn_time_sleep_until(const struct timespec* realtime) {
+    if (!is_analysed()) {
+        tsn_time_analyze();
+    }
+
+    struct timespec now;
+    clock_gettime(CLOCK_REALTIME, &now);
+
+    // If already future, Don't need to sleep
+    if (tsn_timespec_compare(&now, realtime) >= 0) {
+        return 0;
+    }
+
+    struct timespec request;
+    tsn_timespec_diff(&now, realtime, &request);
+    if (tsn_timespec_compare(&request, &error_nanosleep) < 0) {
+        nanosleep(&request, NULL);
+    }
+
+    struct timespec diff;
+    do {
+        clock_gettime(CLOCK_REALTIME, &now);
+        tsn_timespec_diff(&now, realtime, &diff);
+    } while (tsn_timespec_compare(&diff, &error_clock_gettime) >= 0);
+
+    return diff.tv_nsec;
+}
+
+void tsn_timespec_diff(const struct timespec* start, const struct timespec* stop, struct timespec* result) {
+    if ((stop->tv_nsec - start->tv_nsec) < 0) {
+        result->tv_sec = stop->tv_sec - start->tv_sec - 1;
+        result->tv_nsec = stop->tv_nsec - start->tv_nsec + 1000000000;
+    } else {
+        result->tv_sec = stop->tv_sec - start->tv_sec;
+        result->tv_nsec = stop->tv_nsec - start->tv_nsec;
+    }
+
+    return;
+}
+
+int tsn_timespec_compare(const struct timespec* a, const struct timespec* b) {
+    if (a->tv_sec == b->tv_sec) {
+        return a->tv_nsec - b->tv_nsec;
+    }
+
+    return a->tv_sec - b->tv_sec;
 }

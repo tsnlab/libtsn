@@ -1,4 +1,5 @@
 #include <tsn/socket.h>
+#include <tsn/time.h>
 
 #include <arpa/inet.h>
 #include <linux/if_packet.h>
@@ -140,8 +141,6 @@ void* statistics_thread(void* arg);
 bool send_perf(const uint8_t* src, const uint8_t* dst, uint32_t id, uint8_t op, uint8_t* pkt, size_t size);
 bool recv_perf(uint32_t id, uint8_t op, uint8_t* pkt, size_t size);
 
-void timespec_diff(struct timespec* start, struct timespec* stop, struct timespec* result);
-
 bool strtomac(uint8_t* mac, const char* str);
 
 volatile sig_atomic_t running = 1;
@@ -228,9 +227,6 @@ void do_server(int sock, int size, bool verbose) {
 
     while (running) {
         size_t recv_bytes = tsn_recv(sock, pkt, size);
-        // if (ntohs(ethhdr->h_proto) != ETHERTYPE_PERF) {
-        //     continue;
-        // }
 
         uint32_t id;
 
@@ -271,7 +267,7 @@ void do_server(int sock, int size, bool verbose) {
             stats.last_id = ntohl(payload->id);
             break;
         case PERF_REQ_RESULT:
-            timespec_diff(&tstart, &tend, &tdiff);
+            tsn_timespec_diff(&tstart, &tend, &tdiff);
             id = ntohl(payload->id);
             payload->op = PERF_RES_RESULT;
             struct pkt_perf_result* result = &payload->result;
@@ -336,7 +332,7 @@ void do_client(int sock, char* iface, int size, char* target, int time) {
         send_perf(src_mac, dst_mac, sent_id++, PERF_DATA, pkt, size);
 
         clock_gettime(CLOCK_MONOTONIC, &tend);
-        timespec_diff(&tstart, &tend, &tdiff);
+        tsn_timespec_diff(&tstart, &tend, &tdiff);
     } while (running && tdiff.tv_sec < time);
 
     fprintf(stderr, "Done\n");
@@ -373,10 +369,10 @@ void* statistics_thread(void* arg) {
 
     while (stats->running) {
         clock_gettime(CLOCK_MONOTONIC, &tnow);
-        timespec_diff(&tlast, &tnow, &tdiff);
+        tsn_timespec_diff(&tlast, &tnow, &tdiff);
         if (tdiff.tv_sec >= 1) {
             tlast = tnow;
-            timespec_diff(&stats->start, &tnow, &tdiff);
+            tsn_timespec_diff(&stats->start, &tnow, &tdiff);
             uint16_t time_elapsed = tdiff.tv_sec;
 
             // Save before
@@ -402,9 +398,9 @@ void* statistics_thread(void* arg) {
 
     // Final result
     clock_gettime(CLOCK_MONOTONIC, &tnow);
-    timespec_diff(&tlast, &tnow, &tdiff);
+    tsn_timespec_diff(&tlast, &tnow, &tdiff);
     if (tdiff.tv_sec >= 1) {
-        timespec_diff(&stats->start, &tnow, &tdiff);
+        tsn_timespec_diff(&stats->start, &tnow, &tdiff);
         uint16_t time_elapsed = tdiff.tv_sec;
 
         uint64_t current_pkt_count = stats->pkt_count;
@@ -453,30 +449,16 @@ bool recv_perf(uint32_t id, uint8_t op, uint8_t* pkt, size_t size) {
     do {
         int len = tsn_recv(sock, pkt, size);
         clock_gettime(CLOCK_MONOTONIC, &tend);
-        timespec_diff(&tstart, &tend, &tdiff);
+        tsn_timespec_diff(&tstart, &tend, &tdiff);
 
         if (len < 0 && tdiff.tv_nsec >= TIMEOUT_SEC) {
             break;
-        } else if (
-            /*ntohs(ethhdr->h_proto) == ETHERTYPE_PERF && */
-            ntohl(payload->id) == id && payload->op == op) {
+        } else if (ntohl(payload->id) == id && payload->op == op) {
             received = true;
         }
     } while (!received && running);
 
     return received;
-}
-
-void timespec_diff(struct timespec* start, struct timespec* stop, struct timespec* result) {
-    if ((stop->tv_nsec - start->tv_nsec) < 0) {
-        result->tv_sec = stop->tv_sec - start->tv_sec - 1;
-        result->tv_nsec = stop->tv_nsec - start->tv_nsec + 1000000000;
-    } else {
-        result->tv_sec = stop->tv_sec - start->tv_sec;
-        result->tv_nsec = stop->tv_nsec - start->tv_nsec;
-    }
-
-    return;
 }
 
 bool strtomac(uint8_t* mac, const char* str) {
