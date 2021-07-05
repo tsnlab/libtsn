@@ -5,6 +5,7 @@
 #include <net/ethernet.h>
 #include <net/if.h>
 #include <sys/socket.h>
+#include <sys/un.h>
 #include <sys/wait.h>
 
 #include <error.h>
@@ -12,6 +13,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+#define CONTROL_SOCK_PATH "/var/run/tsn.sock"
 
 struct tsn_socket {
     int fd;
@@ -21,54 +24,50 @@ struct tsn_socket {
 
 static struct tsn_socket sockets[20];
 
+static int send_cmd(const char* command) {
+    int res;
+    struct sockaddr_un client_addr;
+    int client_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (client_fd == -1) {
+        perror("Failed to open control socket");
+        return -1;
+    }
+
+    bzero(&client_addr, sizeof(client_addr));
+    client_addr.sun_family = AF_UNIX;
+    strcpy(client_addr.sun_path, CONTROL_SOCK_PATH);
+    if (connect(client_fd, (struct sockaddr*)&client_addr, sizeof(client_addr)) < 0) {
+        perror("Failed to connect to control socket");
+        close(client_fd);
+        return -1;
+    }
+
+    res = write(client_fd, command, strlen(command));
+    if (res < 0) {
+        perror("Failed to send control packet");
+        return -1;
+    }
+    char msg[128];
+    res = read(client_fd, msg, sizeof(command));
+    if (res < 0) {
+        perror("Failed to read control packet");
+        return -1;
+    }
+    fprintf(stderr, "%s\n", msg);
+
+    return 0;
+}
+
 static int create_vlan(const char* ifname, uint16_t vlanid) {
-    long pid = fork();
-    if (pid == -1) {
-        return -1;
-    }
-
-    if (pid == 0) {
-        char vlanid_str[6];
-        snprintf(vlanid_str, 6, "%u", vlanid);
-        execl("./vlan.py", "vlan.py", "create", ifname, vlanid_str, NULL);
-        return 0; // Never reach
-    } else {
-        int status;
-        waitpid(pid, &status, 0);
-        if (WIFEXITED(status)) {
-            return -WEXITSTATUS(status);
-        } else if (WIFSIGNALED(status)) {
-            return -1;
-        }
-
-        return -1;
-    }
+    char command[128];
+    snprintf(command, sizeof(command), "create %s %u\n", ifname, vlanid);
+    return send_cmd(command);
 }
 
 static int delete_vlan(const char* ifname, uint16_t vlanid) {
-    // WARNING: Don't delete vlan if there are other sockets remaining
-
-    long pid = fork();
-    if (pid == -1) {
-        return -1;
-    }
-
-    if (pid == 0) {
-        char vlanid_str[6];
-        snprintf(vlanid_str, 6, "%u", vlanid);
-        execl("./vlan.py", "vlan.py", "delete", ifname, vlanid_str, NULL);
-        return 0; // Never reach
-    } else {
-        int status;
-        waitpid(pid, &status, 0);
-        if (WIFEXITED(status)) {
-            return -WEXITSTATUS(status);
-        } else if (WIFSIGNALED(status)) {
-            return -1;
-        }
-
-        return -1;
-    }
+    char command[128];
+    snprintf(command, sizeof(command), "delete %s %u\n", ifname, vlanid);
+    return send_cmd(command);
 }
 
 int tsn_sock_open(const char* ifname, uint16_t vlanid, uint8_t priority, uint16_t proto) {
