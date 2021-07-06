@@ -1,75 +1,6 @@
-#!/usr/bin/env -S python3 -u
-
-import contextlib
-import os
-import re
 import shlex
-import socket
 import subprocess
 import sys
-
-from typing import Union
-
-import yaml
-
-SOCKET_PATH = '/var/run/tsn.sock'
-
-
-def to_ns(value: Union[int, str]) -> int:
-    if isinstance(value, int):
-        return value
-    elif isinstance(value, str):
-        matched = re.match(r'^(?P<v>[\d_]+)\s*(?P<unit>|ns|us|µs|ms)$', value)
-        if not matched:
-            raise ValueError(f"{value} is not valid time")
-        v = int(matched.group('v').replace('_', ''))
-        unit = matched.group('unit')
-        return {
-            '': 1,
-            'ns': 1,
-            'us': 1_000,
-            'µs': 1_000,
-            'ms': 1_000_000,
-        }[unit] * v
-
-
-def to_kbps(value: Union[int, str]) -> int:
-    if isinstance(value, int):
-        return value
-    elif isinstance(value, str):
-        matched = re.match(r'^(?P<v>[\d_]+)\s*(?P<unit>bps|kbps|Mbps|Gbps)$', value)
-        if not matched:
-            raise ValueError(f"{value} is not valid bandwidth")
-        v = int(matched.group('v').replace('_', ''))
-        unit = matched.group('unit')
-        return int({
-            'bps': 0.001,
-            'kbps': 1,
-            'Mbps': 1_000,
-            'Gbps': 1_000,
-        }[unit] * v)
-
-
-def read_config(config_path: str):
-    with open(config_path) as f:
-        config = yaml.load(f, Loader=yaml.FullLoader)
-
-    for nic in config['nics'].values():
-        # Not support tas+cbs yet
-        if 'tas' in nic and 'cbs' in nic:
-            raise ValueError('Does not support tas + cbs yet')
-
-        if 'tas' in nic:
-            nic['tas']['txtime_delay'] = to_ns(nic['tas']['txtime_delay'])
-            for sch in nic['tas']['schedule']:
-                sch['time'] = to_ns(sch['time'])
-
-        if 'cbs' in nic:
-            for priomap in nic['cbs'].values():
-                priomap['max_frame'] = to_kbps(priomap['max_frame'])
-                priomap['bandwidth'] = to_kbps(priomap['bandwidth'])
-
-    return config
 
 
 def run_cmd(cmd: str):
@@ -87,14 +18,13 @@ def setup_mqprio(ifname: str, ifconf: dict):
     num_tc = mqprio['num_tc']
     priomap = ' '.join(map(str, mqprio['map']))
     queues = ' '.join(mqprio['queues'])
-    offload = mqprio.get('hw', False)
     run_cmd(
         f'tc qdisc add dev {ifname} parent root '
         f'handle {root_handle} mqprio '
         f'num_tc {num_tc} '
         f'map {priomap} '
         f'queues {queues} '
-        f'hw {1 if offload else 0}'
+        f'hw 0'
     )
 
     for qid, val in ifconf['qdisc']['child'].items():
@@ -156,13 +86,10 @@ def setup_taprio(ifname: str, ifconf: dict):
     )
 
 
-def create_vlan(ifname: str, vlanid: int) -> int:
+def create_vlan(config: dict, ifname: str, vlanid: int) -> int:
     name = vlan_name(ifname, vlanid)
 
     try:
-        with open('config.yaml') as f:
-            config = yaml.load(f, Loader=yaml.FullLoader)
-
         ifconf = config['nics'][ifname]
 
         qos_map = ' '.join(
@@ -181,10 +108,9 @@ def create_vlan(ifname: str, vlanid: int) -> int:
 
         if 'mqprio' in ifconf['qdisc']:
             setup_mqprio(ifname, ifconf)
-        elif 'taprio' in ifconf['qdisc']:
+
+        if 'taprio' in ifconf['qdisc']:
             setup_taprio(ifname, ifconf)
-        else:
-            raise ValueError(f'There are no mqprio or taprio related to {ifname}')
     except subprocess.CalledProcessError as e:
         return e.returncode
     except KeyError as e:
@@ -195,7 +121,7 @@ def create_vlan(ifname: str, vlanid: int) -> int:
         return 0
 
 
-def delete_vlan(ifname: str, vlanid: int) -> int:
+def delete_vlan(config: dict, ifname: str, vlanid: int) -> int:
     name = vlan_name(ifname, vlanid)
     try:
         run_cmd(
@@ -209,38 +135,3 @@ def delete_vlan(ifname: str, vlanid: int) -> int:
         return e.returncode
     else:
         return 0
-
-
-def main():
-    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    server.bind(SOCKET_PATH)
-    server.listen(1)
-    pattern = re.compile(r'(?P<cmd>create|delete) (?P<ifname>\w+) (?P<vlanid>\d+)')
-    with contextlib.ExitStack() as es:
-        def cleanup():
-            server.close()
-            os.remove(SOCKET_PATH)
-
-        es.callback(cleanup)
-
-        while True:
-            conn, addr = server.accept()
-            line = conn.makefile().readline()
-            print(f'{line=}')
-            matched = pattern.match(line)
-            if not matched:
-                conn.send(b'-1')
-            else:
-                cmd = matched.group('cmd')
-                ifname = matched.group('ifname')
-                vlanid = int(matched.group('vlanid'))
-                res = {
-                    'create': create_vlan,
-                    'delete': delete_vlan,
-                }[cmd](ifname, vlanid)
-                conn.send(f'{res}'.encode())
-            conn.close()
-
-
-if __name__ == '__main__':
-    exit(main())
