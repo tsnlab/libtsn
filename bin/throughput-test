@@ -17,12 +17,13 @@ print_help() {
 
 GAP=5
 WINDOW=40
+PKT_SIZE=512
 
 server() {
     local dev=$1
     local bindip=$2
     rm result.txt iperf.json || true
-    sudo ./throughput -s -i ${dev} -p $(( 1460 - 4 )) | tee result.txt &
+    sudo ./build/examples/throughput/throughput -s -i ${dev} -p $(( ${PKT_SIZE} - 4 )) | tee result.txt &
     pid=$!
     sleep 10
     iperf3 -s -B ${bindip} -J -1 --logfile=iperf.json
@@ -35,10 +36,10 @@ client() {
     local bindip=$2
     local targetip=$3
     local targetmac=$4
-    sudo ./throughput -c -i ${dev} -t ${targetmac} -p $(( 1460 - 4 )) -T $(( $WINDOW * 2 + $GAP )) &
+    sudo ./build/examples/throughput/throughput -c -i ${dev} -t ${targetmac} -p $(( ${PKT_SIZE} - 4 )) -T $(( $WINDOW * 2 + $GAP )) &
     pid=$!
     sleep $(( $WINDOW + $GAP ))
-    iperf3 -u -b0 -l $(( 1460 - 42 )) -B ${bindip} -c ${targetip} -t $(( $WINDOW * 2 ))
+    iperf3 -u -b0 -l $(( ${PKT_SIZE} - 42 )) -B ${bindip} -c ${targetip} -t $(( $WINDOW * 2 ))
     wait $pid
 }
 
