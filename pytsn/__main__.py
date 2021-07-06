@@ -4,13 +4,14 @@ import os
 import re
 import socket
 
-import sys
+if True:
+    import sys
 
-# Trick for run on both python and zipapp
-sys.path.insert(0, os.path.dirname(__file__))
+    # Trick for run on both python and zipapp
+    sys.path.insert(0, os.path.dirname(__file__))
 
-from config import read_config
-from vlan import create_vlan, delete_vlan
+    from config import read_config
+    from vlan import create_vlan, delete_vlan
 
 SOCKET_PATH = '/var/run/tsn.sock'
 
