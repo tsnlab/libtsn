@@ -12,12 +12,41 @@ def vlan_name(ifname: str, vlanid) -> str:
     return f'{ifname}.{vlanid}'
 
 
-def setup_mqprio(ifname: str, ifconf: dict):
-    mqprio = ifconf['qdisc']['mqprio']
-    root_handle = mqprio['handle']
-    num_tc = mqprio['num_tc']
-    priomap = ' '.join(map(str, mqprio['map']))
-    queues = ' '.join(mqprio['queues'])
+def setup_tas(ifname: str, tas: dict):
+    num_tc = tas['num_tc']
+    handle = tas['handle']
+    priomap = ' '.join(map(str, tas['tc_map']))
+    queues = ' '.join(tas['queues'])
+    base_time = tas['base_time']
+    sched_entries = ' '.join(f'sched-entry {entry}' for entry in tas['sched_entries'])
+    txtime_delay = tas['txtime_delay']
+
+    run_cmd(
+        f'tc qdisc replace dev {ifname} parent root handle {handle} taprio '
+        f'num_tc {num_tc} '
+        f'map {priomap} '
+        f'queues {queues} '
+        f'base-time {base_time} '
+        f'{sched_entries} '
+        f'flags 0x1 '
+        f'txtime-delay {txtime_delay} '
+        f'clockid CLOCK_TAI'
+    )
+
+    run_cmd(
+        f'tc qdisc replace dev {ifname} parent {handle}:1 etf '
+        'clockid CLOCK_TAI '
+        f'delta {txtime_delay} '
+        'offload '
+        'skip_sock_check'
+    )
+
+
+def setup_mqprio(ifname: str, cbs: dict):
+    root_handle = cbs['handle']
+    num_tc = cbs['num_tc']
+    priomap = ' '.join(map(str, cbs['map']))
+    queues = ' '.join(cbs['queues'])
     run_cmd(
         f'tc qdisc add dev {ifname} parent root '
         f'handle {root_handle} mqprio '
@@ -27,7 +56,7 @@ def setup_mqprio(ifname: str, ifconf: dict):
         f'hw 0'
     )
 
-    for qid, val in ifconf['qdisc']['child'].items():
+    for qid, val in cbs['child'].items():
         t = val['type']
         handle = val['handle']
         if t == 'cbs':
@@ -55,37 +84,6 @@ def setup_mqprio(ifname: str, ifconf: dict):
             raise ValueError(f'qdisc type {t} is not supported')
 
 
-def setup_taprio(ifname: str, ifconf: dict):
-    taprio = ifconf['qdisc']['taprio']
-    handle = taprio['handle']
-    num_tc = taprio['num_tc']
-    priomap = ' '.join(map(str, taprio['map']))
-    queues = ' '.join(taprio['queues'])
-    base_time = taprio['base_time']
-    sched_entries = ' '.join(f'sched-entry {entry}' for entry in taprio['sched_entries'])
-    flags = taprio['flags']
-    txtime_delay = taprio['txtime_delay']
-
-    run_cmd(
-        f'tc qdisc replace dev {ifname} parent root handle {handle} taprio '
-        f'num_tc {num_tc} '
-        f'map {priomap} '
-        f'queues {queues} '
-        f'base-time {base_time} '
-        f'{sched_entries} '
-        f'flags 0x{flags:x} '
-        f'txtime-delay {txtime_delay} '
-        f'clockid CLOCK_TAI'
-    )
-    run_cmd(
-        f'tc qdisc replace dev {ifname} parent {handle}:1 etf '
-        'clockid CLOCK_TAI '
-        f'delta {txtime_delay} '
-        'offload '
-        'skip_sock_check'
-    )
-
-
 def create_vlan(config: dict, ifname: str, vlanid: int) -> int:
     name = vlan_name(ifname, vlanid)
 
@@ -106,11 +104,11 @@ def create_vlan(config: dict, ifname: str, vlanid: int) -> int:
             f'ip link set up {name}'
         )
 
-        if 'mqprio' in ifconf['qdisc']:
-            setup_mqprio(ifname, ifconf)
+        if 'tas' in ifconf:
+            setup_tas(ifname, ifconf['tas'])
 
-        if 'taprio' in ifconf['qdisc']:
-            setup_taprio(ifname, ifconf)
+        if 'cbs' in ifconf:
+            setup_mqprio(ifname, ifconf['cbs'])
     except subprocess.CalledProcessError as e:
         return e.returncode
     except KeyError as e:

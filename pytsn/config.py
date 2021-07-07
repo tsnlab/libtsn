@@ -40,6 +40,42 @@ def to_kbps(value: Union[int, str]) -> int:
         }[unit] * v)
 
 
+def normalise_tas(config: dict) -> dict:
+    #TODO: Make offload flag
+
+    config['txtime_delay'] = to_ns(config['txtime_delay'])
+    tc_map = {}
+
+    for sch in config['schedule']:
+        sch['time'] = to_ns(sch['time'])
+        for prio in sch['prio']:
+            if prio > 0 and prio not in tc_map:
+                tc_map[prio] = len(tc_map)
+
+    tc_map[-1] = len(tc_map)  # BE
+    num_tc = len(tc_map)
+
+    config['handle'] = 100  # TODO: make unique
+    config['tc_map'] = [tc_map.get(prio, tc_map[-1]) for prio in range(16)]
+    config['num_tc'] = num_tc
+    config['queues'] = ['1@0'] * num_tc
+    config['base_time'] = 0
+    config['sched_entries'] = [
+        f"S {sum(1 << tc_map[pri] for pri in sch['prio'])} {sch['time']}"
+        for sch in config['schedule']
+    ]
+
+    return config
+
+
+def normalise_cbs(config: dict) -> dict:
+    for priomap in config.values():
+        priomap['max_frame'] = to_kbps(priomap['max_frame'])
+        priomap['bandwidth'] = to_kbps(priomap['bandwidth'])
+
+    return config
+
+
 def read_config(config_path: str):
     with open(config_path) as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
@@ -50,13 +86,9 @@ def read_config(config_path: str):
             raise ValueError('Does not support tas + cbs yet')
 
         if 'tas' in nic:
-            nic['tas']['txtime_delay'] = to_ns(nic['tas']['txtime_delay'])
-            for sch in nic['tas']['schedule']:
-                sch['time'] = to_ns(sch['time'])
+            nic['tas'] = normalise_tas(nic['tas'])
 
         if 'cbs' in nic:
-            for priomap in nic['cbs'].values():
-                priomap['max_frame'] = to_kbps(priomap['max_frame'])
-                priomap['bandwidth'] = to_kbps(priomap['bandwidth'])
+            nic['cbs'] = normalise_cbs(nic['cbs'])
 
     return config
