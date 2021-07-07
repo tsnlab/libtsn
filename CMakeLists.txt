@@ -10,6 +10,25 @@ add_library(tsn STATIC ${SRC})
 include_directories(include)
 target_compile_options(tsn PRIVATE -Wall -Wextra -pedantic -Werror)
 
+find_program(PYTHON3 "python3")
+
+if (PYTHON3)
+    FILE(GLOB PYTSN_SRC pytsn/*.py)
+    add_custom_command(
+        OUTPUT ${PROJECT_BINARY_DIR}/vlan
+        COMMAND ${PYTHON3}
+        ARGS -m zipapp -c -o ${PROJECT_BINARY_DIR}/vlan ${PROJECT_SOURCE_DIR}/pytsn -p "/usr/bin/env -S python3 -u"
+        DEPENDS ${PYTSN_SRC}
+        )
+    add_custom_target(
+        target
+        ALL
+        COMMENT XXX
+        DEPENDS ${PROJECT_BINARY_DIR}/vlan
+        VERBATIM
+        )
+endif(PYTHON3)
+
 if (BUILD_EXAMPLES)
     add_subdirectory(examples)
 endif (BUILD_EXAMPLES)

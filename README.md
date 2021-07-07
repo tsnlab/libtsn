@@ -39,7 +39,7 @@ cmake -B build -G Ninja -DBUILD_EXAMPLES=ON .
 cmake --build build
 
 # Edit config.yaml and run daemon on both listener, talker side
-sudo ./vlan.py
+sudo ./build/vlan
 
 # Run latency
 # Listener
