@@ -13,8 +13,8 @@ def vlan_name(ifname: str, vlanid) -> str:
 
 
 def setup_tas(ifname: str, tas: dict):
+    handle = 100
     num_tc = tas['num_tc']
-    handle = tas['handle']
     priomap = ' '.join(map(str, tas['tc_map']))
     queues = ' '.join(tas['queues'])
     base_time = tas['base_time']
@@ -42,10 +42,10 @@ def setup_tas(ifname: str, tas: dict):
     )
 
 
-def setup_mqprio(ifname: str, cbs: dict):
-    root_handle = cbs['handle']
+def setup_cbs(ifname: str, cbs: dict):
+    root_handle = 100
     num_tc = cbs['num_tc']
-    priomap = ' '.join(map(str, cbs['map']))
+    priomap = ' '.join(map(str, cbs['tc_map']))
     queues = ' '.join(cbs['queues'])
     run_cmd(
         f'tc qdisc add dev {ifname} parent root '
@@ -56,32 +56,29 @@ def setup_mqprio(ifname: str, cbs: dict):
         f'hw 0'
     )
 
-    for qid, val in cbs['child'].items():
-        t = val['type']
-        handle = val['handle']
-        if t == 'cbs':
-            idleslope = val['idleslope']
-            sendslope = val['sendslope']
-            hicredit = val['hicredit']
-            locredit = val['locredit']
-            run_cmd(
-                f'tc qdisc replace dev {ifname} '
-                f'parent {root_handle}:{qid} '
-                f'handle {handle} cbs '
-                f'idleslope {idleslope} '
-                f'sendslope {sendslope} '
-                f'hicredit {hicredit} '
-                f'locredit {locredit} '
-                f'offload 1'
-            )
-            run_cmd(
-                f'tc qdisc add dev {ifname} parent {handle}:1 etf '
-                'clockid CLOCK_TAI '
-                'delta 500000 '
-                'offload '
-            )
-        else:
-            raise ValueError(f'qdisc type {t} is not supported')
+    for qid, val in cbs['children'].items():
+        handle = qid * 1111
+
+        idleslope = val.idleslope
+        sendslope = val.sendslope
+        hicredit = val.hicredit
+        locredit = val.locredit
+        run_cmd(
+            f'tc qdisc replace dev {ifname} '
+            f'parent {root_handle}:{qid} '
+            f'handle {handle} cbs '
+            f'idleslope {idleslope} '
+            f'sendslope {sendslope} '
+            f'hicredit {hicredit} '
+            f'locredit {locredit} '
+            f'offload 1'
+        )
+        run_cmd(
+            f'tc qdisc add dev {ifname} parent {handle}:1 etf '
+            'clockid CLOCK_TAI '
+            'delta 500000 '
+            'offload '
+        )
 
 
 def create_vlan(config: dict, ifname: str, vlanid: int) -> int:
@@ -89,6 +86,10 @@ def create_vlan(config: dict, ifname: str, vlanid: int) -> int:
 
     try:
         ifconf = config['nics'][ifname]
+
+        # Not support tas+cbs yet
+        if all(x in ifconf for x in ('tas', 'cbs')):
+            raise ValueError('Does not support tas + cbs yet')
 
         qos_map = ' '.join(
             f'{skb_pri}:{vlan_pri}'
@@ -108,7 +109,7 @@ def create_vlan(config: dict, ifname: str, vlanid: int) -> int:
             setup_tas(ifname, ifconf['tas'])
 
         if 'cbs' in ifconf:
-            setup_mqprio(ifname, ifconf['cbs'])
+            setup_cbs(ifname, ifconf['cbs'])
     except subprocess.CalledProcessError as e:
         return e.returncode
     except KeyError as e:

@@ -19,11 +19,11 @@ nics:
           prio: [ -1 ]
     cbs:
       # prio: dict map
-      2:
+      3:
         class: a
         max_frame: 512
         bandwidth: 70000kbps
-      3:
+      2:
         class: b
         max_frame: 512
         bandwidth: 30Mbps
