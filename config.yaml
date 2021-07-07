@@ -21,9 +21,9 @@ nics:
       # prio: dict map
       3:
         class: a
-        max_frame: 512
+        max_frame: 512B
         bandwidth: 70000kbps
       2:
         class: b
-        max_frame: 512
+        max_frame: 512B
         bandwidth: 30Mbps
