@@ -22,7 +22,7 @@ static struct timespec error_clock_gettime = {-1, 0};
 static struct timespec error_nanosleep = {-1, 0};
 
 static inline bool is_analysed() {
-    return (error_clock_gettime.tv_sec == -1 && error_nanosleep.tv_sec == -1);
+    return (error_clock_gettime.tv_sec != -1 && error_nanosleep.tv_sec != -1);
 }
 
 static inline int clock_adjtime(clockid_t id, struct timex* tx) {
@@ -91,6 +91,8 @@ void tsn_time_analyze() {
         return;
     }
 
+    fprintf(stderr, "Calculating sleep errors\n");
+
     const int count = 10;
     struct timespec start, end, diff;
 
@@ -101,6 +103,8 @@ void tsn_time_analyze() {
     }
 
     tsn_timespec_diff(&start, &end, &diff);
+    error_clock_gettime.tv_sec = 0;
+    error_clock_gettime.tv_nsec = diff.tv_nsec / count;
 
     // Analyse nanosleep
     struct timespec request = {1, 0};
@@ -109,6 +113,10 @@ void tsn_time_analyze() {
         nanosleep(&request, NULL);
         clock_gettime(CLOCK_REALTIME, &end);
     }
+
+    tsn_timespec_diff(&start, &end, &diff);
+    error_nanosleep.tv_sec = 0;
+    error_nanosleep.tv_nsec = diff.tv_nsec / count;
 }
 
 int tsn_time_sleep_until(const struct timespec* realtime) {
