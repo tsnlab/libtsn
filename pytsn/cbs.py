@@ -1,6 +1,6 @@
 import math
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Dict, Iterable, Tuple
 
 frame_non_sr = 1542
@@ -33,4 +33,4 @@ def calc_credits(streams: Dict[str, Iterable[dict]], linkspeed) -> Tuple[Credits
     locredit_b = math.ceil(send_slope_b * max_frame_b / linkspeed)
     credits_b = Credits(send_slope_b, idle_slope_b, hicredit_b, locredit_b)
 
-    return credits_a, credits_b
+    return asdict(credits_a), asdict(credits_b)
