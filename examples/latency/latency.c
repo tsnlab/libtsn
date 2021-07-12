@@ -26,10 +26,12 @@
 
 struct pkt_perf {
     uint32_t id;
+    uint32_t tv_sec;
+    uint32_t tv_nsec;
     uint8_t data[];
 };
 
-static char doc[] = "Example";
+static char doc[] = "Testing tool for latency";
 static char args_doc[] = "";
 
 static struct argp_option options[] = {
@@ -41,6 +43,7 @@ static struct argp_option options[] = {
     {"count", 'C', "COUNT", 0, "How many send packet"},
     {"size", 'p', "BYTES", 0, "Packet size in bytes"},
     {"precise", 'X', 0, 0, "Send packet at precise 0ns"},
+    {"oneway", '1', 0, 0, "Check latency on receiver side"},
     {0},
 };
 
@@ -57,6 +60,7 @@ struct arguments {
     int count;
     int size;
     bool precise;
+    bool oneway;
 };
 
 static error_t parse_opt(int key, char* arg, struct argp_state* state) {
@@ -87,6 +91,9 @@ static error_t parse_opt(int key, char* arg, struct argp_state* state) {
     case 'X':
         arguments->precise = true;
         break;
+    case '1':
+        arguments->oneway = true;
+        break;
     case ARGP_KEY_ARG:
         argp_usage(state);
         break;
@@ -99,10 +106,11 @@ static error_t parse_opt(int key, char* arg, struct argp_state* state) {
 
 static struct argp argp = {options, parse_opt, args_doc, doc};
 
-void do_server(int sock, int size, bool verbose);
+void do_server(int sock, int size, bool oneway, bool verbose);
 void do_client(int sock, char* iface, int size, char* target, int count, bool precise);
 
 bool strtomac(uint8_t* mac, const char* str);
+bool mactostr(uint8_t* mac, char* str);
 
 volatile sig_atomic_t running = 1;
 int sock;
@@ -124,6 +132,7 @@ int main(int argc, char** argv) {
     arguments.count = 120;
     arguments.size = 100;
     arguments.precise = false;
+    arguments.oneway = false;
 
     argp_parse(&argp, argc, argv, 0, 0, &arguments);
 
@@ -155,7 +164,7 @@ int main(int argc, char** argv) {
 
     switch (arguments.mode) {
     case RUN_SERVER:
-        do_server(sock, arguments.size, arguments.verbose);
+        do_server(sock, arguments.size, arguments.oneway, arguments.verbose);
         break;
     case RUN_CLIENT:
         do_client(sock, arguments.iface, arguments.size, arguments.target, arguments.count, arguments.precise);
@@ -170,7 +179,7 @@ int main(int argc, char** argv) {
     return 0;
 }
 
-void do_server(int sock, int size, bool verbose) {
+void do_server(int sock, int size, bool oneway, bool verbose) {
     uint8_t* pkt = malloc(size);
     if (pkt == NULL) {
         fprintf(stderr, "Failed to malloc pkt\n");
@@ -180,8 +189,16 @@ void do_server(int sock, int size, bool verbose) {
     struct ethhdr* ethhdr = (struct ethhdr*)pkt;
     struct pkt_perf* payload = (struct pkt_perf*)(pkt + sizeof(struct ethhdr));
 
+    struct timespec tstart, tend, tdiff;
+
+    char srcmac[18], dstmac[18];
+
     while (running) {
         size_t recv_bytes = tsn_recv(sock, pkt, size);
+
+        if (oneway) {
+            clock_gettime(CLOCK_REALTIME, &tend);
+        }
 
         uint8_t tmpmac[ETHER_ADDR_LEN];
         memcpy(tmpmac, ethhdr->h_dest, ETHER_ADDR_LEN);
@@ -189,11 +206,16 @@ void do_server(int sock, int size, bool verbose) {
         memcpy(ethhdr->h_source, tmpmac, ETHER_ADDR_LEN);
         tsn_send(sock, pkt, recv_bytes);
 
-        printf("id: %08x\n", ntohl(payload->id));
-        printf("src: %02x:%02x:%02x:%02x:%02x:%02x\n", ethhdr->h_source[0], ethhdr->h_source[1], ethhdr->h_source[2],
-               ethhdr->h_source[3], ethhdr->h_source[4], ethhdr->h_source[5]);
-        printf("dst: %02x:%02x:%02x:%02x:%02x:%02x\n", ethhdr->h_dest[0], ethhdr->h_dest[1], ethhdr->h_dest[2],
-               ethhdr->h_dest[3], ethhdr->h_dest[4], ethhdr->h_dest[5]);
+        if (oneway) {
+            tstart.tv_sec = ntohl(payload->tv_sec);
+            tstart.tv_nsec = ntohl(payload->tv_nsec);
+            tsn_timespec_diff(&tstart, &tend, &tdiff);
+            mactostr(ethhdr->h_source, srcmac);
+            mactostr(ethhdr->h_dest, dstmac);
+            printf("%08x %s %s %lu.%09lu → %lu.%09lu %ld.%09lu\n", ntohl(payload->id), srcmac, dstmac, tstart.tv_sec,
+                   tstart.tv_nsec, tend.tv_sec, tend.tv_nsec, tdiff.tv_sec, tdiff.tv_nsec);
+            fflush(stdout);
+        }
     }
 }
 
@@ -280,16 +302,17 @@ void do_client(int sock, char* iface, int size, char* target, int count, bool pr
 
         clock_gettime(CLOCK_REALTIME, &tstart);
 
+        payload->tv_sec = htonl(tstart.tv_sec);
+        payload->tv_nsec = htonl(tstart.tv_nsec);
+
         int sent = tsn_send(sock, pkt, size);
         if (sent < 0) {
             perror("Failed to send");
         }
-        // printf("Sent %d bytes\n", sent);
 
         bool received = false;
         do {
             int len = tsn_recv(sock, pkt, size);
-            // TODO: check time
             clock_gettime(CLOCK_REALTIME, &tend);
 
             tsn_timespec_diff(&tstart, &tend, &tdiff);
@@ -302,7 +325,6 @@ void do_client(int sock, char* iface, int size, char* target, int count, bool pr
             }
         } while (!received && running);
 
-        // TODO: print time
         if (received) {
             uint64_t elapsed_ns = tdiff.tv_sec * 1000000000 + tdiff.tv_nsec;
             printf("RTT: %lu.%03lu µs (%lu → %lu)\n", elapsed_ns / 1000, elapsed_ns % 1000, tstart.tv_nsec,
@@ -315,7 +337,7 @@ void do_client(int sock, char* iface, int size, char* target, int count, bool pr
 
         if (!precise) {
             request.tv_sec = 0;
-            request.tv_nsec = 300 * 1000 * 1000 + (random() % 10000000);
+            request.tv_nsec = 700 * 1000 * 1000 + (random() % 10000000);
             nanosleep(&request, NULL);
         }
     }
@@ -330,4 +352,9 @@ bool strtomac(uint8_t* mac, const char* str) {
     }
 
     return res == 6;
+}
+
+bool mactostr(uint8_t* mac, char* str) {
+    snprintf(str, 18, "%02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    return true;
 }

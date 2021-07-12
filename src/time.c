@@ -140,6 +140,13 @@ int tsn_time_sleep_until(const struct timespec* realtime) {
 }
 
 void tsn_timespec_diff(const struct timespec* start, const struct timespec* stop, struct timespec* result) {
+    // Check if reverse
+    if (start->tv_sec > stop->tv_sec || (start->tv_sec == stop->tv_sec && start->tv_nsec > stop->tv_nsec)) {
+        tsn_timespec_diff(stop, start, result);
+        result->tv_sec *= -1;
+        return;
+    }
+
     if ((stop->tv_nsec - start->tv_nsec) < 0) {
         result->tv_sec = stop->tv_sec - start->tv_sec - 1;
         result->tv_nsec = stop->tv_nsec - start->tv_nsec + 1000000000;
