@@ -30,10 +30,37 @@ def info(ifname: str = None):
 
 
 def get_info(config: dict, ifname: str = None):
+    def normalise(nic_conf: dict):
+        result = {}
+        if 'cbs' in nic_conf:
+            cbs = nic_conf['cbs']
+            classes = {}
+            children = nic_conf['cbs']['children']
+            if 1 in children:
+                classes['a'] = {
+                    'credits': children[1],
+                    'prios': {prio: cbs[prio] for prio in range(16) if prio in cbs and cbs[prio]['class'] == 'a'},
+                }
+            if 2 in children:
+                classes['b'] = {
+                    'credits': children[2],
+                    'prios': {prio: cbs[prio] for prio in range(16) if prio in cbs and cbs[prio]['class'] == 'b'},
+                }
+            result['cbs'] = classes
+        if 'tas' in nic_conf:
+            tas = nic_conf['tas']
+            result['tas'] = {
+                key: tas[key]
+                for key in ('txtime_delay', 'base_time', 'schedule')
+            }
+        return result
+
     if not ifname:
-        return config['nics']
+        confs = config['nics']
     else:
-        return {k: v for k, v in config['nics'].items() if k == ifname}
+        confs = {k: v for k, v in config['nics'].items() if k == ifname}
+
+    return {ifname: normalise(conf) for ifname, conf in confs.items()}
 
 
 def main():
