@@ -97,7 +97,7 @@ def main():
                 conn.send(f'{res}'.encode())
             elif matched := pattern_info.match(line):
                 ifname = matched.group('ifname')
-                conn.send(yaml.dump(get_info(config, ifname)).encode())
+                conn.send(yaml.safe_dump(get_info(config, ifname), default_flow_style=None).encode())
             else:
                 conn.send(b'-1')
             conn.close()
