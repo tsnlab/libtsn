@@ -59,10 +59,10 @@ def setup_cbs(ifname: str, cbs: dict):
     for qid, val in cbs['children'].items():
         handle = qid * 1111
 
-        idleslope = val.idleslope
-        sendslope = val.sendslope
-        hicredit = val.hicredit
-        locredit = val.locredit
+        idleslope = val['idleslope']
+        sendslope = val['sendslope']
+        hicredit = val['hicredit']
+        locredit = val['locredit']
         run_cmd(
             f'tc qdisc replace dev {ifname} '
             f'parent {root_handle}:{qid} '
