@@ -43,6 +43,7 @@ static struct argp_option options[] = {
     {"count", 'C', "COUNT", 0, "How many send packet"},
     {"size", 'p', "BYTES", 0, "Packet size in bytes"},
     {"precise", 'X', 0, 0, "Send packet at precise 0ns"},
+    {"oneway", '1', 0, 0, "Check latency on receiver side"},
     {0},
 };
 
@@ -59,6 +60,7 @@ struct arguments {
     int count;
     int size;
     bool precise;
+    bool oneway;
 };
 
 static error_t parse_opt(int key, char* arg, struct argp_state* state) {
@@ -89,6 +91,9 @@ static error_t parse_opt(int key, char* arg, struct argp_state* state) {
     case 'X':
         arguments->precise = true;
         break;
+    case '1':
+        arguments->oneway = true;
+        break;
     case ARGP_KEY_ARG:
         argp_usage(state);
         break;
@@ -101,7 +106,7 @@ static error_t parse_opt(int key, char* arg, struct argp_state* state) {
 
 static struct argp argp = {options, parse_opt, args_doc, doc};
 
-void do_server(int sock, int size, bool verbose);
+void do_server(int sock, int size, bool oneway, bool verbose);
 void do_client(int sock, char* iface, int size, char* target, int count, bool precise);
 
 bool strtomac(uint8_t* mac, const char* str);
@@ -127,6 +132,7 @@ int main(int argc, char** argv) {
     arguments.count = 120;
     arguments.size = 100;
     arguments.precise = false;
+    arguments.oneway = false;
 
     argp_parse(&argp, argc, argv, 0, 0, &arguments);
 
@@ -158,7 +164,7 @@ int main(int argc, char** argv) {
 
     switch (arguments.mode) {
     case RUN_SERVER:
-        do_server(sock, arguments.size, arguments.verbose);
+        do_server(sock, arguments.size, arguments.oneway, arguments.verbose);
         break;
     case RUN_CLIENT:
         do_client(sock, arguments.iface, arguments.size, arguments.target, arguments.count, arguments.precise);
@@ -173,7 +179,7 @@ int main(int argc, char** argv) {
     return 0;
 }
 
-void do_server(int sock, int size, bool verbose) {
+void do_server(int sock, int size, bool oneway, bool verbose) {
     uint8_t* pkt = malloc(size);
     if (pkt == NULL) {
         fprintf(stderr, "Failed to malloc pkt\n");
@@ -190,8 +196,9 @@ void do_server(int sock, int size, bool verbose) {
     while (running) {
         size_t recv_bytes = tsn_recv(sock, pkt, size);
 
-        // TODO: Make this measure optional
-        clock_gettime(CLOCK_REALTIME, &tend);
+        if (oneway) {
+            clock_gettime(CLOCK_REALTIME, &tend);
+        }
 
         uint8_t tmpmac[ETHER_ADDR_LEN];
         memcpy(tmpmac, ethhdr->h_dest, ETHER_ADDR_LEN);
@@ -199,14 +206,16 @@ void do_server(int sock, int size, bool verbose) {
         memcpy(ethhdr->h_source, tmpmac, ETHER_ADDR_LEN);
         tsn_send(sock, pkt, recv_bytes);
 
-        tstart.tv_sec = ntohl(payload->tv_sec);
-        tstart.tv_nsec = ntohl(payload->tv_nsec);
-        tsn_timespec_diff(&tstart, &tend, &tdiff);
-        mactostr(ethhdr->h_source, srcmac);
-        mactostr(ethhdr->h_dest, dstmac);
-        printf("%08x %s %s %lu.%09lu → %lu.%09lu %ld.%09lu\n", ntohl(payload->id), srcmac, dstmac, tstart.tv_sec,
-               tstart.tv_nsec, tend.tv_sec, tend.tv_nsec, tdiff.tv_sec, tdiff.tv_nsec);
-        fflush(stdout);
+        if (oneway) {
+            tstart.tv_sec = ntohl(payload->tv_sec);
+            tstart.tv_nsec = ntohl(payload->tv_nsec);
+            tsn_timespec_diff(&tstart, &tend, &tdiff);
+            mactostr(ethhdr->h_source, srcmac);
+            mactostr(ethhdr->h_dest, dstmac);
+            printf("%08x %s %s %lu.%09lu → %lu.%09lu %ld.%09lu\n", ntohl(payload->id), srcmac, dstmac, tstart.tv_sec,
+                   tstart.tv_nsec, tend.tv_sec, tend.tv_nsec, tdiff.tv_sec, tdiff.tv_nsec);
+            fflush(stdout);
+        }
     }
 }
 
