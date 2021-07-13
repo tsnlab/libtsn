@@ -23,7 +23,7 @@ if (PYTHON3)
     add_custom_target(
         target
         ALL
-        COMMENT XXX
+        COMMENT make vlan executable
         DEPENDS ${PROJECT_BINARY_DIR}/vlan
         VERBATIM
         )
@@ -32,3 +32,11 @@ endif(PYTHON3)
 if (BUILD_EXAMPLES)
     add_subdirectory(examples)
 endif (BUILD_EXAMPLES)
+
+install(
+    TARGETS tsn
+)
+install(
+    FILES ${PROJECT_BINARY_DIR}/vlan
+    DESTINATION ${CMAKE_INSTALL_PREFIX}/bin/
+)
