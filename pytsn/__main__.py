@@ -94,7 +94,7 @@ def main():
 
     if arguments.command in ('create', 'delete'):
         config = read_config(arguments.config)
-        return command_map[arguments.command](config, arguments.ifname, arguments.vlanid)
+        return command_map[arguments.command](config, arguments.interface, arguments.vlanid)
     elif arguments.command == 'info':
         return info(arguments.interface)
 
