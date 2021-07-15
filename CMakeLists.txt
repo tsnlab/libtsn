@@ -1,13 +1,18 @@
 cmake_minimum_required(VERSION 3.10)
 
-project(libtsn)
+project(tsn)
 
 option(BUILD_EXAMPLES "Build examples" OFF)
 
-FILE(GLOB SRC src/*.c)
+set(PUBLIC_INCLUDE_DIRECTORIES include/)
+set(PRIVATE_INCLUDE_DIRECTORIES src/)
 
-add_library(tsn STATIC ${SRC})
-include_directories(include)
+file(GLOB_RECURSE SOURCE_FILES "src/*.c" "src/*.h")
+file(GLOB_RECURSE INCLUDE_FILES "include/*.h")
+
+add_library(${PROJECT_NAME} STATIC ${INCLUDE_FILES} ${SOURCE_FILES})
+target_include_directories(${PROJECT_NAME} PUBLIC ${PUBLIC_INCLUDE_DIRECTORIES})
+target_include_directories(${PROJECT_NAME} PRIVATE ${PRIVATE_INCLUDE_DIRECTORIES})
 target_compile_options(tsn PRIVATE -Wall -Wextra -pedantic -Werror)
 
 find_program(PYTHON3 "python3")
@@ -34,7 +39,11 @@ if (BUILD_EXAMPLES)
 endif (BUILD_EXAMPLES)
 
 install(
-    TARGETS tsn
+    TARGETS ${PROJECT_NAME}
+)
+install(
+    DIRECTORY "${PUBLIC_INCLUDE_DIRECTORIES}"
+    DESTINATION include
 )
 install(
     FILES ${PROJECT_BINARY_DIR}/vlan
