@@ -1,0 +1,32 @@
+name: Deploy
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  deploy_deb:
+    runs-on: ubuntu-latest
+    environment: deploy
+    steps:
+      - name: install build tools
+        run: sudo apt install -qqy --no-install-recommends devscripts git-buildpackage dput cmake debhelper
+
+      - name: Checkout
+        uses: actions/checkout@master
+
+      - name: setup
+        run: .ci/setup.sh
+        env:
+          REPO_HOST: ${{ secrets.REPO_HOST }}
+          REPO_USER: ${{ secrets.REPO_USER }}
+          REPO_PATH: ${{ secrets.REPO_PATH }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          PGP_KEY: ${{ secrets.PGP_KEY }}
+
+      - name: build deb
+        run: .ci/package.sh
+
+      - name: deploy
+        run: .ci/deploy.sh

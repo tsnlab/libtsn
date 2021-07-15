@@ -23,13 +23,13 @@ sed "1s/\(unknown\)/${version}/" -i debian/changelog
 
 DIR=deb/gbp
 
-git worktree add ${DIR}
+git worktree add ${DIR} HEAD
 rm ${DIR}/.git
 git worktree prune
 
 mv {,${DIR}/}debian/changelog
 
 pushd ${DIR}
-debuild
+dpkg-buildpackage
 popd
 rm -rf ${DIR}
