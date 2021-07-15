@@ -22,7 +22,7 @@ default_host_main = tsnlab
 fqdn = $REPO_HOST
 method = scp
 login = $REPO_USER
-incoming = $REPO_PATH
+incoming = $REPO_PATH/incoming
 ssh_config_options =
     StrictHostKeyChecking no
 EOF
