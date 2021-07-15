@@ -9,6 +9,10 @@ jobs:
   deploy_deb:
     runs-on: ubuntu-latest
     environment: deploy
+    env:
+      REPO_HOST: ${{ secrets.REPO_HOST }}
+      REPO_USER: ${{ secrets.REPO_USER }}
+      REPO_PATH: ${{ secrets.REPO_PATH }}
     steps:
       - name: install build tools
         run: sudo apt install -qqy --no-install-recommends devscripts git-buildpackage dput cmake debhelper
