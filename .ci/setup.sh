@@ -2,8 +2,6 @@
 
 set -eo pipefail
 
-echo "Inside shell!!!"
-
 if [ -z "$CI" ]; then
     exit 0
 fi

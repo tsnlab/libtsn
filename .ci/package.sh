@@ -18,7 +18,7 @@ fi
 
 rm debian/changelog || true
 
-gbp dch -D unstable -R ${since} --ignore-branch --spawn-editor=never
+gbp dch -D unstable -R "${since}" --ignore-branch --spawn-editor=never
 sed "1s/\(unknown\)/${version}/" -i debian/changelog
 
 DIR=deb/gbp
