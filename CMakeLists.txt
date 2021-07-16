@@ -15,21 +15,23 @@ target_include_directories(${PROJECT_NAME} PUBLIC ${PUBLIC_INCLUDE_DIRECTORIES})
 target_include_directories(${PROJECT_NAME} PRIVATE ${PRIVATE_INCLUDE_DIRECTORIES})
 target_compile_options(tsn PRIVATE -Wall -Wextra -pedantic -Werror)
 
+set(UCD_RUNTIME_NAME "tsnucd")
+
 find_program(PYTHON3 "python3")
 
 if (PYTHON3)
     FILE(GLOB PYTSN_SRC pytsn/*.py)
     add_custom_command(
-        OUTPUT ${PROJECT_BINARY_DIR}/vlan
+        OUTPUT ${PROJECT_BINARY_DIR}/${UCD_RUNTIME_NAME}
         COMMAND ${PYTHON3}
-        ARGS -m zipapp -c -o ${PROJECT_BINARY_DIR}/vlan ${PROJECT_SOURCE_DIR}/pytsn -p "/usr/bin/env -S python3 -u"
+        ARGS -m zipapp -c -o ${PROJECT_BINARY_DIR}/${UCD_RUNTIME_NAME} ${PROJECT_SOURCE_DIR}/pytsn -p "/usr/bin/env -S python3 -u"
         DEPENDS ${PYTSN_SRC}
         )
     add_custom_target(
         target
         ALL
-        COMMENT make vlan executable
-        DEPENDS ${PROJECT_BINARY_DIR}/vlan
+        COMMENT make ${UCD_RUNTIME_NAME} executable
+        DEPENDS ${PROJECT_BINARY_DIR}/${UCD_RUNTIME_NAME}
         VERBATIM
         )
 endif(PYTHON3)
@@ -46,6 +48,6 @@ install(
     DESTINATION include
 )
 install(
-    FILES ${PROJECT_BINARY_DIR}/vlan
+    FILES ${PROJECT_BINARY_DIR}/${UCD_RUNTIME_NAME}
     DESTINATION ${CMAKE_INSTALL_PREFIX}/bin/
 )
