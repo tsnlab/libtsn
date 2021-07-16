@@ -1,0 +1,18 @@
+Source: libtsn
+Section: devel
+Priority: optional
+Maintainer: Jeong Arm <arm@tsnlab.com>
+Uploaders: TSN Lab, inc. <cto@tsnlab.com>
+Build-Depends: cmake, debhelper (>=11~)
+Standards-Version: 4.1.4
+Homepage: https://github.com/tsnlab/libtsn
+
+Package: libtsn
+Architecture: any
+Multi-Arch: same
+Pre-Depends: ${misc:Pre-Depends}
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Description: Library for TSN endpoint applications.
+ TSN is an abbreviation of Time Sensitive Networking.
+ libtsn provides TSN related APIs to send or receive TSN packets and time sync.
+ And it also provides "user configuration daemon" to maintain TSN configuration on Linux.

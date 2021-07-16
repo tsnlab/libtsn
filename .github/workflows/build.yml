@@ -20,6 +20,8 @@ jobs:
           python-version: "3.9"
       - name: Flake8
         uses: py-actions/flake8@v1
+      - name: shellcheck
+        uses: ludeeus/action-shellcheck@master
 
   build:
     runs-on: ubuntu-latest
