@@ -2,7 +2,7 @@
 
 set -eo pipefail
 
-export DEBEMAIL='TSNLab <cto@tsnlab.com>'
+export DEBEMAIL='TSN Lab, Inc. <cto@tsnlab.com>'
 
 if ! version=$(git describe --tags | sed 's/^v//'); then
     version='0'
@@ -12,13 +12,15 @@ echo "version: $version"
 
 if prev=$(git describe --tags --match 'v*' HEAD^ --abbrev=0 2>/dev/null); then
     since="--since=$prev"
-else
-    since=''
 fi
 
 rm debian/changelog || true
 
-gbp dch -D unstable -R "${since}" --ignore-branch --spawn-editor=never
+if [ -n "$since" ]; then
+    gbp dch -D unstable -R "${since}" --ignore-branch --spawn-editor=never
+else
+    gbp dch -D unstable -R --ignore-branch --spawn-editor=never
+fi
 sed "1s/\(unknown\)/${version}/" -i debian/changelog
 
 DIR=deb/gbp
