@@ -39,7 +39,7 @@ cmake -B build -G Ninja -DBUILD_EXAMPLES=ON .
 cmake --build build
 
 # Edit config.yaml and run daemon on both listener, talker side
-sudo ./build/vlan
+sudo ./build/tsnucd
 
 # Run latency
 # Listener
@@ -76,8 +76,13 @@ flake8
 
 ## Packaging
 
-TBA
+Use tsnlab debian repository to install libtsn library.
 
+```sh
+curl -fsSL https://packages.tsnlab.com/public.gpg | sudo apt-key add -
+echo "deb https://packages.tsnlab.com/ unstable main" | sudo tee /etc/apt/sources.list/tsnlab.list
+sudo apt update && sudo apt install libtsn
+```
 
 ## License
 
