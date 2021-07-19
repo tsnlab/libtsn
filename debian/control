@@ -3,15 +3,15 @@ Section: devel
 Priority: optional
 Maintainer: Jeong Arm <arm@tsnlab.com>
 Uploaders: TSN Lab, inc. <cto@tsnlab.com>
-Build-Depends: cmake, debhelper (>=11~)
+Build-Depends: cmake, debhelper (>=11~), dh-python, python3-all
 Standards-Version: 4.1.4
 Homepage: https://github.com/tsnlab/libtsn
+X-Python3-Version: >= 3.2
 
 Package: libtsn
 Architecture: any
 Multi-Arch: same
-Pre-Depends: ${misc:Pre-Depends}
-Depends: ${misc:Depends}, ${shlibs:Depends}
+Depends: ${misc:Depends}, ${python3:Depends}, python3-yaml
 Description: Library for TSN endpoint applications.
  TSN is an abbreviation of Time Sensitive Networking.
  libtsn provides TSN related APIs to send or receive TSN packets and time sync.

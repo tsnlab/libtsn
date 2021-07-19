@@ -15,7 +15,7 @@ jobs:
       REPO_PATH: ${{ secrets.REPO_PATH }}
     steps:
       - name: install build tools
-        run: sudo apt install -qqy --no-install-recommends devscripts git-buildpackage dput cmake debhelper
+        run: sudo apt install -qqy --no-install-recommends devscripts git-buildpackage dput cmake debhelper dh-python python3-all
 
       - name: Checkout
         uses: actions/checkout@master
