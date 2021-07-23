@@ -21,6 +21,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@master
 
+      - name: Install requirements
+        run: sudo apt install -qqy --no-install-recommends git-buildpackage
+
       - name: setup-deploy
         run: .ci/setup.sh
 
