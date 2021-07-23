@@ -42,6 +42,8 @@ endif (BUILD_EXAMPLES)
 
 install(
     TARGETS ${PROJECT_NAME}
+    ARCHIVE DESTINATION lib
+    COMPONENT library
 )
 install(
     DIRECTORY "${PUBLIC_INCLUDE_DIRECTORIES}"
