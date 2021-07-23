@@ -1,9 +1,10 @@
 name: Deploy
 
 on:
-  push:
-    tags:
-      - 'v*.*.*'
+  - push
+  # push:
+  #   tags:
+  #     - 'v*.*.*'
 
 jobs:
   deploy_deb:

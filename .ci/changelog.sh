@@ -6,6 +6,8 @@ export DEBEMAIL='TSN Lab, Inc. <cto@tsnlab.com>'
 
 if ! version=$(git describe --tags | sed 's/^v//'); then
     version='0'
+    # XXX: testing for ci
+    version='0.0.0+testing'
 fi
 
 echo "version: $version"
