@@ -116,14 +116,17 @@ def main():
             line = conn.makefile().readline()
             print(f'{line=}')
 
-            if matched := pattern_socket.match(line):
-                cmd = matched.group('cmd')
-                ifname = matched.group('ifname')
-                vlanid = int(matched.group('vlanid'))
+            matched1 = pattern_socket.match(line)
+            matched2 = pattern_info.match(line)
+
+            if matched1:
+                cmd = matched1.group('cmd')
+                ifname = matched1.group('ifname')
+                vlanid = int(matched1.group('vlanid'))
                 res = command_map[cmd](config, ifname, vlanid)
                 conn.send(f'{res}'.encode())
-            elif matched := pattern_info.match(line):
-                ifname = matched.group('ifname')
+            elif matched2:
+                ifname = matched2.group('ifname')
                 conn.send(yaml.safe_dump(get_info(config, ifname), default_flow_style=None).encode())
             else:
                 conn.send(b'-1')
