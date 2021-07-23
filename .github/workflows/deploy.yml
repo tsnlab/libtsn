@@ -33,7 +33,7 @@ jobs:
 
       - name: build-deb
         id: build
-        uses: nylas/build-dpkg-buster@master
+        uses: tsnlab/build-dpkg-buster@master
         with:
           args: --unsigned-source --unsigned-changes
 
