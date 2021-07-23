@@ -13,24 +13,31 @@ jobs:
       REPO_HOST: ${{ secrets.REPO_HOST }}
       REPO_USER: ${{ secrets.REPO_USER }}
       REPO_PATH: ${{ secrets.REPO_PATH }}
+      SSH_KEY: ${{ secrets.SSH_KEY }}
     steps:
       - name: install build tools
-        run: sudo apt install -qqy --no-install-recommends devscripts git-buildpackage dput cmake debhelper dh-python python3-all
+        run: sudo apt install -qqy --no-install-recommends git-buildpackage
 
       - name: Checkout
         uses: actions/checkout@master
 
-      - name: setup
-        run: .ci/setup.sh
-        env:
-          REPO_HOST: ${{ secrets.REPO_HOST }}
-          REPO_USER: ${{ secrets.REPO_USER }}
-          REPO_PATH: ${{ secrets.REPO_PATH }}
-          SSH_KEY: ${{ secrets.SSH_KEY }}
-          PGP_KEY: ${{ secrets.PGP_KEY }}
+      - name: Install requirements
+        run: sudo apt install -qqy --no-install-recommends git-buildpackage
 
-      - name: build deb
-        run: .ci/package.sh
+      - name: setup-deploy
+        run: .ci/setup.sh
+
+      - name: Generate changelogs
+        run: .ci/changelog.sh
+
+      - name: build-deb
+        id: build
+        uses: tsnlab/build-dpkg-buster@master
+        with:
+          args: --unsigned-source --unsigned-changes
 
       - name: deploy
-        run: .ci/deploy.sh
+        run: |
+          scp ${{ steps.build.outputs.filename }} $REPO_USER@$REPO_HOST:$REPO_PATH/tmp/
+          ssh $REPO_USER@$REPO_HOST reprepro -b $REPO_PATH includedeb unstable $REPO_PATH/tmp/${{ steps.build.outputs.filename }}
+          ssh $REPO_USER@$REPO_HOST rm $REPO_PATH/tmp/${{ steps.build.outputs.filename }}
