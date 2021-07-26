@@ -10,4 +10,11 @@ mkdir -p ~/.ssh/
 echo "$SSH_KEY" > ~/.ssh/id_rsa
 chmod 600 ~/.ssh/id_rsa
 
-ssh-keyscan "$REPO_HOST" >> ~/.ssh/known_hosts
+cat << EOF > ~/.ssh/config
+Host packages
+    Hostname $REPO_HOST
+    Port $REPO_PORT
+    User $REPO_USER
+EOF
+
+ssh-keyscan packages >> ~/.ssh/known_hosts
