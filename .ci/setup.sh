@@ -17,4 +17,4 @@ Host packages
     User $REPO_USER
 EOF
 
-ssh-keyscan packages >> ~/.ssh/known_hosts
+ssh-keyscan -p "$REPO_PORT" "$REPO_HOST" >> ~/.ssh/known_hosts
