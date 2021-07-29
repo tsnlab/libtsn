@@ -154,7 +154,7 @@ def normalise_cbs(ifname: str, config: dict) -> dict:
 
 def read_config(config_path: str):
     with open(config_path) as f:
-        config = yaml.load(f, Loader=yaml.FullLoader)
+        config = yaml.safe_load(f)
 
     for ifname, ifconfig in config['nics'].items():
         if 'tas' in ifconfig:
