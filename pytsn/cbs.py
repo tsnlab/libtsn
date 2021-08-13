@@ -16,10 +16,10 @@ class Credits():
 
 def calc_credits(streams: Dict[str, Iterable[dict]], linkspeed) -> Tuple[Credits, Credits]:
     idle_slope_a = sum(stream['bandwidth'] for stream in streams['a'])
+    send_slope_a = idle_slope_a - linkspeed
     max_frame_a = sum(stream['max_frame'] for stream in streams['a'])
     hicredit_a = math.ceil(idle_slope_a * frame_non_sr / linkspeed)
-    locredit_a = math.ceil(idle_slope_a * max_frame_a / linkspeed)
-    send_slope_a = idle_slope_a - linkspeed
+    locredit_a = math.ceil(send_slope_a * max_frame_a / linkspeed)
     credits_a = Credits(send_slope_a, idle_slope_a, hicredit_a, locredit_a)
 
     idle_slope_b = sum(stream['bandwidth'] for stream in streams['b'])
