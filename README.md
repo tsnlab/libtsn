@@ -86,5 +86,5 @@ sudo apt update && sudo apt install libtsn
 
 ## License
 
-The libtsn is distributed under GPLv3 license. See [license](./LICENSE)
+The libtsn is distributed under GPLv3 license. See [license](./LICENSE)  
 If you need other license than GPLv3 for proprietary use or professional support, please mail us to contact at tsnlab dot com.
