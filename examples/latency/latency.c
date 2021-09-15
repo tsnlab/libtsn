@@ -107,7 +107,7 @@ static error_t parse_opt(int key, char* arg, struct argp_state* state) {
 static struct argp argp = {options, parse_opt, args_doc, doc};
 
 void do_server(int sock, int size, bool oneway, bool verbose);
-void do_client(int sock, char* iface, int size, char* target, int count, bool precise);
+void do_client(int sock, char* iface, int size, char* target, int count, bool precise, bool oneway);
 
 bool strtomac(uint8_t* mac, const char* str);
 bool mactostr(uint8_t* mac, char* str);
@@ -167,7 +167,8 @@ int main(int argc, char** argv) {
         do_server(sock, arguments.size, arguments.oneway, arguments.verbose);
         break;
     case RUN_CLIENT:
-        do_client(sock, arguments.iface, arguments.size, arguments.target, arguments.count, arguments.precise);
+        do_client(sock, arguments.iface, arguments.size, arguments.target, arguments.count, arguments.precise,
+                  arguments.oneway);
         break;
     default:
         fprintf(stderr, "Unknown mode\n");
@@ -219,7 +220,7 @@ void do_server(int sock, int size, bool oneway, bool verbose) {
     }
 }
 
-void do_client(int sock, char* iface, int size, char* target, int count, bool precise) {
+void do_client(int sock, char* iface, int size, char* target, int count, bool precise, bool oneway) {
     uint8_t* pkt = malloc(size);
     if (pkt == NULL) {
         fprintf(stderr, "Failed to malloc pkt\n");
@@ -283,29 +284,31 @@ void do_client(int sock, char* iface, int size, char* target, int count, bool pr
             perror("Failed to send");
         }
 
-        bool received = false;
-        do {
-            int len = tsn_recv(sock, pkt, size);
-            clock_gettime(CLOCK_REALTIME, &tend);
+        if (!oneway) {
+            bool received = false;
+            do {
+                int len = tsn_recv(sock, pkt, size);
+                clock_gettime(CLOCK_REALTIME, &tend);
 
-            tsn_timespec_diff(&tstart, &tend, &tdiff);
-            // Check perf pkt
-            if (len < 0 && tdiff.tv_nsec >= TIMEOUT_SEC) {
-                // TIMEOUT
-                break;
-            } else if (ntohl(payload->id) == i) {
-                received = true;
+                tsn_timespec_diff(&tstart, &tend, &tdiff);
+                // Check perf pkt
+                if (len < 0 && tdiff.tv_nsec >= TIMEOUT_SEC) {
+                    // TIMEOUT
+                    break;
+                } else if (ntohl(payload->id) == i) {
+                    received = true;
+                }
+            } while (!received && running);
+
+            if (received) {
+                uint64_t elapsed_ns = tdiff.tv_sec * 1000000000 + tdiff.tv_nsec;
+                printf("RTT: %lu.%03lu µs (%lu → %lu)\n", elapsed_ns / 1000, elapsed_ns % 1000, tstart.tv_nsec,
+                       tend.tv_nsec);
+                fflush(stdout);
+            } else {
+                printf("TIMEOUT: -1 µs (%lu → N/A)\n", tstart.tv_nsec);
+                fflush(stdout);
             }
-        } while (!received && running);
-
-        if (received) {
-            uint64_t elapsed_ns = tdiff.tv_sec * 1000000000 + tdiff.tv_nsec;
-            printf("RTT: %lu.%03lu µs (%lu → %lu)\n", elapsed_ns / 1000, elapsed_ns % 1000, tstart.tv_nsec,
-                   tend.tv_nsec);
-            fflush(stdout);
-        } else {
-            printf("TIMEOUT: -1 µs (%lu → N/A)\n", tstart.tv_nsec);
-            fflush(stdout);
         }
 
         if (!precise) {
