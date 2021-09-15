@@ -2,7 +2,6 @@
 
 #include <arpa/inet.h>
 #include <linux/if_packet.h>
-#include <linux/net_tstamp.h>
 #include <net/ethernet.h>
 #include <net/if.h>
 #include <sys/socket.h>
@@ -94,21 +93,6 @@ int tsn_sock_open(const char* ifname, uint16_t vlanid, uint8_t priority, uint16_
     sock = socket(AF_PACKET, SOCK_RAW, htons(proto));
     if (sock < 0) {
         return sock;
-    }
-
-    int sockflags;
-    sockflags = SOF_TIMESTAMPING_RX_HARDWARE | SOF_TIMESTAMPING_RAW_HARDWARE | SOF_TIMESTAMPING_SYS_HARDWARE |
-                SOF_TIMESTAMPING_SOFTWARE;
-    res = setsockopt(sock, SOL_SOCKET, SO_TIMESTAMPNS, &sockflags, sizeof(sockflags));
-    if (res < 0) {
-        perror("Socket timestampns");
-    }
-
-    sockflags = SOF_TIMESTAMPING_TX_HARDWARE | SOF_TIMESTAMPING_RAW_HARDWARE | SOF_TIMESTAMPING_SYS_HARDWARE |
-                SOF_TIMESTAMPING_SOFTWARE;
-    res = setsockopt(sock, SOL_SOCKET, SO_TIMESTAMPING, &sockflags, sizeof(sockflags));
-    if (res < 0) {
-        perror("Socket timestamping");
     }
 
     uint32_t prio = priority;

@@ -3,6 +3,7 @@
 
 #include <arpa/inet.h>
 #include <linux/if_packet.h>
+#include <linux/net_tstamp.h>
 #include <net/ethernet.h>
 #include <net/if.h>
 #include <sys/ioctl.h>
@@ -204,6 +205,13 @@ void do_server(int sock, int size, bool oneway, bool verbose) {
     msg.msg_control = &control;
     msg.msg_controllen = controlsize;
     struct cmsghdr* cmsg;
+
+    int sockflags;
+    sockflags = SOF_TIMESTAMPING_RX_HARDWARE | SOF_TIMESTAMPING_RAW_HARDWARE | SOF_TIMESTAMPING_SOFTWARE;
+    int res = setsockopt(sock, SOL_SOCKET, SO_TIMESTAMPNS, &sockflags, sizeof(sockflags));
+    if (res < 0) {
+        perror("Socket timestampns");
+    }
 
     while (running) {
         size_t recv_bytes = tsn_recv_msg(sock, &msg);
