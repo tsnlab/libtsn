@@ -194,11 +194,31 @@ void do_server(int sock, int size, bool oneway, bool verbose) {
 
     char srcmac[18], dstmac[18];
 
+    const size_t controlsize = 1024;
+    char control[controlsize];
+
+    struct msghdr msg;
+    struct iovec iov = {pkt, size};
+    msg.msg_iov = &iov;
+    msg.msg_iovlen = 1;
+    msg.msg_control = &control;
+    msg.msg_controllen = controlsize;
+    struct cmsghdr* cmsg;
+
     while (running) {
-        size_t recv_bytes = tsn_recv(sock, pkt, size);
+        size_t recv_bytes = tsn_recv_msg(sock, &msg);
 
         if (oneway) {
             clock_gettime(CLOCK_REALTIME, &tend);
+            for (cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
+                int level = cmsg->cmsg_level;
+                int type = cmsg->cmsg_type;
+                if (level != SOL_SOCKET)
+                    continue;
+                if (SO_TIMESTAMPNS == type) {
+                    memcpy(&tend, CMSG_DATA(cmsg), sizeof(tend));
+                }
+            }
         }
 
         uint8_t tmpmac[ETHER_ADDR_LEN];

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <sys/socket.h>
+
 #include <stddef.h>
 #include <stdint.h>
 
@@ -37,3 +39,11 @@ int tsn_send(int sock, const void* buf, size_t n);
  * @return received bytes or <0 if error.
  */
 int tsn_recv(int sock, void* buf, size_t n);
+
+/**
+ * Receive TSN packet using msghdr
+ * @param sock socket handle created using @see tsn_sock_open
+ * @param msg msghdr struct
+ * @return received bytes or <0 if error.
+ */
+int tsn_recv_msg(int sock, struct msghdr* msg);
