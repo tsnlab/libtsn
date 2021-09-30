@@ -17,14 +17,24 @@ target_compile_options(tsn PRIVATE -Wall -Wextra -pedantic -Werror)
 
 set(UCD_RUNTIME_NAME "tsnucd")
 
-find_program(PYTHON3 "python3")
+if (CMAKE_VERSION VERSION_LESS 3.12)
+    find_program(PYTHON3 "python3")
+    set(Python3_EXECUTABLE "${PYTHON3}")
+    set(PYTHON3_FOUND TRUE)
+    # TODO: check python version
+else ()
+    find_package(Python3 3.5 REQUIRED COMPONENTS Interpreter)
+endif (CMAKE_VERSION VERSION_LESS 3.12)
 
-if (PYTHON3)
+if (PYTHON3_FOUND)
     FILE(GLOB PYTSN_SRC pytsn/*.py)
+    if(PYTHON3_VERSION_MINOR GREATER_EQUAL 7)
+        set(PYZIPAPP_OPT_COMPRESS "-c")
+    endif(PYTHON3_VERSION_MINOR GREATER_EQUAL 7)
     add_custom_command(
         OUTPUT ${PROJECT_BINARY_DIR}/${UCD_RUNTIME_NAME}
-        COMMAND ${PYTHON3}
-        ARGS -m zipapp -c -o ${PROJECT_BINARY_DIR}/${UCD_RUNTIME_NAME} ${PROJECT_SOURCE_DIR}/pytsn -p "/usr/bin/env -S python3 -u"
+        COMMAND ${Python3_EXECUTABLE}
+        ARGS -m zipapp ${PYZIPAPP_OPT_COMPRESS} -o ${PROJECT_BINARY_DIR}/${UCD_RUNTIME_NAME} ${PROJECT_SOURCE_DIR}/pytsn -p "/usr/bin/env -S python3 -u"
         DEPENDS ${PYTSN_SRC}
         )
     add_custom_target(
@@ -34,11 +44,13 @@ if (PYTHON3)
         DEPENDS ${PROJECT_BINARY_DIR}/${UCD_RUNTIME_NAME}
         VERBATIM
         )
-endif(PYTHON3)
+endif(PYTHON3_FOUND)
 
 if (BUILD_EXAMPLES)
     add_subdirectory(examples)
 endif (BUILD_EXAMPLES)
+
+include(GNUInstallDirs)
 
 install(
     TARGETS ${PROJECT_NAME}
