@@ -25,7 +25,7 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
-    steps:
+    steps: &build
       - name: install build tools
         run: sudo apt install -qqy --no-install-recommends gcc cmake ninja-build
       - name: Checkout
@@ -34,3 +34,7 @@ jobs:
         run: |
           cmake -B build -G Ninja -DBUILD_EXAMPLES=ON .
           cmake --build build
+
+  build-18.04:
+    runs-on: ubuntu-18.04
+    steps: *build
