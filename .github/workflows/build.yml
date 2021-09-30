@@ -35,5 +35,5 @@ jobs:
         uses: actions/checkout@master
       - name: build
         run: |
-          cmake -B build -G Ninja -DBUILD_EXAMPLES=ON .
-          cmake --build build
+          /usr/bin/cmake -B build -G Ninja -DBUILD_EXAMPLES=ON .
+          /usr/bin/cmake --build build
