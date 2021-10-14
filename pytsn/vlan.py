@@ -73,12 +73,12 @@ def setup_cbs(ifname: str, cbs: dict):
             f'locredit {locredit} '
             f'offload 1'
         )
-        run_cmd(
-            f'tc qdisc add dev {ifname} parent {handle}:1 etf '
-            'clockid CLOCK_TAI '
-            'delta 500000 '
-            'offload '
-        )
+        # run_cmd(
+        #     f'tc qdisc add dev {ifname} parent {handle}:1 etf '
+        #     'clockid CLOCK_TAI '
+        #     'delta 500000 '
+        #     'offload '
+        # )
 
 
 def create_vlan(config: dict, ifname: str, vlanid: int) -> int:
