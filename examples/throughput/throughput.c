@@ -182,7 +182,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    sock = tsn_sock_open(arguments.iface, VLAN_ID_PERF, VLAN_PRI_PERF, ETHERTYPE_PERF);
+    sock = tsn_sock_open(arguments.iface, VLAN_ID_PERF, VLAN_PRI_PERF, SOCK_RAW, ETHERTYPE_PERF);
 
     if (sock <= 0) {
         perror("socket create");

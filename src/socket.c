@@ -70,7 +70,7 @@ static int delete_vlan(const char* ifname, uint16_t vlanid) {
     return send_cmd(command);
 }
 
-int tsn_sock_open(const char* ifname, uint16_t vlanid, uint8_t priority, uint16_t proto) {
+int tsn_sock_open(const char* ifname, uint16_t vlanid, uint8_t priority, int type, uint16_t proto) {
     int sock;
     int res;
     struct sockaddr_ll sock_ll;
@@ -90,7 +90,9 @@ int tsn_sock_open(const char* ifname, uint16_t vlanid, uint8_t priority, uint16_
         return -1;
     }
 
-    sock = socket(AF_PACKET, SOCK_RAW, htons(proto));
+    int domain = (type == SOCK_RAW) ? AF_PACKET : AF_INET;
+
+    sock = socket(domain, type, htons(proto));
     if (sock < 0) {
         return sock;
     }
@@ -104,7 +106,7 @@ int tsn_sock_open(const char* ifname, uint16_t vlanid, uint8_t priority, uint16_
 
     memset((void*)&sock_ll, 0x00, sizeof(sock_ll));
 
-    sock_ll.sll_family = AF_PACKET;
+    sock_ll.sll_family = domain;
     // dst.sll_protocol = htons(ETH_P_8021Q);
     sock_ll.sll_ifindex = ifindex;
     res = bind(sock, (struct sockaddr*)&sock_ll, sizeof(sock_ll));
