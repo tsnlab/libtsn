@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "pytsn"
+version = "0.1.0"
+description = "Web interface for libtsn"
+authors = ["Jeong Arm <arm@tsnlab.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+fastapi = "^0.70.0"
+uvicorn = "^0.15.0"
+PyYAML = "^6.0"
+
+[tool.poetry.dev-dependencies]
+flake8 = "^4.0.1"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+
+tsnucd = "pytsn.cli:main"
+tsnwebui = "pytsn.webui.cli:main"
