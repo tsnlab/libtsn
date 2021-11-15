@@ -4,11 +4,16 @@ import os
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from pydantic import BaseSettings
+
 import yaml
 
 
-CONFIG_FILENAME = 'config.yaml'  # FIXME: use config
+class Settings(BaseSettings):
+    CONFIG_FILENAME: str = "config.yaml"
 
+
+settings = Settings()
 app = FastAPI(title='libTSN Configuration')
 api = FastAPI(title="libTSN Web API")
 
@@ -25,7 +30,7 @@ def read_ifnames():
 
 @api.get('/config/')
 def read_root():
-    with open(CONFIG_FILENAME) as f:
+    with open(settings.CONFIG_FILENAME) as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
 
     return config
@@ -33,4 +38,4 @@ def read_root():
 
 @api.put('/config/')
 def update_item(item: dict):
-    yaml.dump(item, open(CONFIG_FILENAME, 'w'), default_flow_style=False)
+    yaml.dump(item, open(settings.CONFIG_FILENAME, 'w'), default_flow_style=False)
