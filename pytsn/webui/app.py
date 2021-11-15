@@ -3,6 +3,7 @@ import os
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 
 from pydantic import BaseSettings
 
@@ -22,6 +23,18 @@ STATIC_PATH = os.path.join(os.path.dirname(__file__), 'static')
 app.mount('/api', api)
 app.mount('/', StaticFiles(directory=STATIC_PATH, html=True), name='front')
 
+origins = [
+    'http://localhost:3000',
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 @api.get('/ifnames')
 def read_ifnames():
@@ -30,7 +43,7 @@ def read_ifnames():
     return ifnames - virtual_ifnames
 
 
-@api.get('/config/')
+@api.get('/config')
 def read_root():
     with open(settings.CONFIG_FILENAME) as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
@@ -38,6 +51,6 @@ def read_root():
     return config
 
 
-@api.put('/config/')
+@api.put('/config')
 def update_item(item: dict):
     yaml.dump(item, open(settings.CONFIG_FILENAME, 'w'), default_flow_style=False)
