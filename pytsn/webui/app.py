@@ -17,8 +17,10 @@ settings = Settings()
 app = FastAPI(title='libTSN Configuration')
 api = FastAPI(title="libTSN Web API")
 
+STATIC_PATH = os.path.join(os.path.dirname(__file__), 'static')
+
 app.mount('/api', api)
-app.mount('/', StaticFiles(directory='build', html=True), name='front')
+app.mount('/', StaticFiles(directory=STATIC_PATH, html=True), name='front')
 
 
 @api.get('/ifnames')
