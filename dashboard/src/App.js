@@ -14,8 +14,9 @@ class App extends Component {
   constructor(props) {
     super(props);
     this.state = {
-      config: {},
+      config: { nics: {} },
       ifnames: [],
+      currentIfname: '',
       initialised: false,
     };
   }
@@ -35,29 +36,51 @@ class App extends Component {
     });
   }
 
+  setCurrentIfname(ifname) {
+    console.log(ifname);
+    this.setState({
+      currentIfname: ifname,
+    });
+  }
+
+  updateNic(nicConfig) {
+    const currentIfname = this.state.currentIfname;
+    const { config } = this.state;
+    config.nics[currentIfname] = nicConfig;
+
+    this.setState({ config });
+  }
+
   render() {
-    const { config, ifnames } = this.state;
+    const { config, ifnames, currentIfname } = this.state;
 
     if (!this.state.initialised) {
       return (<div>Loading...</div>);
     }
 
+    const nic = ifnames.includes(currentIfname)
+      ? <Nic
+        key={ currentIfname }
+        ifname={ currentIfname }
+        update={ this.updateNic }
+        config={ config.nics[currentIfname] || {} } />
+      : null;
+
+    console.log(config.nics);
+
     return (
       <div className="App">
-        <h1>Available NICs</h1>
-        {ifnames.map((ifname, index) => {
-          return (
-            <div key={ifname}>
-              <span>{index}: {ifname}</span>
-            </div>
-          );
-        })}
+        <div className="nics-menu">
+          {ifnames.map((ifname) => {
+            return (
+              <div className="nic" key={ifname} onClick={() => this.setCurrentIfname(ifname)}>
+                {ifname}
+              </div>
+            );
+          })}
+        </div>
 
-        {Object.entries(config.nics).map(([key, value]) => {
-          return (
-            <Nic key={key} ifname={key} config={value} />
-          );
-        })}
+        { nic }
       </div>
     );
   }
