@@ -1,7 +1,8 @@
 import React, { Component } from 'react';
+import { MenuContainer, MenuItem, SubmitButton, Debug } from './Components';
 
 import Nic from './Nic';
-import './App.css';
+import './App.scss';
 
 const API_BASE_URL = (
   (process.env.NODE_ENV === 'development') ?
@@ -61,15 +62,15 @@ class App extends Component {
 
     return (
       <div className="App">
-        <div className="nics-menu">
+        <MenuContainer>
           {ifnames.map((ifname) => {
             return (
-              <div className="nic" key={ifname} onClick={() => this.setCurrentIfname(ifname)}>
+              <MenuItem key={ifname} className={ ifname === currentIfname && 'selected' } onClick={() => this.setCurrentIfname(ifname)}>
                 {ifname}
-              </div>
+              </MenuItem>
             );
           })}
-        </div>
+        </MenuContainer>
 
         { currentIfname &&
         <Nic key={ currentIfname }
@@ -77,9 +78,12 @@ class App extends Component {
           update={ (data) => this.updateNic(currentIfname, data) }
           config={ config.nics[currentIfname] } />  }
 
-        <div className="debug">
-          <pre>{ JSON.stringify(config, null, 2) }</pre>
-        </div>
+        <SubmitButton>Save</SubmitButton>
+
+        <Debug>
+          <h3>Preview</h3>
+          <pre>{ JSON.stringify(config, this.jsonFormatter, 2) }</pre>
+        </Debug>
       </div>
     );
   }

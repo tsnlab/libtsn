@@ -1,4 +1,5 @@
 import { Component } from 'react';
+import { NumberInput } from './Components';
 
 class Tas extends Component {
   constructor (props) {
@@ -71,7 +72,7 @@ class Tas extends Component {
 
         return (
           <tr key={entryIndex}>
-            <td><input className="number" size="10" value={ entry.time } onChange={ (e) => this.changeSlotTime(entryIndex, e.target.value) } /></td>
+            <td><NumberInput size="10" value={ entry.time } onChange={ (e) => this.changeSlotTime(entryIndex, e.target.value) } /></td>
             { prios }
           </tr>
         );
@@ -85,7 +86,7 @@ class Tas extends Component {
         <>
           { entries }
           <tr>
-            <td><input className="number" size="10" /></td>
+            <td><NumberInput size="10" /></td>
             { newPrios }
           </tr>
         </>
@@ -103,7 +104,7 @@ class Tas extends Component {
         </thead>
         <tbody>
           <tr>
-            <td colSpan="100%">txtime_delay: <input value={ txtime_delay } onChange={this.onChangeTxtime} /></td>
+            <td colSpan="100%">txtime_delay: <NumberInput value={ txtime_delay } onChange={this.onChangeTxtime} /></td>
           </tr>
           { this.renderSchedule(schedule) }
         </tbody>
