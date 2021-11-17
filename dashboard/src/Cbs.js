@@ -15,6 +15,43 @@ class Cbs extends Component {
     'b',
   ];
 
+  changeClass = (prio, cls) => {
+    const config = this.state.config;
+    if (cls === '') {
+      delete config[prio];
+    } else {
+      if (config[prio] === undefined) {
+        config[prio] = {};
+      }
+      config[prio].class = cls;
+    }
+
+    this.setState({ config });
+    this.props.update(config);
+  }
+
+  changeSpeed = (prio, speed) => {
+    const config = this.state.config;
+    if (config[prio] === undefined) {
+      config[prio] = {};
+    }
+    config[prio].speed = speed;
+
+    this.setState({ config });
+    this.props.update(config);
+  }
+
+  changeMaxFrame = (prio, max_frame) => {
+    const config = this.state.config;
+    if (config[prio] === undefined) {
+      config[prio] = {};
+    }
+    config[prio].max_frame = max_frame;
+
+    this.setState({ config });
+    this.props.update(config);
+  }
+
   render() {
     const config = this.state.config;
 
@@ -24,17 +61,18 @@ class Cbs extends Component {
 
     const selects = this.available_classes.map((cls) => <option>{cls}</option>);
 
-    for (let i = -1; i < 8; i += 1) {
-      if (config[i] === undefined) {
-        classes.push(<td><select>{ selects }</select></td>);
-        speeds.push(<td><input size="10" /></td>);
-        max_frames.push(<td><input size="10" /></td>)
-      } else {
-        const cbs_config = config[i];
-        classes.push(<td><select value={ cbs_config.class }>{ selects }</select></td>);
-        speeds.push(<td><input className="number" size="10" value={ cbs_config.bandwidth } /></td>);
-        max_frames.push(<td><input className="number" size="10" value={ cbs_config.max_frame } /></td>)
+    for (let prio = -1; prio < 8; prio += 1) {
+      const cbs_config = config[prio];
+      let cls, speed, max_frame;
+      if (cbs_config && cbs_config.class !== '') {
+        cls = cbs_config.class;
+        speed = cbs_config.speed;
+        max_frame = cbs_config.max_frame;
       }
+
+      classes.push(<td><select value={ cls } onChange={ e => this.changeClass(prio, e.target.value) }>{ selects }</select></td>);
+      speeds.push(<td><input className="number" size="10" value={ speed } onChange={ e => this.changeSpeed(prio, e.target.value) } disabled={!cbs_config} /></td>);
+      max_frames.push(<td><input className="number" size="10" value={ max_frame } onChange={ e => this.changeMaxFrame(prio, e.target.value) } disabled={!cbs_config} /></td>)
     }
 
     return (

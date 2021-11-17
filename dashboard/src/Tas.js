@@ -5,16 +5,21 @@ class Tas extends Component {
     super(props);
 
     this.state = {
-      txtime_delay: props.data.txtime_delay,
-      schedule: props.data.schedule,
+      txtime_delay: props.data.txtime_delay || 0,
+      schedule: props.data.schedule || [],
     };
   }
 
   onChangeTxtime = (e) => {
-    const data = parseInt(e.target.value || 0);
+    const txtime_delay = parseInt(e.target.value || 0);
     this.setState({
-      txtime_delay: data,
+      txtime_delay,
     });
+
+    this.props.update({
+      txtime_delay,
+      schedule: this.state.schedule,
+    })
   };
 
   changeGate = (slotIndex, prio, value) => {
@@ -94,7 +99,6 @@ class Tas extends Component {
         <thead>
           <tr>
             <th>TAS</th>
-            <td colSpan="100%">debug: { JSON.stringify(this.state)  }</td>
           </tr>
         </thead>
         <tbody>

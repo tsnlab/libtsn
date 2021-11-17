@@ -42,10 +42,12 @@ class App extends Component {
     });
   }
 
-  updateNic = (nicConfig) => {
-    const currentIfname = this.state.currentIfname;
+  updateNic = (ifname, nicConfig) => {
+    console.log(ifname, nicConfig);
     const { config } = this.state;
-    config.nics[currentIfname] = nicConfig;
+    config.nics[ifname] = nicConfig;
+
+    console.log(config);
 
     this.setState({ config });
   }
@@ -56,14 +58,6 @@ class App extends Component {
     if (!this.state.initialised) {
       return (<div>Loading...</div>);
     }
-
-    const nic = ifnames.includes(currentIfname)
-      ? <Nic
-        key={ currentIfname }
-        ifname={ currentIfname }
-        update={ this.updateNic }
-        config={ config.nics[currentIfname] || {} } />
-      : null;
 
     return (
       <div className="App">
@@ -77,7 +71,11 @@ class App extends Component {
           })}
         </div>
 
-        { nic }
+        { currentIfname &&
+        <Nic key={ currentIfname }
+          ifname={ currentIfname }
+          update={ (data) => this.updateNic(currentIfname, data) }
+          config={ config.nics[currentIfname] } />  }
 
         <div className="debug">
           <pre>{ JSON.stringify(config, null, 2) }</pre>
