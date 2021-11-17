@@ -10,21 +10,47 @@ class Tas extends Component {
     };
   }
 
-  async updateTxtime(txtime_delay) {
-    const newState = {
-      txtime_delay,
-      schedule: this.state.schedule,
-    }
-
-    this.setState(newState);
-  }
-
   onChangeTxtime = (e) => {
     const data = parseInt(e.target.value || 0);
     this.setState({
       txtime_delay: data,
     });
-  }
+  };
+
+  changeGate = (slotIndex, prio, value) => {
+    const { schedule } = this.state;
+    const prios = new Set(schedule[slotIndex].prio);
+    if (value) {
+      prios.add(prio);
+    } else {
+      prios.delete(prio);
+    }
+
+    schedule[slotIndex].prio = Array.from(prios);
+
+    this.setState({
+      schedule,
+    });
+
+    this.props.update({
+      txtime_delay: this.state.txtime_delay,
+      schedule,
+    });
+  };
+
+  changeSlotTime = (slotIndex, value) => {
+    const { schedule } = this.state;
+    schedule[slotIndex].time = value;
+
+    this.setState({
+      schedule,
+    });
+
+    this.props.update({
+      txtime_delay: this.state.txtime_delay,
+      schedule,
+    });
+  };
 
   renderSchedule = (schedule) => {
     let entries;
@@ -35,19 +61,19 @@ class Tas extends Component {
 
         let prios = [];
         for (let prio = -1; prio < 8; prio += 1) {
-          // TODO: editable
-          prios.push(<td key={`${entryIndex}_${prio}`}><input type="checkbox" defaultChecked={entry.prio.includes(prio)} /></td>);
+          prios.push(<td key={`${entryIndex}_${prio}`}><input type="checkbox" checked={entry.prio.includes(prio)} onChange={ (e) => { this.changeGate(entryIndex, prio, e.target.checked) } } /></td>);
         }
 
         return (
           <tr key={entryIndex}>
-            <td><input className="number" size="10" value={ entry.time } /></td>
+            <td><input className="number" size="10" value={ entry.time } onChange={ (e) => this.changeSlotTime(entryIndex, e.target.value) } /></td>
             { prios }
           </tr>
         );
       });
     }
 
+    // TODO: Automaticaly create new slots
     let newPrios = Array(9).fill(<td><input type="checkbox" /></td>);
 
     return (
