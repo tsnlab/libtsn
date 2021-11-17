@@ -1,12 +1,33 @@
 import { Component } from 'react';
+import Tas from './Tas';
 
 class Nic extends Component {
   constructor(props) {
     super(props);
     this.state = {
-      config: {},
+      config: props.config,
     };
   }
+
+  updateTas = (value) => {
+    let config = {...this.state.config };
+    config.tas = value;
+    this.setState({
+      config,
+    });
+
+    this.props.update(config);
+  };
+
+  updateCbs = (value) => {
+    let config = {...this.state.config };
+    config.cbs = value;
+    this.setState({
+      config,
+    });
+
+    this.props.update(config);
+  };
 
   render() {
     const { ifname, config } = this.props;
@@ -21,12 +42,13 @@ class Nic extends Component {
       <div>
         <h1>{ ifname }</h1>
         <div className="schedulers">
+          <div>{ JSON.stringify(this.state.config) }</div>
           <table>
             <thead>
               { headers }
             </thead>
-            <Tas data={ config.tas || {} } />
-            <Cbs data={ config.cbs || {} } />
+            <Tas data={ config.tas || {} } update={ this.updateTas } />
+            <Cbs data={ config.cbs || {} } update={ this.updateCbs } />
           </table>
         </div>
       </div>
@@ -34,83 +56,6 @@ class Nic extends Component {
   }
 }
 
-class Tas extends Component {
-  constructor (props) {
-    super(props);
-
-    this.state = {
-      txtime_delay: props.data.txtime_delay,
-      schedule: props.data.schedule,
-    };
-
-    this.renderSchedule = this.renderSchedule.bind(this);
-  }
-
-  async updateTxtime(txtime_delay) {
-    const newState = {
-      txtime_delay,
-      schedule: this.state.schedule,
-    }
-
-    this.setState(newState);
-
-    this.props.update(newState);
-  }
-
-  renderSchedule(schedule) {
-    let entries;
-    if (!schedule) {
-      entries = [];
-    } else {
-      entries = schedule.map((entry, entryIndex) => {
-
-        let prios = [];
-        for (let prio = -1; prio < 8; prio += 1) {
-          // TODO: editable
-          prios.push(<td key={`${entryIndex}_${prio}`}><input type="checkbox" defaultChecked={entry.prio.includes(prio)} /></td>);
-        }
-
-        return (
-          <tr key={entryIndex}>
-            <td><input className="number" size="10" value={ entry.time } /></td>
-            { prios }
-          </tr>
-        );
-      });
-    }
-
-    let newPrios = Array(9).fill(<td><input type="checkbox" /></td>);
-
-    return (
-        <>
-          { entries }
-          <tr>
-            <td><input className="number" size="10" /></td>
-            { newPrios }
-          </tr>
-        </>
-    );
-  }
-
-  render() {
-    const { txtime_delay, schedule } = this.props.data;
-    return (
-      <>
-        <thead>
-          <tr>
-            <th>TAS</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td colSpan="100%">txtime_delay: <input value={ txtime_delay } /></td>
-          </tr>
-          { this.renderSchedule(schedule) }
-        </tbody>
-      </>
-    );
-  }
-}
 
 class Cbs extends Component {
   constructor(props) {

@@ -34,6 +34,10 @@
   font-variant-numeric: tabular-nums;
 }
 
+.debug {
+  text-align: left;
+}
+
 @keyframes App-logo-spin {
   from {
     transform: rotate(0deg);

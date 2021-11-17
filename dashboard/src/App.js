@@ -43,7 +43,7 @@ class App extends Component {
     });
   }
 
-  updateNic(nicConfig) {
+  updateNic = (nicConfig) => {
     const currentIfname = this.state.currentIfname;
     const { config } = this.state;
     config.nics[currentIfname] = nicConfig;
@@ -81,6 +81,10 @@ class App extends Component {
         </div>
 
         { nic }
+
+        <div className="debug">
+          <pre>{ JSON.stringify(config, null, 2) }</pre>
+        </div>
       </div>
     );
   }
