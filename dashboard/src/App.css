@@ -28,6 +28,12 @@
   color: #61dafb;
 }
 
+.number {
+  text-align: right;
+  font-feature-settings: "tnum";
+  font-variant-numeric: tabular-nums;
+}
+
 @keyframes App-logo-spin {
   from {
     transform: rotate(0deg);
