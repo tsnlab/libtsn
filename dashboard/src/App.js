@@ -53,6 +53,24 @@ class App extends Component {
     this.setState({ config });
   }
 
+  onSubmit = async (e) => {
+    const { config } = this.state;
+
+    e.target.disabled = true;
+
+    let res = await (fetch(`${API_BASE_URL}/config`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(config),
+    }).then(res => res.json()));
+
+    console.log(res);
+
+    e.target.disabled = false;
+  }
+
   render() {
     const { config, ifnames, currentIfname } = this.state;
 
@@ -78,7 +96,7 @@ class App extends Component {
           update={ (data) => this.updateNic(currentIfname, data) }
           config={ config.nics[currentIfname] } />  }
 
-        <SubmitButton>Save</SubmitButton>
+        <SubmitButton onClick={ this.onSubmit }>Save</SubmitButton>
 
         <Debug>
           <h3>Preview</h3>
