@@ -1,6 +1,6 @@
 import React, { Component } from 'react';
 
-import { Nic } from './Config';
+import Nic from './Nic';
 import './App.css';
 
 const API_BASE_URL = (
@@ -37,7 +37,6 @@ class App extends Component {
   }
 
   setCurrentIfname(ifname) {
-    console.log(ifname);
     this.setState({
       currentIfname: ifname,
     });
@@ -65,8 +64,6 @@ class App extends Component {
         update={ this.updateNic }
         config={ config.nics[currentIfname] || {} } />
       : null;
-
-    console.log(config.nics);
 
     return (
       <div className="App">
