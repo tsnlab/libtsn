@@ -5,8 +5,17 @@ import Cbs from './Cbs';
 class Nic extends Component {
   constructor(props) {
     super(props);
+    let config = props.config;
+    if (config === undefined) {
+      config = {
+        tas: {},
+        cbs: {},
+        'egress-qos-map': {},  // TODO: Make this properly
+      };
+    }
     this.state = {
-      config: props.config,
+      ifname: props.ifname,
+      config,
     };
   }
 
@@ -31,7 +40,7 @@ class Nic extends Component {
   };
 
   render() {
-    const { ifname, config } = this.props;
+    const { ifname, config } = this.state;
 
     let headers = [ <th>Option</th> ];
 
@@ -43,7 +52,6 @@ class Nic extends Component {
       <div>
         <h1>{ ifname }</h1>
         <div className="schedulers">
-          <div>{ JSON.stringify(this.state.config) }</div>
           <table>
             <thead>
               { headers }
