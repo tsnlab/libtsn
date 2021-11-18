@@ -58,6 +58,20 @@ class Tas extends Component {
     // TODO: update?
   };
 
+  deleteTimeslot = (slotIndex) => {
+    const { schedule } = this.state;
+    schedule.splice(slotIndex, 1);
+
+    this.setState({
+      schedule,
+    });
+
+    this.props.update({
+      txtime_delay: this.state.txtime_delay,
+      schedule,
+    });
+  };
+
   changeSlotTime = (slotIndex, value) => {
     const { schedule } = this.state;
     if (schedule[slotIndex] === undefined) {
@@ -93,7 +107,10 @@ class Tas extends Component {
 
         return (
           <tr key={entryIndex} data-key={entryIndex}>
-            <td><NumberInput key={ `${entryIndex}-input` } size="10" value={ entry.time } onChange={ (e) => this.changeSlotTime(entryIndex, e.target.value) } /></td>
+            <td>
+              <button onClick={e => this.deleteTimeslot(entryIndex)}>❌</button>
+            <NumberInput key={ `${entryIndex}-input` } size="10" value={ entry.time } onChange={ (e) => this.changeSlotTime(entryIndex, e.target.value) } />
+            </td>
             { prios }
           </tr>
         );
