@@ -44,9 +44,30 @@ class Tas extends Component {
     });
   };
 
+  addTimeslot = () => {
+    const { schedule } = this.state;
+    schedule.push({
+      prio: [],
+      time: 0,
+    });
+
+    this.setState({
+      schedule,
+    });
+
+    // TODO: update?
+  };
+
   changeSlotTime = (slotIndex, value) => {
     const { schedule } = this.state;
-    schedule[slotIndex].time = value;
+    if (schedule[slotIndex] === undefined) {
+      schedule[slotIndex] = {
+        prio: [],
+        time: value,
+      };
+    } else {
+      schedule[slotIndex].time = value;
+    }
 
     this.setState({
       schedule,
@@ -71,23 +92,19 @@ class Tas extends Component {
         }
 
         return (
-          <tr key={entryIndex}>
-            <td><NumberInput size="10" value={ entry.time } onChange={ (e) => this.changeSlotTime(entryIndex, e.target.value) } /></td>
+          <tr key={entryIndex} data-key={entryIndex}>
+            <td><NumberInput key={ `${entryIndex}-input` } size="10" value={ entry.time } onChange={ (e) => this.changeSlotTime(entryIndex, e.target.value) } /></td>
             { prios }
           </tr>
         );
       });
     }
 
-    // TODO: Automaticaly create new slots
-    let newPrios = Array(9).fill(<td><input type="checkbox" /></td>);
-
     return (
         <>
           { entries }
-          <tr>
-            <td><NumberInput size="10" /></td>
-            { newPrios }
+          <tr key={ entries.length } data-key={ entries.length }>
+            <td><button onClick={this.addTimeslot}>Add timeslot</button></td>
           </tr>
         </>
     );
