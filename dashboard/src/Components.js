@@ -1,9 +1,14 @@
 import styled from 'styled-components'
 
 const NumberInput = styled.input`
+  margin: 0 .5em;
   text-align: right;
   font-feature-settings: "tnum";
   font-variant-numeric: tabular-nums;
+`
+
+const TextInput = styled.input`
+  margin: 0 .5em;
 `
 
 const MenuContainer = styled.div`
@@ -39,6 +44,7 @@ const Debug = styled.div`
 
 export {
   NumberInput,
+  TextInput,
   MenuContainer,
   MenuItem,
   SubmitButton,

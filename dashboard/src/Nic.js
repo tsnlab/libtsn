@@ -2,6 +2,8 @@ import { Component } from 'react';
 import Tas from './Tas';
 import Cbs from './Cbs';
 
+import { TextInput } from './Components';
+
 class Nic extends Component {
   constructor(props) {
     super(props);
@@ -10,7 +12,7 @@ class Nic extends Component {
       config = {
         tas: {},
         cbs: {},
-        'egress-qos-map': {},  // TODO: Make this properly
+        'egress-qos-map': {},
       };
     }
     this.state = {
@@ -18,6 +20,19 @@ class Nic extends Component {
       config,
     };
   }
+
+  updateVlanId = (value) => {
+    let config = this.state.config;
+
+    config['egress-qos-map'] = {};
+    config['egress-qos-map'][value] = Object.fromEntries([...Array(8).keys()].map(x => [x, x]));
+
+    this.setState({
+      config,
+    });
+
+    this.props.update(config);
+  };
 
   updateTas = (value) => {
     let config = {...this.state.config };
@@ -51,6 +66,9 @@ class Nic extends Component {
     return (
       <div>
         <h1>{ ifname }</h1>
+        <label>VLAN id:
+          <TextInput onChange={ e => this.updateVlanId(e.target.value) } />
+        </label>
         <div className="schedulers">
           <table>
             <thead>
