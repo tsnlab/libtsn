@@ -9,6 +9,9 @@ python = "^3.8"
 fastapi = "^0.70.0"
 uvicorn = "^0.15.0"
 PyYAML = "^6.0"
+pyinotify = "^0.9.6"
+watchdog = "^2.1.6"
+watchgod = "^0.7"
 
 [tool.poetry.dev-dependencies]
 flake8 = "^4.0.1"

@@ -4,6 +4,7 @@ import os
 import re
 import socket
 
+import watchgod
 import yaml
 
 if True:
@@ -63,6 +64,54 @@ def get_info(config: dict, ifname: str = None):
     return {ifname: normalise(conf) for ifname, conf in confs.items()}
 
 
+command_map = {
+    'create': create_vlan,
+    'delete': delete_vlan,
+}
+
+
+def run_server(arguments):
+
+    print('Loading server')
+
+    config = read_config(arguments.config)
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    server.bind(arguments.bind)
+    server.listen(1)
+    pattern_socket = re.compile(r'(?P<cmd>create|delete) (?P<ifname>\w+) (?P<vlanid>\d+)')
+    pattern_info = re.compile(r'info(?: (?P<ifname>\w+))?')
+    with contextlib.ExitStack() as es:
+        def cleanup():
+            server.close()
+            os.remove(arguments.bind)
+
+        es.callback(cleanup)
+
+        try:
+            while True:
+                conn, addr = server.accept()
+                line = conn.makefile().readline()
+                print(f'line={line}')
+
+                matched1 = pattern_socket.match(line)
+                matched2 = pattern_info.match(line)
+
+                if matched1:
+                    cmd = matched1.group('cmd')
+                    ifname = matched1.group('ifname')
+                    vlanid = int(matched1.group('vlanid'))
+                    res = command_map[cmd](config, ifname, vlanid)
+                    conn.send(f'{res}'.encode())
+                elif matched2:
+                    ifname = matched2.group('ifname')
+                    conn.send(yaml.safe_dump(get_info(config, ifname), default_flow_style=None).encode())
+                else:
+                    conn.send(b'-1')
+                conn.close()
+        except KeyboardInterrupt:
+            pass
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Daemon for TSN traffic control',
@@ -87,50 +136,13 @@ def main():
 
     arguments = parser.parse_args()
 
-    command_map = {
-        'create': create_vlan,
-        'delete': delete_vlan,
-    }
-
     if arguments.command in ('create', 'delete'):
         config = read_config(arguments.config)
         return command_map[arguments.command](config, arguments.interface, arguments.vlanid)
     elif arguments.command == 'info':
         return info(arguments.interface)
 
-    config = read_config(arguments.config)
-    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    server.bind(arguments.bind)
-    server.listen(1)
-    pattern_socket = re.compile(r'(?P<cmd>create|delete) (?P<ifname>\w+) (?P<vlanid>\d+)')
-    pattern_info = re.compile(r'info(?: (?P<ifname>\w+))?')
-    with contextlib.ExitStack() as es:
-        def cleanup():
-            server.close()
-            os.remove(arguments.bind)
-
-        es.callback(cleanup)
-
-        while True:
-            conn, addr = server.accept()
-            line = conn.makefile().readline()
-            print(f'line={line}')
-
-            matched1 = pattern_socket.match(line)
-            matched2 = pattern_info.match(line)
-
-            if matched1:
-                cmd = matched1.group('cmd')
-                ifname = matched1.group('ifname')
-                vlanid = int(matched1.group('vlanid'))
-                res = command_map[cmd](config, ifname, vlanid)
-                conn.send(f'{res}'.encode())
-            elif matched2:
-                ifname = matched2.group('ifname')
-                conn.send(yaml.safe_dump(get_info(config, ifname), default_flow_style=None).encode())
-            else:
-                conn.send(b'-1')
-            conn.close()
+    watchgod.run_process(arguments.config, run_server, args=(arguments,))
 
 
 if __name__ == '__main__':
