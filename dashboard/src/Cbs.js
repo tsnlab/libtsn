@@ -59,7 +59,7 @@ class Cbs extends Component {
     const speeds = [];
     const max_frames = [];
 
-    const selects = this.available_classes.map((cls) => <option>{cls}</option>);
+    const selects = this.available_classes.map((cls) => <option key={cls}>{cls}</option>);
 
     for (let prio = -1; prio < 8; prio += 1) {
       const cbs_config = config[prio];
@@ -70,9 +70,9 @@ class Cbs extends Component {
         max_frame = cbs_config.max_frame;
       }
 
-      classes.push(<td><select value={ cls } onChange={ e => this.changeClass(prio, e.target.value) }>{ selects }</select></td>);
-      speeds.push(<td><input className="number" size="10" value={ speed } onChange={ e => this.changeSpeed(prio, e.target.value) } disabled={!cbs_config} /></td>);
-      max_frames.push(<td><input className="number" size="10" value={ max_frame } onChange={ e => this.changeMaxFrame(prio, e.target.value) } disabled={!cbs_config} /></td>)
+      classes.push(<td key={`cls-${prio}`}><select value={ cls } onChange={ e => this.changeClass(prio, e.target.value) }>{ selects }</select></td>);
+      speeds.push(<td key={`speed-${prio}`}><input className="number" size="10" value={ speed } onChange={ e => this.changeSpeed(prio, e.target.value) } disabled={!cbs_config} /></td>);
+      max_frames.push(<td key={`maxframe-${prio}`}><input className="number" size="10" value={ max_frame } onChange={ e => this.changeMaxFrame(prio, e.target.value) } disabled={!cbs_config} /></td>)
     }
 
     return (

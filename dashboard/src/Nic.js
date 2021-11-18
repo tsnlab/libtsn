@@ -42,10 +42,10 @@ class Nic extends Component {
   render() {
     const { ifname, config } = this.state;
 
-    let headers = [ <th>Option</th> ];
+    let headers = [ <th key="option">Option</th> ];
 
-    for (let i = -1; i < 8; i += 1) {
-      headers.push(<th>{i === -1 ? 'BE' : i}</th>);
+    for (let prio = -1; prio < 8; prio += 1) {
+      headers.push(<th key={prio}>{prio === -1 ? 'BE' : prio}</th>);
     }
 
     return (
@@ -54,10 +54,12 @@ class Nic extends Component {
         <div className="schedulers">
           <table>
             <thead>
-              { headers }
+              <tr>
+                { headers }
+              </tr>
             </thead>
-            <Tas data={ config.tas || {} } update={ this.updateTas } />
-            <Cbs data={ config.cbs || {} } update={ this.updateCbs } />
+            <Tas key="tas" data={ config.tas || {} } update={ this.updateTas } />
+            <Cbs key="cbs" data={ config.cbs || {} } update={ this.updateCbs } />
           </table>
         </div>
       </div>
