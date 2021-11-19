@@ -119,6 +119,48 @@ int tsn_sock_open(const char* ifname, uint16_t vlanid, uint8_t priority, uint16_
     return sock;
 }
 
+int tsn_sock_open_l3(const char* ifname, uint16_t vlanid, uint8_t priority, int domain, int type, uint16_t proto) {
+    int sock;
+    int res;
+    char vlan_ifname[16];
+
+    res = create_vlan(ifname, vlanid);
+    if (res < 0) {
+        fprintf(stderr, "Failed to create vlan interface with %s(%u)\n", ifname, vlanid);
+        return res;
+    }
+
+    sock = socket(domain, type, htons(proto));
+    if (sock < 0) {
+        return sock;
+    }
+
+    // eth0 with vlanid 5 → eth0.5
+    sprintf(vlan_ifname, "%s.%d", ifname, vlanid);
+
+    struct ifreq ifr;
+    memset(&ifr, 0, sizeof(ifr));
+    snprintf(ifr.ifr_name, sizeof(ifr.ifr_name), "%s", vlan_ifname);
+    res = setsockopt(sock, SOL_SOCKET, SO_BINDTODEVICE, (void*)&ifr, sizeof(ifr));
+    if (res < 0) {
+        perror("setsockopt");
+        return res;
+    }
+
+    uint32_t prio = priority;
+    res = setsockopt(sock, SOL_SOCKET, SO_PRIORITY, &prio, sizeof(prio));
+    if (res < 0) {
+        perror("socket option");
+        return res;
+    }
+
+    sockets[sock].fd = sock;
+    sockets[sock].ifname = strdup(ifname);
+    sockets[sock].vlanid = vlanid;
+
+    return sock;
+}
+
 int tsn_sock_close(int sock) {
     delete_vlan(sockets[sock].ifname, sockets[sock].vlanid);
     free((void*)sockets[sock].ifname);
