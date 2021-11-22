@@ -14,6 +14,22 @@ class Settings(BaseSettings):
     CONFIG_FILENAME: str = "config.yaml"
 
 
+def sanitise_dict(obj: dict) -> dict:
+    if not isinstance(obj, dict):
+        return obj
+
+    def make_integer(key):
+        try:
+            return int(key)
+        except ValueError:
+            return key
+
+    return {
+        make_integer(key): sanitise_dict(val)
+        for key, val in obj.items()
+    }
+
+
 settings = Settings()
 app = FastAPI(title='libTSN Configuration')
 api = FastAPI(title="libTSN Web API")
@@ -53,4 +69,5 @@ def read_root():
 
 @api.put('/config')
 def update_item(item: dict):
+    item = sanitise_dict(item)
     yaml.dump(item, open(settings.CONFIG_FILENAME, 'w'), default_flow_style=False)
