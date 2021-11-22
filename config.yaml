@@ -1,13 +1,17 @@
 nics:
   enp37s0:  # ifname
-    egress-qos-map:
+    vlan:
       5:  # vlan id
-        # skb prio : vlan pri
-        2: 2
-        3: 3
+        ipv4: 10.2.0.1/24  # Proper CIDR
+        maps:
+          # skb prio : vlan pri
+          2: 2
+          3: 3
       10:
-        2: 2
-        3: 3  # For perf test
+        ipv4: null  # Optional. Can be removed
+        maps:
+          2: 2
+          3: 3  # For perf test
     tas:
       txtime_delay: 500000
       schedule:

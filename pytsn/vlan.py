@@ -94,7 +94,9 @@ def create_vlan(config: dict, ifname: str, vlanid: int) -> int:
         qos_map = ' '.join(
             f'{skb_pri}:{vlan_pri}'
             for skb_pri, vlan_pri
-            in ifconf['egress-qos-map'][vlanid].items())
+            in ifconf['vlan'][vlanid]['maps'].items())
+
+        ipv4 = ifconf['vlan'].get('ipv4', None)
 
         run_cmd(
             f'ip link add link {ifname} name {name} type vlan id {vlanid} '
@@ -104,6 +106,11 @@ def create_vlan(config: dict, ifname: str, vlanid: int) -> int:
         run_cmd(
             f'ip link set up {name}'
         )
+
+        if ipv4:
+            run_cmd(
+                f'ip addr add {ipv4} dev {name}'
+            )
 
         if 'tas' in ifconf:
             setup_tas(ifname, ifconf['tas'])
