@@ -28,7 +28,7 @@ def setup_tas(ifname: str, tas: dict):
         f'queues {queues} '
         f'base-time {base_time} '
         f'{sched_entries} '
-        f'flags 0x1 '
+        f'flags 0x0 '
         f'txtime-delay {txtime_delay} '
         f'clockid CLOCK_TAI'
     )
@@ -37,7 +37,6 @@ def setup_tas(ifname: str, tas: dict):
         f'tc qdisc replace dev {ifname} parent {handle}:1 etf '
         'clockid CLOCK_TAI '
         f'delta {txtime_delay} '
-        'offload '
         'skip_sock_check'
     )
 
@@ -71,7 +70,7 @@ def setup_cbs(ifname: str, cbs: dict):
             f'sendslope {sendslope} '
             f'hicredit {hicredit} '
             f'locredit {locredit} '
-            f'offload 1'
+            f'offload 0'
         )
         # run_cmd(
         #     f'tc qdisc add dev {ifname} parent {handle}:1 etf '
