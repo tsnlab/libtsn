@@ -120,7 +120,7 @@ def normalise_cbs(ifname: str, config: dict) -> dict:
     children = {}
     try:
         linkspeed = to_bps(get_linkspeed(ifname))
-    except OSError:
+    except (OSError, subprocess.CalledProcessError):
         linkspeed = to_bps('1000Mbps')
     streams = {
         'a': [],
