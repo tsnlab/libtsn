@@ -12,27 +12,52 @@ class Nic extends Component {
       config = {
         tas: {},
         cbs: {},
-        'egress-qos-map': {},
+        vlan: {
+          ipv4: null,
+          maps: {},
+        }
       };
+    }
+
+    let vlanid, ipv4;
+    if (Object.keys(config.vlan).length > 0) {
+      vlanid = Object.keys(config.vlan)[0];
+      ipv4 = config.vlan[vlanid].ipv4;
+    } else {
+      console.log(Object.keys(config.vlan));
     }
     this.state = {
       ifname: props.ifname,
       config,
+      vlanid,
+      ipv4,
     };
   }
 
-  updateVlanId = (value) => {
-    let config = this.state.config;
+  regenerateVlan = () => {
+    const config = this.state.config;
+    const { ipv4, vlanid } = this.state;
 
-    config['egress-qos-map'] = {};
-    config['egress-qos-map'][value] = Object.fromEntries([...Array(8).keys()].map(x => [x, x]));
-
-    this.setState({
-      config,
-    });
+    config.vlan = {};
+    config.vlan[vlanid] = {
+      ipv4,
+      maps: Object.fromEntries([...Array(8).keys()].map(x => [x, x])),
+    }
 
     this.props.update(config);
+  }
+
+  updateVlanId = (value) => {
+    this.setState({
+      vlanid: value,
+    }, this.regenerateVlan);
   };
+
+  updateIpv4 = (value) => {
+    this.setState({
+      ipv4: value,
+    }, this.regenerateVlan);
+  }
 
   updateTas = (value) => {
     let config = {...this.state.config };
@@ -63,11 +88,16 @@ class Nic extends Component {
       headers.push(<th key={prio}>{prio === -1 ? 'BE' : prio}</th>);
     }
 
+    const { vlanid, ipv4 } = this.state;
+
     return (
       <div>
         <h1>{ ifname }</h1>
         <label>VLAN id:
-          <TextInput onChange={ e => this.updateVlanId(e.target.value) } />
+          <TextInput value={vlanid} onChange={ e => this.updateVlanId(e.target.value) } />
+        </label>
+        <label> IPv4:
+          <TextInput value={ipv4} onChange={ e => this.updateIpv4(e.target.value) } />
         </label>
         <div className="schedulers">
           <table>

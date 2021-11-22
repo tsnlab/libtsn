@@ -44,11 +44,8 @@ class App extends Component {
   }
 
   updateNic = (ifname, nicConfig) => {
-    console.log(ifname, nicConfig);
     const { config } = this.state;
     config.nics[ifname] = nicConfig;
-
-    console.log(config);
 
     this.setState({ config });
   }
@@ -66,7 +63,7 @@ class App extends Component {
       body: JSON.stringify(config),
     }).then(res => res.json()));
 
-    console.log(res);
+    console.debug(res);
 
     e.target.disabled = false;
   }
