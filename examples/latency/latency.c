@@ -75,8 +75,6 @@ struct arguments {
 static error_t parse_opt(int key, char* arg, struct argp_state* state) {
     struct arguments* arguments = state->input;
 
-    arguments->pkt_type = PACKET_RAW;
-
     switch (key) {
     case 'v':
         arguments->verbose = true;
@@ -150,6 +148,7 @@ int main(int argc, char** argv) {
     arguments.size = 100;
     arguments.precise = false;
     arguments.oneway = false;
+    arguments.pkt_type = PACKET_RAW;
 
     argp_parse(&argp, argc, argv, 0, 0, &arguments);
 
@@ -396,10 +395,13 @@ void do_server_l3(int sock, int size, bool oneway, bool verbose) {
         exit(1);
     }
 
+    // This is for TCP
+    /*
     if (listen(sock, 1) < 0) {
         fprintf(stderr, "Failed to listen\n");
         exit(1);
     }
+    */
 
     struct pkt_perf* payload = (struct pkt_perf*)(pkt + sizeof(struct ethhdr));
 

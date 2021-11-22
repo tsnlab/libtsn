@@ -96,7 +96,7 @@ def create_vlan(config: dict, ifname: str, vlanid: int) -> int:
             for skb_pri, vlan_pri
             in ifconf['vlan'][vlanid]['maps'].items())
 
-        ipv4 = ifconf['vlan'].get('ipv4', None)
+        ipv4 = ifconf['vlan'][vlanid].get('ipv4', None)
 
         run_cmd(
             f'ip link add link {ifname} name {name} type vlan id {vlanid} '
