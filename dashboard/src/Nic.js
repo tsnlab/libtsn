@@ -34,6 +34,14 @@ class Nic extends Component {
     };
   }
 
+  updateConfig = (config) => {
+    this.setState({
+      config,
+    });
+
+    this.props.update(config);
+  }
+
   regenerateVlan = () => {
     const config = this.state.config;
     const { ipv4, vlanid } = this.state;
@@ -44,7 +52,7 @@ class Nic extends Component {
       maps: Object.fromEntries([...Array(8).keys()].map(x => [x, x])),
     }
 
-    this.props.update(config);
+    this.updateConfig(config);
   }
 
   updateVlanId = (value) => {
@@ -62,21 +70,15 @@ class Nic extends Component {
   updateTas = (value) => {
     let config = {...this.state.config };
     config.tas = value;
-    this.setState({
-      config,
-    });
 
-    this.props.update(config);
+    this.updateConfig(config);
   };
 
   updateCbs = (value) => {
     let config = {...this.state.config };
     config.cbs = value;
-    this.setState({
-      config,
-    });
 
-    this.props.update(config);
+    this.updateConfig(config);
   };
 
   render() {

@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     CONFIG_FILENAME: str = "config.yaml"
 
 
-def sanitise_dict(obj: dict) -> dict:
+def normalise_dict(obj: dict) -> dict:
     if not isinstance(obj, dict):
         return obj
 
@@ -25,9 +25,20 @@ def sanitise_dict(obj: dict) -> dict:
             return key
 
     return {
-        make_integer(key): sanitise_dict(val)
+        make_integer(key): normalise_dict(val)
         for key, val in obj.items()
     }
+
+
+def sanitise_configs(config: dict) -> dict:
+    for nic, nicConfig in config['nics'].items():
+        if nicConfig['cbs'] == {}:
+            del nicConfig['cbs']
+
+        if nicConfig['tas']['schedule'] == []:
+            del nicConfig['tas']
+
+    return config
 
 
 settings = Settings()
@@ -69,5 +80,6 @@ def read_root():
 
 @api.put('/config')
 def update_item(item: dict):
-    item = sanitise_dict(item)
+    item = normalise_dict(item)
+    item = sanitise_configs(item)
     yaml.dump(item, open(settings.CONFIG_FILENAME, 'w'), default_flow_style=False)
