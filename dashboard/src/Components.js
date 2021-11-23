@@ -40,6 +40,18 @@ const SubmitButton = styled.button`
 
 const Debug = styled.div`
   text-align: left;
+
+  & > h3 {
+    display: inline-block;
+  }
+
+  & > button {
+    margin: 0 .5em;
+  }
+
+  & .hidden {
+    display: none;
+  }
 `
 
 export {

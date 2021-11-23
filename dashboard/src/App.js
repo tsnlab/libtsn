@@ -18,6 +18,7 @@ class App extends Component {
       config: { nics: {} },
       ifnames: [],
       currentIfname: '',
+      preview: false,
       initialised: false,
     };
   }
@@ -68,6 +69,12 @@ class App extends Component {
     e.target.disabled = false;
   }
 
+  togglePreview = () => {
+    this.setState({
+      preview: !this.state.preview,
+    });
+  };
+
   render() {
     const { config, ifnames, currentIfname } = this.state;
 
@@ -96,8 +103,8 @@ class App extends Component {
         <SubmitButton onClick={ this.onSubmit }>Save</SubmitButton>
 
         <Debug>
-          <h3>Preview</h3>
-          <pre>{ JSON.stringify(config, this.jsonFormatter, 2) }</pre>
+          <h3>Preview</h3><button onClick={this.togglePreview}>{ this.state.preview ? '➖' : '➕' }</button>
+          <pre className={this.state.preview || 'hidden'}>{ JSON.stringify(config, this.jsonFormatter, 2) }</pre>
         </Debug>
       </div>
     );
