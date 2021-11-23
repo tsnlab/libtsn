@@ -17,6 +17,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE ${PRIVATE_INCLUDE_DIRECTORIES
 target_compile_options(tsn PRIVATE -Wall -Wextra -pedantic -Werror)
 
 set(UCD_RUNTIME_NAME "tsnucd")
+set(WEBUI_RUNTIME_NAME "tsnwebui")
 
 if (CMAKE_VERSION VERSION_LESS 3.12)
     find_program(PYTHON3 "python3")
@@ -29,20 +30,34 @@ endif (CMAKE_VERSION VERSION_LESS 3.12)
 
 if (PYTHON3_FOUND)
     FILE(GLOB_RECURSE PYTSN_SRC pytsn *.py)
-    if(PYTHON3_VERSION_MINOR GREATER_EQUAL 7)
-        set(PYZIPAPP_OPT_COMPRESS "-c")
-    endif(PYTHON3_VERSION_MINOR GREATER_EQUAL 7)
+    FILE(GLOB_RECURSE WEBUI_JS_SRC dashboard *.*)
+    set(WEBUI_STATIC ${PROJECT_SOURCE_DIR}/pytsn/webui/static)
     add_custom_command(
         OUTPUT ${PROJECT_BINARY_DIR}/${UCD_RUNTIME_NAME}
-        COMMAND ${Python3_EXECUTABLE}
-        ARGS -m zipapp ${PYZIPAPP_OPT_COMPRESS} -o ${PROJECT_BINARY_DIR}/${UCD_RUNTIME_NAME} ${PROJECT_SOURCE_DIR}/pytsn -p "/usr/bin/env -S python3 -u"
+        COMMAND pyinstaller
+        ARGS -F --distpath ${PROJECT_BINARY_DIR} -n ${UCD_RUNTIME_NAME} ${PROJECT_SOURCE_DIR}/tsnucd.py
         DEPENDS ${PYTSN_SRC}
+        )
+    add_custom_command(
+        OUTPUT ${WEBUI_STATIC}
+        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/dashboard
+        COMMAND yarn
+        ARGS build
+        DEPENDS ${WEBUI_JS_SRC}
+        )
+    add_custom_command(
+        OUTPUT ${PROJECT_BINARY_DIR}/${WEBUI_RUNTIME_NAME}
+        COMMAND pyinstaller
+        ARGS -F --distpath ${PROJECT_BINARY_DIR} -n ${WEBUI_RUNTIME_NAME} --add-data ${PROJECT_SOURCE_DIR}/pytsn/webui/static:pytsn/webui/static ${PROJECT_SOURCE_DIR}/webui.py
+        DEPENDS ${PYTSN_SRC} ${WEBUI_STATIC}
         )
     add_custom_target(
         target
         ALL
-        COMMENT make ${UCD_RUNTIME_NAME} executable
-        DEPENDS ${PROJECT_BINARY_DIR}/${UCD_RUNTIME_NAME}
+        COMMENT make ${WEBUI_RUNTIME_NAME} executable
+        DEPENDS
+        ${PROJECT_BINARY_DIR}/${WEBUI_RUNTIME_NAME}
+        ${PROJECT_BINARY_DIR}/${UCD_RUNTIME_NAME}
         VERBATIM
         )
 endif(PYTHON3_FOUND)
@@ -63,6 +78,8 @@ install(
     DESTINATION include
 )
 install(
-    FILES ${PROJECT_BINARY_DIR}/${UCD_RUNTIME_NAME}
+    FILES
+    ${PROJECT_BINARY_DIR}/${UCD_RUNTIME_NAME}
+    ${PROJECT_BINARY_DIR}/${WEBUI_RUNTIME_NAME}
     DESTINATION ${CMAKE_INSTALL_PREFIX}/bin/
-)
+    )

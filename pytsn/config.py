@@ -5,13 +5,7 @@ from typing import Union
 
 import yaml
 
-if True:
-    import os
-    import sys
-
-    # Trick for run on both python and zipapp
-    sys.path.insert(0, os.path.dirname(__file__))
-    from cbs import calc_credits
+from . cbs import calc_credits
 
 modifier_map = {
     '': 1,
