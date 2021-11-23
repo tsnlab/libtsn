@@ -33,6 +33,18 @@ jobs:
         run: sudo apt install -qqy --no-install-recommends gcc cmake ninja-build
       - name: Checkout
         uses: actions/checkout@master
+      - name: Install js dependencies
+        run: yarn --cwd dashboard install
+      - name: Setup python
+        uses: actions/setup-python@v1
+        with:
+          python-version: "3.8"
+      - name: Setup poetry
+        uses: Gr1n/setup-poetry@v7
+      - name: Install python dependencies
+        run: |
+          poetry config --local virtualenvs.in-project true
+          poetry install
       - name: build
         run: |
           mkdir build && cd build
