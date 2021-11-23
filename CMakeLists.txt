@@ -34,8 +34,8 @@ if (PYTHON3_FOUND)
     set(WEBUI_STATIC ${PROJECT_SOURCE_DIR}/pytsn/webui/static)
     add_custom_command(
         OUTPUT ${PROJECT_BINARY_DIR}/${UCD_RUNTIME_NAME}
-        COMMAND pyinstaller
-        ARGS -F --distpath ${PROJECT_BINARY_DIR} -n ${UCD_RUNTIME_NAME} ${PROJECT_SOURCE_DIR}/tsnucd.py
+        COMMAND poetry
+        ARGS run pyinstaller -F --distpath ${PROJECT_BINARY_DIR} -n ${UCD_RUNTIME_NAME} ${PROJECT_SOURCE_DIR}/tsnucd.py
         DEPENDS ${PYTSN_SRC}
         )
     add_custom_command(
@@ -47,8 +47,8 @@ if (PYTHON3_FOUND)
         )
     add_custom_command(
         OUTPUT ${PROJECT_BINARY_DIR}/${WEBUI_RUNTIME_NAME}
-        COMMAND pyinstaller
-        ARGS -F --distpath ${PROJECT_BINARY_DIR} -n ${WEBUI_RUNTIME_NAME} --add-data ${PROJECT_SOURCE_DIR}/pytsn/webui/static:pytsn/webui/static ${PROJECT_SOURCE_DIR}/webui.py
+        COMMAND poetry
+        ARGS run pyinstaller -F --distpath ${PROJECT_BINARY_DIR} -n ${WEBUI_RUNTIME_NAME} --add-data ${PROJECT_SOURCE_DIR}/pytsn/webui/static:pytsn/webui/static ${PROJECT_SOURCE_DIR}/webui.py
         DEPENDS ${PYTSN_SRC} ${WEBUI_STATIC}
         )
     add_custom_target(
