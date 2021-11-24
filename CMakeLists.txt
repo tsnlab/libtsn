@@ -29,9 +29,13 @@ else ()
 endif (CMAKE_VERSION VERSION_LESS 3.12)
 
 if (PYTHON3_FOUND)
-    FILE(GLOB_RECURSE PYTSN_SRC pytsn *.py)
-    FILE(GLOB_RECURSE WEBUI_JS_SRC dashboard *.*)
-    set(WEBUI_STATIC ${PROJECT_SOURCE_DIR}/pytsn/webui/static)
+    FILE(GLOB_RECURSE PYTSN_SRC pytsn/*.py)
+    FILE(GLOB WEBUI_JS_SRC
+        dashboard/src/*
+        dashboard/public/*
+        dashboard/yarn.lock
+        )
+    set(WEBUI_STATIC ${PROJECT_SOURCE_DIR}/pytsn/webui/static/manifest.json)
     add_custom_command(
         OUTPUT ${PROJECT_BINARY_DIR}/${UCD_RUNTIME_NAME}
         COMMAND poetry
@@ -52,12 +56,19 @@ if (PYTHON3_FOUND)
         DEPENDS ${PYTSN_SRC} ${WEBUI_STATIC}
         )
     add_custom_target(
-        target
+        target_tsnucd
+        ALL
+        COMMENT make ${UCD_RUNTIME_NAME} executable
+        DEPENDS
+        ${PROJECT_BINARY_DIR}/${UCD_RUNTIME_NAME}
+        VERBATIM
+        )
+    add_custom_target(
+        target_tsnwebui
         ALL
         COMMENT make ${WEBUI_RUNTIME_NAME} executable
         DEPENDS
         ${PROJECT_BINARY_DIR}/${WEBUI_RUNTIME_NAME}
-        ${PROJECT_BINARY_DIR}/${UCD_RUNTIME_NAME}
         VERBATIM
         )
 endif(PYTHON3_FOUND)
