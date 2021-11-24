@@ -453,16 +453,18 @@ void do_server_udp(int sock, int size, bool oneway, bool verbose) {
         sendto(sock, pkt, recv_bytes, 0, (struct sockaddr*)&cli_addr, cli_addr_size);
 
         if (oneway) {
-            char src_ip[INET_ADDRSTRLEN], dst_ip[INET_ADDRSTRLEN];
+            char src_ip[INET_ADDRSTRLEN];
             inet_ntop(AF_INET, &cli_addr.sin_addr, src_ip, INET_ADDRSTRLEN);
             tstart.tv_sec = ntohl(payload->tv_sec);
             tstart.tv_nsec = ntohl(payload->tv_nsec);
             tsn_timespec_diff(&tstart, &tend, &tdiff);
-            printf("%08x %s %s %lu.%09lu → %lu.%09lu %ld.%09lu\n", ntohl(payload->id), src_ip, dst_ip, tstart.tv_sec,
+            printf("%08x %s %lu.%09lu → %lu.%09lu %ld.%09lu\n", ntohl(payload->id), src_ip, tstart.tv_sec,
                    tstart.tv_nsec, tend.tv_sec, tend.tv_nsec, tdiff.tv_sec, tdiff.tv_nsec);
             fflush(stdout);
         }
     }
+
+    close(sock);
 }
 
 void do_client_udp(int sock, char* iface, int size, char* target, int count, bool precise, bool oneway) {
@@ -615,7 +617,7 @@ void do_server_tcp(int sock, int size, bool oneway, bool verbose) {
 
         do {
             size_t recv_bytes = recv(cli_sock, pkt, size, 0);
-            if (recv_bytes < 0) {
+            if (recv_bytes <= 0) {
                 break;
             }
 
@@ -635,17 +637,18 @@ void do_server_tcp(int sock, int size, bool oneway, bool verbose) {
             send(cli_sock, pkt, recv_bytes, 0);
 
             if (oneway) {
-                char src_ip[INET_ADDRSTRLEN], dst_ip[INET_ADDRSTRLEN];
+                char src_ip[INET_ADDRSTRLEN];
                 inet_ntop(AF_INET, &cli_addr.sin_addr, src_ip, INET_ADDRSTRLEN);
                 tstart.tv_sec = ntohl(payload->tv_sec);
                 tstart.tv_nsec = ntohl(payload->tv_nsec);
                 tsn_timespec_diff(&tstart, &tend, &tdiff);
-                printf("%08x %s %s %lu.%09lu → %lu.%09lu %ld.%09lu\n", ntohl(payload->id), src_ip, dst_ip,
-                       tstart.tv_sec, tstart.tv_nsec, tend.tv_sec, tend.tv_nsec, tdiff.tv_sec, tdiff.tv_nsec);
+                printf("%08x %s %lu.%09lu → %lu.%09lu %ld.%09lu\n", ntohl(payload->id), src_ip, tstart.tv_sec,
+                       tstart.tv_nsec, tend.tv_sec, tend.tv_nsec, tdiff.tv_sec, tdiff.tv_nsec);
                 fflush(stdout);
             }
         } while (running);
 
+        fprintf(stderr, "Cli socket Closed\n");
         close(cli_sock);
     }
 }
