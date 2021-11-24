@@ -408,7 +408,7 @@ void do_server_udp(int sock, int size, bool oneway, bool verbose) {
         exit(1);
     }
 
-    struct pkt_perf* payload = (struct pkt_perf*)(pkt + sizeof(struct ethhdr));
+    struct pkt_perf* payload = (struct pkt_perf*)pkt;
 
     struct timespec tstart, tend, tdiff;
 
@@ -480,7 +480,7 @@ void do_client_udp(int sock, char* iface, int size, char* target, int count, boo
         return;
     }
 
-    struct pkt_perf* payload = (struct pkt_perf*)(pkt + sizeof(struct ethhdr));
+    struct pkt_perf* payload = (struct pkt_perf*)pkt;
 
     struct timespec tstart, tend, tdiff;
     struct timespec request, error_gettime, error_nanosleep;
@@ -581,7 +581,7 @@ void do_server_tcp(int sock, int size, bool oneway, bool verbose) {
         exit(1);
     }
 
-    struct pkt_perf* payload = (struct pkt_perf*)(pkt + sizeof(struct ethhdr));
+    struct pkt_perf* payload = (struct pkt_perf*)pkt;
 
     struct timespec tstart, tend, tdiff;
 
@@ -666,7 +666,7 @@ void do_client_tcp(int sock, char* iface, int size, char* target, int count, boo
         return;
     }
 
-    struct pkt_perf* payload = (struct pkt_perf*)(pkt + sizeof(struct ethhdr));
+    struct pkt_perf* payload = (struct pkt_perf*)pkt;
 
     struct timespec tstart, tend, tdiff;
     struct timespec request, error_gettime, error_nanosleep;
