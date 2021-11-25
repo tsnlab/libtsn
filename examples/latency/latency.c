@@ -193,6 +193,7 @@ int main(int argc, char** argv) {
     }
 
     signal(SIGINT, sigint);
+    signal(SIGTERM, sigint);
 
     if (arguments.mode == RUN_SERVER) {
         if (arguments.pkt_type == PACKET_RAW) {
@@ -437,7 +438,9 @@ void do_server_udp(int sock, int size, bool oneway, bool verbose) {
         cli_addr_size = sizeof(cli_addr);
         size_t recv_bytes = recvfrom(sock, pkt, size, 0, (struct sockaddr*)&cli_addr, &cli_addr_size);
 
-        if (oneway) {
+        if (!oneway) {
+            sendto(sock, pkt, recv_bytes, 0, (struct sockaddr*)&cli_addr, cli_addr_size);
+        } else {
             clock_gettime(CLOCK_REALTIME, &tend);
             for (cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
                 int level = cmsg->cmsg_level;
@@ -448,11 +451,7 @@ void do_server_udp(int sock, int size, bool oneway, bool verbose) {
                     memcpy(&tend, CMSG_DATA(cmsg), sizeof(tend));
                 }
             }
-        }
 
-        sendto(sock, pkt, recv_bytes, 0, (struct sockaddr*)&cli_addr, cli_addr_size);
-
-        if (oneway) {
             char src_ip[INET_ADDRSTRLEN];
             inet_ntop(AF_INET, &cli_addr.sin_addr, src_ip, INET_ADDRSTRLEN);
             tstart.tv_sec = ntohl(payload->tv_sec);
@@ -621,7 +620,9 @@ void do_server_tcp(int sock, int size, bool oneway, bool verbose) {
                 break;
             }
 
-            if (oneway) {
+            if (!oneway) {
+                send(cli_sock, pkt, recv_bytes, 0);
+            } else {
                 clock_gettime(CLOCK_REALTIME, &tend);
                 for (cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
                     int level = cmsg->cmsg_level;
@@ -632,11 +633,7 @@ void do_server_tcp(int sock, int size, bool oneway, bool verbose) {
                         memcpy(&tend, CMSG_DATA(cmsg), sizeof(tend));
                     }
                 }
-            }
 
-            send(cli_sock, pkt, recv_bytes, 0);
-
-            if (oneway) {
                 char src_ip[INET_ADDRSTRLEN];
                 inet_ntop(AF_INET, &cli_addr.sin_addr, src_ip, INET_ADDRSTRLEN);
                 tstart.tv_sec = ntohl(payload->tv_sec);
