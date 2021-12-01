@@ -52,6 +52,7 @@ struct pkt_perf {
 } __attribute__((packed));
 
 #define PERF_HDR_SIZE ((32 + 8) / 8)
+#define PERF_HDR_REQ_SIZE ((32 + 8 + 16) / 8)
 #define PERF_RESULT_SIZE (PERF_HDR_SIZE + sizeof(struct pkt_perf_result))
 
 enum perf_opcode {
@@ -284,6 +285,7 @@ void do_server(int sock, int size, bool verbose) {
 
             stats.start = tstart;
             stats.pkt_count = 0;
+            stats.duration = ntohs(payload->duration);
             stats.total_bytes = 0;
             stats.running = true;
             pthread_create(&thread, NULL, statistics_thread, &stats);
@@ -444,7 +446,8 @@ void do_client(int sock, char* iface, int size, char* target, int time) {
 
     bool succeed;
     do {
-        send_perf(src_mac, dst_mac, custom_id, PERF_REQ_START, pkt, sizeof(struct ethhdr) + PERF_HDR_SIZE);
+        payload->duration = htons(time);
+        send_perf(src_mac, dst_mac, custom_id, PERF_REQ_START, pkt, sizeof(struct ethhdr) + PERF_HDR_REQ_SIZE);
         succeed = recv_perf(custom_id, PERF_RES_START, pkt, size);
     } while (!succeed);
 
@@ -512,8 +515,9 @@ void do_client_udp(int sock, char* iface, int size, char* target, int time) {
     size_t recv_size;
     do {
         payload->op = PERF_REQ_START;
+        payload->duration = htons(time);
         payload->id = htonl(custom_id);
-        sendto(sock, pkt, PERF_HDR_SIZE, 0, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
+        sendto(sock, pkt, PERF_HDR_REQ_SIZE, 0, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
         recv_size = recvfrom(sock, pkt, size, 0, NULL, NULL);
     } while (recv_size <= 0 || payload->op != PERF_RES_START);
 
@@ -576,6 +580,8 @@ void* statistics_thread(void* arg) {
         clock_gettime(CLOCK_MONOTONIC, &tnow);
         tsn_timespec_diff(&tlast, &tnow, &tdiff);
         if (tdiff.tv_sec >= stats->duration) {
+            fprintf(stderr, "%ld >= %d\n", tdiff.tv_sec, stats->duration);
+            fprintf(stderr, "Stopping statistics thread\n");
             stats->running = false;
             break;
         }
