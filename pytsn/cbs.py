@@ -20,7 +20,7 @@ def calc_credits(streams: Dict[str, Iterable[dict]], linkspeed) -> Tuple[Credit,
     max_frame_a = sum(stream['max_frame'] for stream in streams['a'])
     hicredit_a = math.ceil(idle_slope_a * max_frame_a / linkspeed)
     locredit_a = math.ceil(send_slope_a * max_frame_a / linkspeed)
-    credits_a = make_credit(send_slope_a, idle_slope_a, hicredit_a, locredit_a)
+    credits_a = make_credit(send_slope_a // 1000, idle_slope_a // 1000, hicredit_a, locredit_a)
 
     idle_slope_b = sum(stream['bandwidth'] for stream in streams['b'])
     max_frame_b = sum(stream['max_frame'] for stream in streams['b'])
@@ -31,6 +31,6 @@ def calc_credits(streams: Dict[str, Iterable[dict]], linkspeed) -> Tuple[Credit,
          (max_frame_a / linkspeed)
          ))
     locredit_b = math.ceil(send_slope_b * max_frame_b / linkspeed)
-    credits_b = make_credit(send_slope_b, idle_slope_b, hicredit_b, locredit_b)
+    credits_b = make_credit(send_slope_b // 1000, idle_slope_b // 1000, hicredit_b, locredit_b)
 
     return credits_a, credits_b
