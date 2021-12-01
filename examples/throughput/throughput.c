@@ -45,6 +45,7 @@ struct pkt_perf {
     uint8_t op;
     union {
         struct pkt_perf_result result;
+        uint16_t duration; // seconds. for REQ_START, RES_START
         uint8_t data[0];
     };
 } __attribute__((packed));
@@ -64,6 +65,8 @@ enum perf_opcode {
 
 struct stastics {
     struct timespec start;
+    uint16_t duration;
+
     uint64_t pkt_count;
     uint64_t total_bytes;
     uint32_t last_id;
@@ -370,6 +373,10 @@ void* statistics_thread(void* arg) {
     while (stats->running) {
         clock_gettime(CLOCK_MONOTONIC, &tnow);
         tsn_timespec_diff(&tlast, &tnow, &tdiff);
+        if (tdiff.tv_sec >= stats->duration) {
+            break;
+        }
+
         if (tdiff.tv_sec >= 1) {
             tlast = tnow;
             tsn_timespec_diff(&stats->start, &tnow, &tdiff);
