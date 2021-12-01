@@ -272,6 +272,11 @@ void do_server(int sock, int size, bool oneway, bool verbose) {
             }
         }
 
+        if (payload->tv_sec == 0) {
+            // weird packet, ignore
+            continue;
+        }
+
         uint8_t tmpmac[ETHER_ADDR_LEN];
         memcpy(tmpmac, ethhdr->h_dest, ETHER_ADDR_LEN);
         memcpy(ethhdr->h_dest, ethhdr->h_source, ETHER_ADDR_LEN);
@@ -618,6 +623,16 @@ void do_server_tcp(int sock, int size, bool oneway, bool verbose) {
             size_t recv_bytes = recv(cli_sock, pkt, size, 0);
             if (recv_bytes <= 0) {
                 break;
+            }
+
+            if (recv_bytes < sizeof(struct pkt_perf)) {
+                fprintf(stderr, "Received invalid packet\n");
+                continue;
+            }
+
+            if (payload->tv_sec == 0) {
+                fprintf(stderr, "Received invalid packet\n");
+                continue;
             }
 
             if (!oneway) {
