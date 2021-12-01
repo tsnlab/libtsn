@@ -44,15 +44,16 @@ struct pkt_perf_result {
 struct pkt_perf {
     uint32_t id;
     uint8_t op;
+    uint32_t pkt_size; // total size of packet
     union {
-        struct pkt_perf_result result;
         uint16_t duration; // seconds. for REQ_START, RES_START
+        struct pkt_perf_result result;
         uint8_t data[0];
     };
 } __attribute__((packed));
 
-#define PERF_HDR_SIZE ((32 + 8) / 8)
-#define PERF_HDR_REQ_SIZE ((32 + 8 + 16) / 8)
+#define PERF_HDR_SIZE ((32 + 8 + 32) / 8)
+#define PERF_HDR_REQ_SIZE ((32 + 8 + 32 + 16) / 8)
 #define PERF_RESULT_SIZE (PERF_HDR_SIZE + sizeof(struct pkt_perf_result))
 
 enum perf_opcode {
@@ -165,6 +166,8 @@ bool send_perf_udp(const uint8_t* src, const uint8_t* dst, uint32_t id, uint8_t 
 bool recv_perf(uint32_t id, uint8_t op, uint8_t* pkt, size_t size);
 bool recv_perf_tcp(uint32_t id, uint8_t op, uint8_t* pkt, size_t size);
 bool recv_perf_udp(uint32_t id, uint8_t op, uint8_t* pkt, size_t size);
+
+size_t recv_tcp(int sock, uint8_t* buf, size_t size);
 
 bool strtomac(uint8_t* mac, const char* str);
 
@@ -363,7 +366,6 @@ void do_server_udp(int sock, int size, bool verbose) {
         switch (payload->op) {
         case PERF_REQ_START:
             id = ntohl(payload->id);
-            fprintf(stderr, "Received start %08x\n", id);
             clock_gettime(CLOCK_MONOTONIC, &tstart);
 
             stats.start = tstart;
@@ -371,6 +373,7 @@ void do_server_udp(int sock, int size, bool verbose) {
             stats.pkt_count = 0;
             stats.total_bytes = 0;
             stats.running = true;
+            fprintf(stderr, "Received start %08x for %d seconds\n", id, stats.duration);
             pthread_create(&thread, NULL, statistics_thread, &stats);
 
             // TODO: Check already have instance
@@ -456,10 +459,7 @@ void do_server_tcp(int sock, int size, bool verbose) {
             continue;
         }
 
-        size_t recv_bytes = recv(cli_sock, pkt, size, 0);
-        if (recv_bytes < 0) {
-            break;
-        }
+        size_t recv_bytes = recv_tcp(cli_sock, pkt, size);
 
         if (payload->op != PERF_REQ_START) {
             fprintf(stderr, "Received invalid op %d\n", payload->op);
@@ -467,7 +467,6 @@ void do_server_tcp(int sock, int size, bool verbose) {
         }
 
         id = ntohl(payload->id);
-        fprintf(stderr, "Received start %08x\n", id);
         clock_gettime(CLOCK_MONOTONIC, &tstart);
 
         stats.start = tstart;
@@ -475,13 +474,14 @@ void do_server_tcp(int sock, int size, bool verbose) {
         stats.pkt_count = 0;
         stats.total_bytes = 0;
         stats.running = true;
+        fprintf(stderr, "Received start %08x for %d seconds\n", id, stats.duration);
         pthread_create(&thread, NULL, statistics_thread, &stats);
 
         payload->op = PERF_RES_START;
         send(cli_sock, pkt, recv_bytes, 0);
 
         do {
-            recv_bytes = recv(cli_sock, pkt, size, 0);
+            recv_bytes = recv_tcp(cli_sock, pkt, size);
             switch (payload->op) {
             case PERF_DATA:
                 stats.pkt_count += 1;
@@ -503,7 +503,7 @@ void do_server_tcp(int sock, int size, bool verbose) {
             }
         } while (running && stats.running);
 
-        recv_bytes = recv(cli_sock, pkt, size, 0);
+        recv_bytes = recv_tcp(cli_sock, pkt, size);
         if (recv_bytes > 0 && payload->op == PERF_REQ_RESULT) {
             tsn_timespec_diff(&tstart, &tend, &tdiff);
             id = ntohl(payload->id);
@@ -712,9 +712,10 @@ void do_client_tcp(int sock, char* iface, int size, char* target, int time) {
 
     size_t recv_size;
     do {
-        payload->op = PERF_REQ_START;
-        payload->duration = htons(time);
         payload->id = htonl(custom_id);
+        payload->op = PERF_REQ_START;
+        payload->pkt_size = htonl(PERF_HDR_REQ_SIZE);
+        payload->duration = htons(time);
         send(sock, pkt, PERF_HDR_REQ_SIZE, 0);
         recv_size = recv(sock, pkt, size, 0);
     } while (recv_size <= 0 || payload->op != PERF_RES_START);
@@ -728,6 +729,7 @@ void do_client_tcp(int sock, char* iface, int size, char* target, int time) {
     do {
         payload->op = PERF_DATA;
         payload->id = htonl(sent_id++);
+        payload->pkt_size = htonl(size);
         int sent = send(sock, pkt, size, 0);
 
         clock_gettime(CLOCK_MONOTONIC, &tend);
@@ -737,29 +739,28 @@ void do_client_tcp(int sock, char* iface, int size, char* target, int time) {
     fprintf(stderr, "Done\n");
     payload->op = PERF_REQ_END;
     payload->id = htonl(custom_id);
+    payload->pkt_size = htonl(PERF_HDR_SIZE);
     send(sock, pkt, PERF_HDR_SIZE, 0);
-    do {
-        recv_size = recv(sock, pkt, size, 0);
-    } while (recv_size <= 0 || payload->op != PERF_RES_END);
+    recv_size = recv(sock, pkt, size, 0);
 
     // Get result
     payload->op = PERF_REQ_RESULT;
     payload->id = htonl(custom_id);
+    payload->pkt_size = htonl(PERF_HDR_REQ_SIZE);
     send(sock, pkt, PERF_HDR_SIZE, 0);
-    do {
-        recv_size = recv(sock, pkt, size, 0);
-    } while (recv_size <= 0 || payload->op != PERF_RES_RESULT);
-
-    struct pkt_perf_result* result = &payload->result;
-    uint64_t pkt_count = ntohll(result->pkt_count);
-    uint64_t pkt_size = ntohll(result->pkt_size);
-    uint64_t pps = pkt_count / result->elapsed.tv_sec;
-    uint64_t bps = pkt_size / result->elapsed.tv_sec * 8;
-    double loss_rate = (double)(sent_id - pkt_count) / sent_id;
-    printf("Elapsed %lu.%09lu s\n", result->elapsed.tv_sec, result->elapsed.tv_nsec);
-    printf("Recieved %'lu pkts, %'lu bytes\n", pkt_count, pkt_size);
-    printf("Sent %u pkts, Loss %.3f%%\n", sent_id, loss_rate * 100);
-    printf("Result %'lu pps, %'lu bps\n", pps, bps);
+    recv_size = recv(sock, pkt, size, 0);
+    if (recv_size > 0 && payload->op == PERF_RES_RESULT) {
+        struct pkt_perf_result* result = &payload->result;
+        uint64_t pkt_count = ntohll(result->pkt_count);
+        uint64_t pkt_size = ntohll(result->pkt_size);
+        uint64_t pps = pkt_count / result->elapsed.tv_sec;
+        uint64_t bps = pkt_size / result->elapsed.tv_sec * 8;
+        double loss_rate = (double)(sent_id - pkt_count) / sent_id;
+        printf("Elapsed %lu.%09lu s\n", result->elapsed.tv_sec, result->elapsed.tv_nsec);
+        printf("Recieved %'lu pkts, %'lu bytes\n", pkt_count, pkt_size);
+        printf("Sent %u pkts, Loss %.3f%%\n", sent_id, loss_rate * 100);
+        printf("Result %'lu pps, %'lu bps\n", pps, bps);
+    }
 }
 
 void* statistics_thread(void* arg) {
@@ -871,6 +872,21 @@ bool recv_perf(uint32_t id, uint8_t op, uint8_t* pkt, size_t size) {
             received = true;
         }
     } while (!received && running);
+
+    return received;
+}
+
+size_t recv_tcp(int sock, uint8_t* buf, size_t size) {
+    struct pkt_perf* payload = (struct pkt_perf*)buf;
+    size_t received = recv(sock, buf, PERF_HDR_SIZE, 0);
+    size_t pkt_size = ntohl(payload->pkt_size);
+    while (received < pkt_size) {
+        size_t len = recv(sock, buf + received, pkt_size - received, 0);
+        if (len <= 0) {
+            break;
+        }
+        received += len;
+    }
 
     return received;
 }
