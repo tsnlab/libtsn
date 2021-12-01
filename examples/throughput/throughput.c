@@ -224,8 +224,8 @@ int main(int argc, char** argv) {
     case RUN_SERVER:
         if (arguments.pkt_type == PACKET_RAW) {
             do_server(sock, arguments.size, arguments.verbose);
-            // } else if (arguments.pkt_type == PACKET_TCP) {
-            //     do_server_tcp(sock, arguments.size, arguments.verbose);
+        } else if (arguments.pkt_type == PACKET_TCP) {
+            do_server_tcp(sock, arguments.size, arguments.verbose);
         } else if (arguments.pkt_type == PACKET_UDP) {
             do_server_udp(sock, arguments.size, arguments.verbose);
         }
@@ -233,8 +233,8 @@ int main(int argc, char** argv) {
     case RUN_CLIENT:
         if (arguments.pkt_type == PACKET_RAW) {
             do_client(sock, arguments.iface, arguments.size, arguments.target, arguments.time);
-            // } else if (arguments.pkt_type == PACKET_TCP) {
-            //     do_client_tcp(sock, arguments.iface, arguments.size, arguments.target, arguments.time);
+        } else if (arguments.pkt_type == PACKET_TCP) {
+            do_client_tcp(sock, arguments.iface, arguments.size, arguments.target, arguments.time);
         } else if (arguments.pkt_type == PACKET_UDP) {
             do_client_udp(sock, arguments.iface, arguments.size, arguments.target, arguments.time);
         }
@@ -409,6 +409,119 @@ void do_server_udp(int sock, int size, bool verbose) {
     }
 }
 
+void do_server_tcp(int sock, int size, bool verbose) {
+    uint8_t* pkt = malloc(size);
+    if (pkt == NULL) {
+        fprintf(stderr, "Failed to malloc pkt\n");
+        exit(1);
+    }
+
+    struct pkt_perf* payload = (struct pkt_perf*)pkt;
+
+    struct timespec tstart, tend, tdiff;
+
+    pthread_t thread;
+    struct stastics stats;
+
+    fprintf(stderr, "Starting server\n");
+
+    struct sockaddr_in addr;
+
+    bzero(&addr, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    addr.sin_port = htons(PORT_PERF);
+
+    if (bind(sock, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+        fprintf(stderr, "Failed to bind\n");
+        exit(1);
+    }
+
+    if (listen(sock, 1) < 0) {
+        fprintf(stderr, "Failed to listen\n");
+        exit(1);
+    }
+
+    while (running) {
+        uint32_t id;
+
+        struct sockaddr_in cli_addr;
+        socklen_t cli_addr_size;
+        cli_addr_size = sizeof(cli_addr);
+
+        int cli_sock = accept(sock, (struct sockaddr*)&cli_addr, &cli_addr_size);
+
+        if (cli_sock < 0) {
+            perror("Failed to accept");
+            continue;
+        }
+
+        size_t recv_bytes = recv(cli_sock, pkt, size, 0);
+        if (recv_bytes < 0) {
+            break;
+        }
+
+        if (payload->op != PERF_REQ_START) {
+            fprintf(stderr, "Received invalid op %d\n", payload->op);
+            break;
+        }
+
+        id = ntohl(payload->id);
+        fprintf(stderr, "Received start %08x\n", id);
+        clock_gettime(CLOCK_MONOTONIC, &tstart);
+
+        stats.start = tstart;
+        stats.duration = ntohs(payload->duration);
+        stats.pkt_count = 0;
+        stats.total_bytes = 0;
+        stats.running = true;
+        pthread_create(&thread, NULL, statistics_thread, &stats);
+
+        payload->op = PERF_RES_START;
+        send(cli_sock, pkt, recv_bytes, 0);
+
+        do {
+            recv_bytes = recv(cli_sock, pkt, size, 0);
+            switch (payload->op) {
+            case PERF_DATA:
+                stats.pkt_count += 1;
+                // 4 for hidden vlan header, 14 for ethernet header, 20 for ip header, 20 for tcp header
+                stats.total_bytes += recv_bytes + 4 + 14 + 20 + 20;
+                stats.last_id = ntohl(payload->id);
+                break;
+            case PERF_REQ_END:
+                clock_gettime(CLOCK_MONOTONIC, &tend);
+                fprintf(stderr, "Received end %08x\n", id);
+
+                stats.running = false;
+                pthread_join(thread, NULL);
+
+                id = ntohl(payload->id);
+                payload->op = PERF_RES_END;
+                sendto(sock, pkt, recv_bytes, 0, (struct sockaddr*)&cli_addr, cli_addr_size);
+                break;
+            }
+        } while (running && stats.running);
+
+        recv_bytes = recv(cli_sock, pkt, size, 0);
+        if (recv_bytes > 0 && payload->op == PERF_REQ_RESULT) {
+            tsn_timespec_diff(&tstart, &tend, &tdiff);
+            id = ntohl(payload->id);
+            payload->op = PERF_RES_RESULT;
+            struct pkt_perf_result* result = &payload->result;
+            result->elapsed = tdiff;
+            result->pkt_count = htonll(stats.pkt_count);
+            result->pkt_size = htonll(stats.total_bytes);
+
+            sendto(sock, pkt, PERF_RESULT_SIZE, 0, (struct sockaddr*)&cli_addr, cli_addr_size);
+            break;
+        }
+
+        fprintf(stderr, "Cli socket Closed\n");
+        close(cli_sock);
+    }
+}
+
 void do_client(int sock, char* iface, int size, char* target, int time) {
     uint8_t* pkt = malloc(size);
     if (pkt == NULL) {
@@ -550,6 +663,91 @@ void do_client_udp(int sock, char* iface, int size, char* target, int time) {
     sendto(sock, pkt, PERF_HDR_SIZE, 0, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
     do {
         recv_size = recvfrom(sock, pkt, size, 0, NULL, NULL);
+    } while (recv_size <= 0 || payload->op != PERF_RES_RESULT);
+
+    struct pkt_perf_result* result = &payload->result;
+    uint64_t pkt_count = ntohll(result->pkt_count);
+    uint64_t pkt_size = ntohll(result->pkt_size);
+    uint64_t pps = pkt_count / result->elapsed.tv_sec;
+    uint64_t bps = pkt_size / result->elapsed.tv_sec * 8;
+    double loss_rate = (double)(sent_id - pkt_count) / sent_id;
+    printf("Elapsed %lu.%09lu s\n", result->elapsed.tv_sec, result->elapsed.tv_nsec);
+    printf("Recieved %'lu pkts, %'lu bytes\n", pkt_count, pkt_size);
+    printf("Sent %u pkts, Loss %.3f%%\n", sent_id, loss_rate * 100);
+    printf("Result %'lu pps, %'lu bps\n", pps, bps);
+}
+
+void do_client_tcp(int sock, char* iface, int size, char* target, int time) {
+    uint8_t* pkt = malloc(size);
+    if (pkt == NULL) {
+        fprintf(stderr, "Failed to malloc pkt\n");
+        exit(1);
+    }
+
+    struct timeval timeout = {TIMEOUT_SEC, 0};
+    if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
+        perror("Set socket timeout");
+        return;
+    }
+
+    struct pkt_perf* payload = (struct pkt_perf*)pkt;
+
+    struct sockaddr_in serv_addr;
+    socklen_t serv_addr_size;
+    memset(&serv_addr, 0, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_addr.s_addr = inet_addr(target);
+    serv_addr.sin_port = htons(PORT_PERF);
+
+    if (connect(sock, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
+        perror("Failed to connect");
+        return;
+    }
+
+    struct timespec tstart, tend, tdiff;
+
+    fprintf(stderr, "Starting client to %s\n", target);
+
+    const uint32_t custom_id = 0xdeadbeef; // TODO: randomise?
+
+    size_t recv_size;
+    do {
+        payload->op = PERF_REQ_START;
+        payload->duration = htons(time);
+        payload->id = htonl(custom_id);
+        send(sock, pkt, PERF_HDR_REQ_SIZE, 0);
+        recv_size = recv(sock, pkt, size, 0);
+    } while (recv_size <= 0 || payload->op != PERF_RES_START);
+
+    // Now fire!
+
+    fprintf(stderr, "Fire\n");
+    clock_gettime(CLOCK_MONOTONIC, &tstart);
+
+    int sent_id = 1; // 1 based to calculate loss rate
+    do {
+        payload->op = PERF_DATA;
+        payload->id = htonl(sent_id++);
+        int sent = send(sock, pkt, size, 0);
+
+        clock_gettime(CLOCK_MONOTONIC, &tend);
+        tsn_timespec_diff(&tstart, &tend, &tdiff);
+    } while (running && tdiff.tv_sec < time);
+
+    fprintf(stderr, "Done\n");
+    payload->op = PERF_REQ_END;
+    payload->id = htonl(custom_id);
+    send(sock, pkt, PERF_HDR_SIZE, 0);
+    do {
+        recv_size = recv(sock, pkt, size, 0);
+    } while (recv_size <= 0 || payload->op != PERF_RES_END);
+
+    // Get result
+    payload->op = PERF_REQ_RESULT;
+    payload->id = htonl(custom_id);
+    send(sock, pkt, PERF_HDR_SIZE, 0);
+    do {
+        recv_size = recv(sock, pkt, size, 0);
     } while (recv_size <= 0 || payload->op != PERF_RES_RESULT);
 
     struct pkt_perf_result* result = &payload->result;
