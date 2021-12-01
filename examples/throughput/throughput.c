@@ -31,6 +31,7 @@
 #define VLAN_ID_PERF 10
 #define VLAN_PRI_PERF 3
 #define ETHERTYPE_PERF 0x1337
+#define PORT_PERF 0x1337
 
 #define TIMEOUT_SEC 1
 
@@ -80,8 +81,9 @@ static struct argp_option options[] = {
     {"verbose", 'v', 0, 0, "Produce verbose output"},
     {"interface", 'i', "IFACE", 0, "Interface name to use"},
     {"server", 's', 0, 0, "Server mode"},
-    {"client", 'c', 0, 0, "Client mode"},
-    {"target", 't', "TARGET", 0, "Target MAC addr"},
+    {"client", 'c', "TARGET", 0, "Client mode"},
+    {"tcp", 't', 0, 0, "Use TCP/IPv4"},
+    {"udp", 'u', 0, 0, "Use UDP/IPv4"},
     {"time", 'T', "SECONDS", 0, "Run time"},
     {"size", 'p', "BYTES", 0, "Packet size in bytes"},
     {0},
@@ -92,6 +94,12 @@ enum run_mode {
     RUN_CLIENT,
 };
 
+enum packet_type {
+    PACKET_RAW = 1,
+    PACKET_TCP,
+    PACKET_UDP,
+};
+
 struct arguments {
     bool verbose;
     char* iface;
@@ -99,6 +107,7 @@ struct arguments {
     char* target;
     int time;
     int size;
+    int pkt_type;
 };
 
 static error_t parse_opt(int key, char* arg, struct argp_state* state) {
@@ -116,9 +125,13 @@ static error_t parse_opt(int key, char* arg, struct argp_state* state) {
         break;
     case 'c':
         arguments->mode = RUN_CLIENT;
+        arguments->target = arg;
         break;
     case 't':
-        arguments->target = arg;
+        arguments->pkt_type = PACKET_TCP;
+        break;
+    case 'u':
+        arguments->pkt_type = PACKET_UDP;
         break;
     case 'T':
         arguments->time = atoi(arg);
@@ -139,10 +152,18 @@ static error_t parse_opt(int key, char* arg, struct argp_state* state) {
 static struct argp argp = {options, parse_opt, args_doc, doc};
 
 void do_server(int sock, int size, bool verbose);
+void do_server_tcp(int sock, int size, bool verbose);
+void do_server_udp(int sock, int size, bool verbose);
 void do_client(int sock, char* iface, int size, char* target, int time);
+void do_client_tcp(int sock, char* iface, int size, char* target, int time);
+void do_client_udp(int sock, char* iface, int size, char* target, int time);
 void* statistics_thread(void* arg);
 bool send_perf(const uint8_t* src, const uint8_t* dst, uint32_t id, uint8_t op, uint8_t* pkt, size_t size);
+bool send_perf_tcp(const uint8_t* src, const uint8_t* dst, uint32_t id, uint8_t op, uint8_t* pkt, size_t size);
+bool send_perf_udp(const uint8_t* src, const uint8_t* dst, uint32_t id, uint8_t op, uint8_t* pkt, size_t size);
 bool recv_perf(uint32_t id, uint8_t op, uint8_t* pkt, size_t size);
+bool recv_perf_tcp(uint32_t id, uint8_t op, uint8_t* pkt, size_t size);
+bool recv_perf_udp(uint32_t id, uint8_t op, uint8_t* pkt, size_t size);
 
 bool strtomac(uint8_t* mac, const char* str);
 
@@ -165,6 +186,7 @@ int main(int argc, char** argv) {
     arguments.target = NULL;
     arguments.time = 120;
     arguments.size = 100;
+    arguments.pkt_type = PACKET_RAW;
 
     argp_parse(&argp, argc, argv, 0, 0, &arguments);
 
@@ -178,14 +200,17 @@ int main(int argc, char** argv) {
         exit(1);
     }
 
-    if (arguments.mode == RUN_CLIENT) {
-        if (arguments.target == NULL) {
-            fprintf(stderr, "Need target\n");
-            exit(1);
-        }
+    switch (arguments.pkt_type) {
+    case PACKET_RAW:
+        sock = tsn_sock_open(arguments.iface, VLAN_ID_PERF, VLAN_PRI_PERF, ETHERTYPE_PERF);
+        break;
+    case PACKET_UDP:
+        sock = tsn_sock_open_l3(arguments.iface, VLAN_ID_PERF, VLAN_PRI_PERF, AF_INET, SOCK_DGRAM, 0);
+        break;
+    case PACKET_TCP:
+        sock = tsn_sock_open_l3(arguments.iface, VLAN_ID_PERF, VLAN_PRI_PERF, AF_INET, SOCK_STREAM, 0);
+        break;
     }
-
-    sock = tsn_sock_open(arguments.iface, VLAN_ID_PERF, VLAN_PRI_PERF, ETHERTYPE_PERF);
 
     if (sock <= 0) {
         perror("socket create");
@@ -196,10 +221,22 @@ int main(int argc, char** argv) {
 
     switch (arguments.mode) {
     case RUN_SERVER:
-        do_server(sock, arguments.size, arguments.verbose);
+        if (arguments.pkt_type == PACKET_RAW) {
+            do_server(sock, arguments.size, arguments.verbose);
+            // } else if (arguments.pkt_type == PACKET_TCP) {
+            //     do_server_tcp(sock, arguments.size, arguments.verbose);
+        } else if (arguments.pkt_type == PACKET_UDP) {
+            do_server_udp(sock, arguments.size, arguments.verbose);
+        }
         break;
     case RUN_CLIENT:
-        do_client(sock, arguments.iface, arguments.size, arguments.target, arguments.time);
+        if (arguments.pkt_type == PACKET_RAW) {
+            do_client(sock, arguments.iface, arguments.size, arguments.target, arguments.time);
+            // } else if (arguments.pkt_type == PACKET_TCP) {
+            //     do_client_tcp(sock, arguments.iface, arguments.size, arguments.target, arguments.time);
+        } else if (arguments.pkt_type == PACKET_UDP) {
+            do_client_udp(sock, arguments.iface, arguments.size, arguments.target, arguments.time);
+        }
         break;
     default:
         fprintf(stderr, "Unknown mode\n");
@@ -284,6 +321,92 @@ void do_server(int sock, int size, bool verbose) {
     }
 }
 
+void do_server_udp(int sock, int size, bool verbose) {
+    uint8_t* pkt = malloc(size);
+    if (pkt == NULL) {
+        fprintf(stderr, "Failed to malloc pkt\n");
+        exit(1);
+    }
+
+    struct pkt_perf* payload = (struct pkt_perf*)pkt;
+
+    struct timespec tstart, tend, tdiff;
+
+    pthread_t thread;
+    struct stastics stats;
+
+    fprintf(stderr, "Starting server\n");
+
+    struct sockaddr_in addr;
+
+    bzero(&addr, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    addr.sin_port = htons(PORT_PERF);
+
+    if (bind(sock, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+        fprintf(stderr, "Failed to bind\n");
+        exit(1);
+    }
+
+    while (running) {
+        struct sockaddr_in cli_addr;
+        socklen_t cli_addr_size;
+
+        cli_addr_size = sizeof(cli_addr);
+        size_t recv_bytes = recvfrom(sock, pkt, size, 0, (struct sockaddr*)&cli_addr, &cli_addr_size);
+
+        uint32_t id;
+
+        switch (payload->op) {
+        case PERF_REQ_START:
+            id = ntohl(payload->id);
+            fprintf(stderr, "Received start %08x\n", id);
+            clock_gettime(CLOCK_MONOTONIC, &tstart);
+
+            stats.start = tstart;
+            stats.duration = ntohs(payload->duration);
+            stats.pkt_count = 0;
+            stats.total_bytes = 0;
+            stats.running = true;
+            pthread_create(&thread, NULL, statistics_thread, &stats);
+
+            // TODO: Check already have instance
+            payload->op = PERF_RES_START;
+            sendto(sock, pkt, recv_bytes, 0, (struct sockaddr*)&cli_addr, cli_addr_size);
+            break;
+        case PERF_REQ_END:
+            clock_gettime(CLOCK_MONOTONIC, &tend);
+            fprintf(stderr, "Received end %08x\n", id);
+
+            stats.running = false;
+            pthread_join(thread, NULL);
+
+            id = ntohl(payload->id);
+            payload->op = PERF_RES_END;
+            sendto(sock, pkt, recv_bytes, 0, (struct sockaddr*)&cli_addr, cli_addr_size);
+            break;
+        case PERF_DATA:
+            stats.pkt_count += 1;
+            // 4 for hidden vlan header, 14 for ethernet header, 20 for ip header, 8 for udp header
+            stats.total_bytes += recv_bytes + 4 + 14 + 20 + 8;
+            stats.last_id = ntohl(payload->id);
+            break;
+        case PERF_REQ_RESULT:
+            tsn_timespec_diff(&tstart, &tend, &tdiff);
+            id = ntohl(payload->id);
+            payload->op = PERF_RES_RESULT;
+            struct pkt_perf_result* result = &payload->result;
+            result->elapsed = tdiff;
+            result->pkt_count = htonll(stats.pkt_count);
+            result->pkt_size = htonll(stats.total_bytes);
+
+            sendto(sock, pkt, PERF_RESULT_SIZE, 0, (struct sockaddr*)&cli_addr, cli_addr_size);
+            break;
+        }
+    }
+}
+
 void do_client(int sock, char* iface, int size, char* target, int time) {
     uint8_t* pkt = malloc(size);
     if (pkt == NULL) {
@@ -358,6 +481,85 @@ void do_client(int sock, char* iface, int size, char* target, int time) {
     printf("Result %'lu pps, %'lu bps\n", pps, bps);
 }
 
+void do_client_udp(int sock, char* iface, int size, char* target, int time) {
+    uint8_t* pkt = malloc(size);
+    if (pkt == NULL) {
+        fprintf(stderr, "Failed to malloc pkt\n");
+        exit(1);
+    }
+
+    struct timeval timeout = {TIMEOUT_SEC, 0};
+    if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
+        perror("Set socket timeout");
+        return;
+    }
+
+    struct pkt_perf* payload = (struct pkt_perf*)pkt;
+
+    struct sockaddr_in serv_addr;
+    socklen_t serv_addr_size;
+    memset(&serv_addr, 0, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_addr.s_addr = inet_addr(target);
+    serv_addr.sin_port = htons(PORT_PERF);
+
+    struct timespec tstart, tend, tdiff;
+
+    fprintf(stderr, "Starting client to %s\n", target);
+
+    const uint32_t custom_id = 0xdeadbeef; // TODO: randomise?
+
+    size_t recv_size;
+    do {
+        payload->op = PERF_REQ_START;
+        payload->id = htonl(custom_id);
+        sendto(sock, pkt, PERF_HDR_SIZE, 0, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
+        recv_size = recvfrom(sock, pkt, size, 0, NULL, NULL);
+    } while (recv_size <= 0 || payload->op != PERF_RES_START);
+
+    // Now fire!
+
+    fprintf(stderr, "Fire\n");
+    clock_gettime(CLOCK_MONOTONIC, &tstart);
+
+    int sent_id = 1; // 1 based to calculate loss rate
+    do {
+        payload->op = PERF_DATA;
+        payload->id = htonl(sent_id++);
+        int sent = sendto(sock, pkt, size, 0, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
+
+        clock_gettime(CLOCK_MONOTONIC, &tend);
+        tsn_timespec_diff(&tstart, &tend, &tdiff);
+    } while (running && tdiff.tv_sec < time);
+
+    fprintf(stderr, "Done\n");
+    payload->op = PERF_REQ_END;
+    payload->id = htonl(custom_id);
+    sendto(sock, pkt, PERF_HDR_SIZE, 0, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
+    do {
+        recv_size = recvfrom(sock, pkt, size, 0, NULL, NULL);
+    } while (recv_size <= 0 || payload->op != PERF_RES_END);
+
+    // Get result
+    payload->op = PERF_REQ_RESULT;
+    payload->id = htonl(custom_id);
+    sendto(sock, pkt, PERF_HDR_SIZE, 0, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
+    do {
+        recv_size = recvfrom(sock, pkt, size, 0, NULL, NULL);
+    } while (recv_size <= 0 || payload->op != PERF_RES_RESULT);
+
+    struct pkt_perf_result* result = &payload->result;
+    uint64_t pkt_count = ntohll(result->pkt_count);
+    uint64_t pkt_size = ntohll(result->pkt_size);
+    uint64_t pps = pkt_count / result->elapsed.tv_sec;
+    uint64_t bps = pkt_size / result->elapsed.tv_sec * 8;
+    double loss_rate = (double)(sent_id - pkt_count) / sent_id;
+    printf("Elapsed %lu.%09lu s\n", result->elapsed.tv_sec, result->elapsed.tv_nsec);
+    printf("Recieved %'lu pkts, %'lu bytes\n", pkt_count, pkt_size);
+    printf("Sent %u pkts, Loss %.3f%%\n", sent_id, loss_rate * 100);
+    printf("Result %'lu pps, %'lu bps\n", pps, bps);
+}
+
 void* statistics_thread(void* arg) {
     struct stastics* stats = (struct stastics*)arg;
     struct timespec tlast, tnow, tdiff;
@@ -374,6 +576,7 @@ void* statistics_thread(void* arg) {
         clock_gettime(CLOCK_MONOTONIC, &tnow);
         tsn_timespec_diff(&tlast, &tnow, &tdiff);
         if (tdiff.tv_sec >= stats->duration) {
+            stats->running = false;
             break;
         }
 
