@@ -1,5 +1,6 @@
-from . import app
 import uvicorn
+
+from . import app
 
 
 def main():
