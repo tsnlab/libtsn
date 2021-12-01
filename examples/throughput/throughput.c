@@ -777,12 +777,6 @@ void* statistics_thread(void* arg) {
     while (stats->running) {
         clock_gettime(CLOCK_MONOTONIC, &tnow);
         tsn_timespec_diff(&tlast, &tnow, &tdiff);
-        if (tdiff.tv_sec >= stats->duration) {
-            fprintf(stderr, "%ld >= %d\n", tdiff.tv_sec, stats->duration);
-            fprintf(stderr, "Stopping statistics thread\n");
-            stats->running = false;
-            break;
-        }
 
         if (tdiff.tv_sec >= 1) {
             tlast = tnow;
@@ -804,6 +798,12 @@ void* statistics_thread(void* arg) {
 
             printf(format, time_elapsed, diff_pkt_count, diff_total_bytes * 8, loss_rate * 100);
             fflush(stdout);
+
+            if (time_elapsed >= stats->duration) {
+                fprintf(stderr, "Stopping statistics thread\n");
+                stats->running = false;
+                break;
+            }
         } else {
             long remaining_ns = (1000000000) - tdiff.tv_nsec;
             usleep(remaining_ns / 1000);
