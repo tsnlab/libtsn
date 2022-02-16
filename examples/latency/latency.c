@@ -214,9 +214,10 @@ void do_server(int sock, int size, bool oneway, bool verbose) {
     }
 
     while (running) {
-        size_t recv_bytes = tsn_recv_msg(sock, &msg);
+        size_t recv_bytes;
 
         if (oneway) {
+            recv_bytes = tsn_recv_msg(sock, &msg);
             clock_gettime(CLOCK_REALTIME, &tend);
             for (cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
                 int level = cmsg->cmsg_level;
@@ -227,6 +228,8 @@ void do_server(int sock, int size, bool oneway, bool verbose) {
                     memcpy(&tend, CMSG_DATA(cmsg), sizeof(tend));
                 }
             }
+        } else {
+            recv_bytes = tsn_recv(sock, pkt, size);
         }
 
         uint8_t tmpmac[ETHER_ADDR_LEN];
