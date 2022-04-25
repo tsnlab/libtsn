@@ -3,6 +3,7 @@ import contextlib
 import os
 import re
 import socket
+import sys
 
 import watchgod
 import yaml
@@ -136,6 +137,10 @@ def main():
         return command_map[arguments.command](config, arguments.interface, arguments.vlanid)
     elif arguments.command == 'info':
         return info(arguments.interface)
+
+    if not os.path.exists(arguments.config):
+        print(f'Config file {arguments.config} not found', file=sys.stderr)
+        return 1
 
     watchgod.run_process(arguments.config, run_server, args=(arguments,))
 
