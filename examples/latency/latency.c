@@ -232,9 +232,9 @@ void do_server(int sock, int size, bool oneway, bool verbose) {
             recv_bytes = tsn_recv(sock, pkt, size);
         }
 
-	if (payload->tv_sec == 0) {
-        continue;
-	}
+        if (payload->tv_sec == 0) {
+            continue;
+        }
 
         uint8_t tmpmac[ETHER_ADDR_LEN];
         memcpy(tmpmac, ethhdr->h_dest, ETHER_ADDR_LEN);
