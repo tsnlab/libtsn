@@ -233,7 +233,7 @@ void do_server(int sock, int size, bool oneway, bool verbose) {
         }
 
 	if (payload->tv_sec == 0) {
-		continue ;
+		continue;
 	}
 
         uint8_t tmpmac[ETHER_ADDR_LEN];
