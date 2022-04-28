@@ -28,7 +28,7 @@ def setup_tas(ifname: str, tas: dict):
         f'queues {queues} '
         f'base-time {base_time} '
         f'{sched_entries} '
-        f'flags 0x0 '
+        f'flags 0x1 '
         f'txtime-delay {txtime_delay} '
         f'clockid CLOCK_TAI'
     )
