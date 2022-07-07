@@ -6,13 +6,15 @@ extern crate socket;
 #[derive(Clone, Copy)]
 struct TsnSocket {
     fd: i32,
-    ifname: [u8; 40],
+    ifname: *const u8,
+    ifname_len: usize,
     vlanid: u32,
 }
 
 static mut SOCKETS: [TsnSocket; 20] = [TsnSocket {
     fd: 0,
-    ifname: [0; 40],
+    ifname: 0 as *const u8,
+    ifname_len: 0,
     vlanid: 0,
 }; 20];
 
@@ -30,7 +32,7 @@ fn strcpy_to_arr_i8(in_str: &str) -> [i8; 108] {
     out_arr
 }
 
-unsafe fn send_cmd(command: *const libc::c_char) {
+unsafe fn send_cmd(command: String) {
     let client_fd = libc::socket(libc::AF_UNIX, libc::SOCK_STREAM, 0);
     if client_fd < 0 {
         panic!("last OS error: {:?}", Error::last_os_error());
@@ -52,16 +54,12 @@ unsafe fn send_cmd(command: *const libc::c_char) {
 
     libc::write(
         client_fd,
-        command as *const libc::c_void,
-        libc::strlen(command),
+        command.as_ptr() as *const libc::c_void,
+        command.len(),
     );
 
-    let mut msg = [0u8; 128];
-    let res = libc::read(
-        client_fd,
-        &mut msg as *mut _ as *mut libc::c_void,
-        msg.len(),
-    );
+    let msg = [0u8; 128];
+    let res = libc::read(client_fd, msg.as_ptr() as *mut libc::c_void, msg.len());
 
     if res < 0 {
         libc::close(client_fd);
@@ -70,50 +68,20 @@ unsafe fn send_cmd(command: *const libc::c_char) {
 }
 
 unsafe fn create_vlan(ifname: &str, vlanid: u32) {
-    let mut command: [libc::c_char; 128] = [0; 128];
-    libc::snprintf(
-        command.as_mut_ptr(),
-        128,
-        format!("create {} {}\n\x00", ifname, vlanid).as_mut_ptr() as *const u8
-            as *const libc::c_char,
-    );
-    send_cmd(command.as_mut_ptr())
+    let command = format!("create {} {}\n\x00", ifname, vlanid);
+    send_cmd(command)
 }
 
-unsafe fn delete_vlan(ifname: String, vlanid: u32) {
-    let mut command: [libc::c_char; 128] = [0; 128];
-    libc::snprintf(
-        command.as_mut_ptr(),
-        128,
-        format!("delete {} {}\n\x00", ifname, vlanid).as_mut_ptr() as *const u8
-            as *const libc::c_char,
-    );
-    send_cmd(command.as_mut_ptr())
+unsafe fn delete_vlan(ifname: &str, vlanid: u32) {
+    let command = format!("delete {} {}\n\x00", ifname, vlanid);
+    send_cmd(command)
 }
 
 #[allow(clippy::missing_safety_doc)]
-pub unsafe extern "C" fn tsn_sock_open(
-    ifname: *const u8,
-    vlanid: u32,
-    priority: u32,
-    proto: u32,
-) -> i32 {
-    let mut ifname_tmp: [u8; 40] = [0; 40];
-    libc::memcpy(
-        &mut ifname_tmp as *mut _ as *mut libc::c_void,
-        ifname as *const libc::c_void,
-        mem::size_of_val(&ifname) as usize,
-    );
-    let ifname = std::str::from_utf8(&ifname_tmp[..mem::size_of_val(&ifname)])
-        .unwrap()
-        .trim_matches(char::from(0));
+pub unsafe extern "C" fn tsn_sock_open(ifname: &str, vlanid: u32, priority: u32, proto: u32) -> i32 {
     create_vlan(ifname, vlanid);
-    let mut vlan_ifname: [libc::c_char; 40] = [0; 40];
-    libc::sprintf(
-        vlan_ifname.as_mut_ptr(),
-        format!("{}.{}\x00", ifname, vlanid).as_mut_ptr() as *const u8 as *const libc::c_char,
-    );
-    let ifindex = libc::if_nametoindex(vlan_ifname.as_mut_ptr());
+    let vlan_ifname = format!("{}.{}\x00", ifname, vlanid);
+    let ifindex = libc::if_nametoindex(vlan_ifname.as_bytes().as_ptr() as *const i8);
     let sock = libc::socket(
         libc::AF_PACKET,
         libc::SOCK_RAW,
@@ -127,8 +95,8 @@ pub unsafe extern "C" fn tsn_sock_open(
     let prio: *const u32 = &priority;
     let res = libc::setsockopt(
         sock as libc::c_int,
-        libc::SOL_SOCKET as libc::c_int,
-        libc::SO_PRIORITY as libc::c_int,
+        libc::SOL_SOCKET,
+        libc::SO_PRIORITY,
         prio as *const libc::c_void,
         mem::size_of_val(&prio) as u32,
     );
@@ -160,9 +128,8 @@ pub unsafe extern "C" fn tsn_sock_open(
     }
 
     SOCKETS[sock as usize].fd = sock;
-    for (i, c) in ifname.chars().enumerate() {
-        SOCKETS[sock as usize].ifname[i] = c as u8;
-    }
+    SOCKETS[sock as usize].ifname = ifname.as_ptr();
+    SOCKETS[sock as usize].ifname_len = ifname.len();
     SOCKETS[sock as usize].vlanid = vlanid;
 
     sock
@@ -170,13 +137,18 @@ pub unsafe extern "C" fn tsn_sock_open(
 
 #[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn tsn_sock_close(sock: i32) {
-    let mut ifname = String::from("");
-    for x in &(SOCKETS[sock as usize].ifname) {
-        if *x as u8 != 0 {
-            ifname.push(*x as u8 as char);
-        }
-    }
-    delete_vlan(ifname, SOCKETS[sock as usize].vlanid);
+    let mut ifname: [u8; 40] = [0; 40];
+    std::ptr::copy(
+        SOCKETS[sock as usize].ifname,
+        ifname.as_mut_ptr(),
+        SOCKETS[sock as usize].ifname_len,
+    );
+    delete_vlan(
+        std::str::from_utf8(&ifname)
+            .unwrap()
+            .trim_matches(char::from(0)),
+        SOCKETS[sock as usize].vlanid,
+    );
     libc::close(sock);
 }
 
