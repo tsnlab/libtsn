@@ -1,87 +1,51 @@
+use nix::net::if_::if_nametoindex;
+use std::io::prelude::*;
 use std::io::Error;
+use std::os::unix::net::UnixStream;
 use std::{mem, str};
 
 extern crate socket;
 
-#[derive(Clone, Copy)]
 struct TsnSocket {
     fd: i32,
-    ifname: *const u8,
-    ifname_len: usize,
+    ifname: String,
     vlanid: u32,
 }
 
-static mut SOCKETS: [TsnSocket; 20] = [TsnSocket {
-    fd: 0,
-    ifname: 0 as *const u8,
-    ifname_len: 0,
-    vlanid: 0,
-}; 20];
+static mut SOCKETS: Vec<TsnSocket> = Vec::new();
 
-const CONTROL_SOCK_PATH: &str = "/var/run/tsn.sock\x00";
+const CONTROL_SOCK_PATH: &str = "/var/run/tsn.sock";
 
-fn strcpy_to_arr_i8(in_str: &str) -> [i8; 108] {
-    let mut out_arr: [i8; 108] = [0; 108];
-    if in_str.len() > 108 {
-        panic!("Input str exceed output buffer size")
-    }
-
-    for (i, c) in in_str.chars().enumerate() {
-        out_arr[i] = c as i8;
-    }
-    out_arr
+fn send_cmd(command: String) -> Result<String, std::io::Error> {
+    let mut stream = UnixStream::connect(CONTROL_SOCK_PATH)?;
+    stream.write_all(command.as_bytes())?;
+    let mut msg = String::new();
+    stream.read_to_string(&mut msg)?;
+    Ok(msg)
 }
 
-unsafe fn send_cmd(command: String) {
-    let client_fd = libc::socket(libc::AF_UNIX, libc::SOCK_STREAM, 0);
-    if client_fd < 0 {
-        panic!("last OS error: {:?}", Error::last_os_error());
-    }
-
-    let client_addr = libc::sockaddr_un {
-        sun_family: libc::AF_UNIX as u16,
-        sun_path: strcpy_to_arr_i8(CONTROL_SOCK_PATH),
-    };
-    let res = libc::connect(
-        client_fd,
-        &client_addr as *const libc::sockaddr_un as *const libc::sockaddr,
-        mem::size_of_val(&client_addr) as u32,
-    );
-    if res < 0 {
-        libc::close(client_fd);
-        panic!("last OS error: {:?}", Error::last_os_error());
-    }
-
-    libc::write(
-        client_fd,
-        command.as_ptr() as *const libc::c_void,
-        command.len(),
-    );
-
-    let msg = [0u8; 128];
-    let res = libc::read(client_fd, msg.as_ptr() as *mut libc::c_void, msg.len());
-
-    if res < 0 {
-        libc::close(client_fd);
-        panic!("last OS error: {:?}", Error::last_os_error());
-    }
-}
-
-unsafe fn create_vlan(ifname: &str, vlanid: u32) {
-    let command = format!("create {} {}\n\x00", ifname, vlanid);
+fn create_vlan(ifname: &str, vlanid: u32) -> Result<String, std::io::Error> {
+    let command = format!("create {} {}\n", ifname, vlanid);
     send_cmd(command)
 }
 
-unsafe fn delete_vlan(ifname: &str, vlanid: u32) {
-    let command = format!("delete {} {}\n\x00", ifname, vlanid);
+fn delete_vlan(ifname: &str, vlanid: u32) -> Result<String, std::io::Error> {
+    let command = format!("delete {} {}\n", ifname, vlanid);
     send_cmd(command)
 }
 
 #[allow(clippy::missing_safety_doc)]
-pub unsafe extern "C" fn tsn_sock_open(ifname: &str, vlanid: u32, priority: u32, proto: u32) -> i32 {
-    create_vlan(ifname, vlanid);
-    let vlan_ifname = format!("{}.{}\x00", ifname, vlanid);
-    let ifindex = libc::if_nametoindex(vlan_ifname.as_bytes().as_ptr() as *const i8);
+pub unsafe fn tsn_sock_open(ifname: &str, vlanid: u32, priority: u32, proto: u32) -> i32 {
+    match create_vlan(ifname, vlanid) {
+        Ok(v) => println!("{}", v),
+        Err(_) => {
+            println!("Create vlan fails");
+            panic!("last OS error: {:?}", Error::last_os_error());
+        }
+    }
+
+    let vlan_ifname = format!("{}.{}", ifname, vlanid);
+    let ifindex = if_nametoindex(vlan_ifname.as_bytes()).expect("vlan_ifname index");
     let sock = libc::socket(
         libc::AF_PACKET,
         libc::SOCK_RAW,
@@ -91,7 +55,6 @@ pub unsafe extern "C" fn tsn_sock_open(ifname: &str, vlanid: u32, priority: u32,
         println!("last OS error: {:?}", Error::last_os_error());
         return sock;
     }
-
     let prio: *const u32 = &priority;
     let res = libc::setsockopt(
         sock as libc::c_int,
@@ -127,33 +90,32 @@ pub unsafe extern "C" fn tsn_sock_open(ifname: &str, vlanid: u32, priority: u32,
         return res;
     }
 
-    SOCKETS[sock as usize].fd = sock;
-    SOCKETS[sock as usize].ifname = ifname.as_ptr();
-    SOCKETS[sock as usize].ifname_len = ifname.len();
-    SOCKETS[sock as usize].vlanid = vlanid;
+    SOCKETS.push(TsnSocket {
+        fd: sock,
+        ifname: ifname.to_string(),
+        vlanid,
+    });
 
     sock
 }
 
 #[allow(clippy::missing_safety_doc)]
-pub unsafe extern "C" fn tsn_sock_close(sock: i32) {
-    let mut ifname: [u8; 40] = [0; 40];
-    std::ptr::copy(
-        SOCKETS[sock as usize].ifname,
-        ifname.as_mut_ptr(),
-        SOCKETS[sock as usize].ifname_len,
-    );
-    delete_vlan(
-        std::str::from_utf8(&ifname)
-            .unwrap()
-            .trim_matches(char::from(0)),
-        SOCKETS[sock as usize].vlanid,
-    );
-    libc::close(sock);
+pub unsafe fn tsn_sock_close(sock: i32) {
+    let index = SOCKETS.iter().position(|x| x.fd == sock).unwrap();
+    match delete_vlan(&SOCKETS[index].ifname, SOCKETS[index].vlanid) {
+        Ok(v) => {
+            println!("{}", v);
+            libc::close(sock);
+        },
+        Err(_) => {
+            println!("Delete vlan fails");
+            panic!("last OS error: {:?}", Error::last_os_error());
+        }
+    };
 }
 
 #[allow(clippy::missing_safety_doc)]
-pub unsafe extern "C" fn tsn_send(sock: i32, buf: *mut libc::c_void, n: i32) -> isize {
+pub unsafe fn tsn_send(sock: i32, buf: *mut libc::c_void, n: i32) -> isize {
     libc::sendto(
         sock,
         buf,
@@ -165,7 +127,7 @@ pub unsafe extern "C" fn tsn_send(sock: i32, buf: *mut libc::c_void, n: i32) -> 
 }
 
 #[allow(clippy::missing_safety_doc)]
-pub unsafe extern "C" fn tsn_recv(sock: i32, buf: *mut libc::c_void, n: i32) -> isize {
+pub unsafe fn tsn_recv(sock: i32, buf: *mut libc::c_void, n: i32) -> isize {
     libc::recvfrom(
         sock,
         buf,
@@ -177,7 +139,7 @@ pub unsafe extern "C" fn tsn_recv(sock: i32, buf: *mut libc::c_void, n: i32) -> 
 }
 
 #[allow(clippy::missing_safety_doc)]
-pub unsafe extern "C" fn tsn_recv_msg(sock: i32, msg: *mut libc::msghdr) -> isize {
+pub unsafe fn tsn_recv_msg(sock: i32, msg: *mut libc::msghdr) -> isize {
     libc::recvmsg(sock, msg, 0)
 }
 
