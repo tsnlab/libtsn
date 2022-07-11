@@ -9,10 +9,10 @@
 ## RUN
 ### Latency Test
 - server RTT:
-`sudo ./target/debug/latency --no-verbose --interface <interface_name> --mode s --size <packet_size> --no-oneway`
+`sudo ./target/debug/latency server -i <interface_name> [-s <packet_size>]`
 - server oneway:
-`sudo ./target/debug/latency --no-verbose --interface <interface_name> --mode s --size <packet_size> --oneway`
+`sudo ./target/debug/latency server --interface <interface_name> [--size <packet_size>] --oneway`
 - client RTT:
-`sudo ./target/debug/latency --no-verbose --interface <interface_name> --mode c --target <target_mac_address> --count <send_packet_count> --size <packet_size> --no-precise --no-oneway`
+`sudo ./target/debug/latency client --interface <interface_name> --target <target_mac_address> [--count <send_packet_count>] [--size <packet_size>]`
 - client oneway:
-`sudo ./target/debug/latency --no-verbose --interface <interface_name> --mode c --target <target_mac_address> --count <send_packet_count> --size <packet_size> --no-precise --oneway`
+`sudo ./target/debug/latency client --interface <interface_name> --target <target_mac_address> [--count <send_packet_count>] [--size <packet_size>] --oneway`
