@@ -432,28 +432,24 @@ fn main() -> Result<(), std::io::Error> {
     });
 
     match mode {
-        "s" => {
-            unsafe {
-                do_server(
-                    &mut SOCK.fd,
-                    FromStr::from_str(size).unwrap(),
-                    oneway,
-                    verbose,
-                );
-            }
+        "s" => unsafe {
+            do_server(
+                &mut SOCK.fd,
+                FromStr::from_str(size).unwrap(),
+                oneway,
+                verbose,
+            );
         },
-        "c" => {
-            unsafe {
-                do_client(
-                    &SOCK.fd,
-                    iface.to_string(),
-                    FromStr::from_str(size).unwrap(),
-                    target.to_string(),
-                    FromStr::from_str(count).unwrap(),
-                    precise,
-                    oneway,
-                );
-            }
+        "c" => unsafe {
+            do_client(
+                &SOCK.fd,
+                iface.to_string(),
+                FromStr::from_str(size).unwrap(),
+                target.to_string(),
+                FromStr::from_str(count).unwrap(),
+                precise,
+                oneway,
+            );
         },
         _ => {
             println!("Unknown mode");
