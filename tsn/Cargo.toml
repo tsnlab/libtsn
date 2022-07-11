@@ -12,6 +12,7 @@ ifstructs = "0.1.1"
 rand = "0.8.5"
 hex = "0.4.3"
 nix = "0.24.1"
+signal-hook = "0.3.14"
 clap = { version = "3.2.8", features = ["derive"] }
 
 [[bin]]

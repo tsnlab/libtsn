@@ -6,6 +6,7 @@ use nix::sys::time::TimeValLike;
 use nix::time::clock_gettime;
 use nix::time::ClockId;
 use rand::Rng;
+use signal_hook::{consts::SIGINT, iterator::Signals};
 use std::io::Error;
 use std::mem;
 use std::str::FromStr;
@@ -27,15 +28,6 @@ static mut SOCK: tsn::TsnSocket = tsn::TsnSocket {
     ifname: String::new(),
     vlanid: 0,
 };
-
-fn sigint() {
-    unsafe {
-        println!("Interrrupted");
-        RUNNING = 0;
-        tsn::tsn_sock_close(&mut SOCK);
-        std::process::exit(1);
-    }
-}
 
 fn do_server(sock: &mut i32, size: i32, oneway: bool, _verbose: bool) {
     unsafe {
@@ -415,8 +407,16 @@ fn main() -> Result<(), std::io::Error> {
             panic!("last OS error: {:?}", Error::last_os_error());
         }
 
+        let mut signals = Signals::new(&[SIGINT])?;
 
-        libc::signal(libc::SIGINT, sigint as usize);
+        thread::spawn(move || {
+            for _ in signals.forever() {
+                println!("Interrrupted");
+                RUNNING = 0;
+                tsn::tsn_sock_close(&mut SOCK);
+                std::process::exit(1);
+            }
+        });
 
         if mode == "s" {
             do_server(
