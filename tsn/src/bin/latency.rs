@@ -10,6 +10,7 @@ use signal_hook::{consts::SIGINT, iterator::Signals};
 use std::io::Error;
 use std::mem;
 use std::str::FromStr;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::vec::Vec;
 use std::{thread, time::Duration};
 
@@ -20,7 +21,7 @@ extern crate socket as soc;
 const VLAN_ID_PERF: u32 = 10;
 const VLAN_PRI_PERF: u32 = 3;
 const ETHERTYPE_PERF: u32 = 0x1337;
-static mut RUNNING: i32 = 1;
+static RUNNING: AtomicBool = AtomicBool::new(true);
 const TIMEOUT_SEC: u32 = 1;
 
 static mut SOCK: tsn::TsnSocket = tsn::TsnSocket {
@@ -76,20 +77,26 @@ fn do_server(sock: &mut i32, size: i32, oneway: bool, _verbose: bool) {
         panic!("last OS error: {:?}", Error::last_os_error());
     }
 
-    unsafe {
-        while RUNNING == 1 {
-            if oneway {
-                recv_bytes = tsn::tsn_recv_msg(*sock, msg);
-                tend = clock_gettime(ClockId::CLOCK_REALTIME).unwrap();
+    while RUNNING.load(Ordering::Relaxed) {
+        if oneway {
+            recv_bytes = tsn::tsn_recv_msg(*sock, msg);
+            tend = clock_gettime(ClockId::CLOCK_REALTIME).unwrap();
+            let mut cmsg_level;
+            let mut cmsg_type;
+            unsafe {
                 cmsg = libc::CMSG_FIRSTHDR(&msg);
-                while cmsg.is_null() {
-                    let cmsg_level = (*cmsg).cmsg_level;
-                    let cmsg_type = (*cmsg).cmsg_type;
+            }
+            while cmsg.is_null() {
+                unsafe {
+                    cmsg_level = (*cmsg).cmsg_level;
+                    cmsg_type = (*cmsg).cmsg_type;
                     if cmsg_level != libc::SOL_SOCKET {
                         cmsg = libc::CMSG_NXTHDR(&msg, cmsg);
                         continue;
                     }
-                    if libc::SO_TIMESTAMPNS == cmsg_type {
+                }
+                if libc::SO_TIMESTAMPNS == cmsg_type {
+                    unsafe {
                         libc::memcpy(
                             &mut tend as *mut _ as *mut libc::c_void,
                             libc::CMSG_DATA(cmsg) as *const libc::c_void,
@@ -97,51 +104,52 @@ fn do_server(sock: &mut i32, size: i32, oneway: bool, _verbose: bool) {
                         );
                     }
                 }
-            } else {
-                recv_bytes = tsn::tsn_recv(*sock, pkt.as_mut_ptr(), size);
             }
-            let mut dstmac: [u8; 6] = [0; 6];
-            let mut srcmac: [u8; 6] = [0; 6];
-            dstmac[0..6].copy_from_slice(&pkt[0..6]);
-            srcmac[0..6].copy_from_slice(&pkt[6..12]);
-            pkt[0..6].copy_from_slice(&srcmac);
-            pkt[6..12].copy_from_slice(&dstmac);
+        } else {
+            recv_bytes = tsn::tsn_recv(*sock, pkt.as_mut_ptr(), size);
+        }
+        let mut dstmac: [u8; 6] = [0; 6];
+        let mut srcmac: [u8; 6] = [0; 6];
+        dstmac[0..6].copy_from_slice(&pkt[0..6]);
+        srcmac[0..6].copy_from_slice(&pkt[6..12]);
+        pkt[0..6].copy_from_slice(&srcmac);
+        pkt[6..12].copy_from_slice(&dstmac);
 
-            tsn::tsn_send(*sock, pkt.as_mut_ptr(), recv_bytes as i32);
+        tsn::tsn_send(*sock, pkt.as_mut_ptr(), recv_bytes as i32);
 
-            if oneway {
-                let id = u32::from_be_bytes([pkt[14], pkt[15], pkt[16], pkt[17]]);
-                let srcmac = format!(
-                    "{:02X}:{:02X}:{:02X}:{:02X}:{:02X}:{:02X}",
-                    pkt[0], pkt[1], pkt[2], pkt[3], pkt[4], pkt[5]
-                );
-                let dstmac = format!(
-                    "{:02X}:{:02X}:{:02X}:{:02X}:{:02X}:{:02X}",
-                    pkt[6], pkt[7], pkt[8], pkt[9], pkt[10], pkt[11]
-                );
+        if oneway {
+            let id = u32::from_be_bytes([pkt[14], pkt[15], pkt[16], pkt[17]]);
+            let srcmac = format!(
+                "{:02X}:{:02X}:{:02X}:{:02X}:{:02X}:{:02X}",
+                pkt[0], pkt[1], pkt[2], pkt[3], pkt[4], pkt[5]
+            );
+            let dstmac = format!(
+                "{:02X}:{:02X}:{:02X}:{:02X}:{:02X}:{:02X}",
+                pkt[6], pkt[7], pkt[8], pkt[9], pkt[10], pkt[11]
+            );
 
-                let tstart_sec: TimeSpec =
-                    TimeValLike::seconds(
-                        u32::from_be_bytes([pkt[18], pkt[19], pkt[20], pkt[21]]) as i64
-                    );
-                let tstart_nsec: TimeSpec = TimeValLike::nanoseconds(u32::from_be_bytes([
-                    pkt[22], pkt[23], pkt[24], pkt[25],
-                ]) as i64);
-                tstart = tstart_sec + tstart_nsec;
-                tdiff = tend - tstart;
-                println!(
-                    "{:08X} {} {} {}.{:09} → {}.{:09} {}.{:09}",
-                    id,
-                    srcmac,
-                    dstmac,
-                    tstart.tv_sec(),
-                    tstart.tv_nsec(),
-                    tend.tv_sec(),
-                    tend.tv_nsec(),
-                    tdiff.tv_sec(),
-                    tdiff.tv_nsec()
+            let tstart_sec: TimeSpec =
+                TimeValLike::seconds(
+                    u32::from_be_bytes([pkt[18], pkt[19], pkt[20], pkt[21]]) as i64
                 );
-            }
+            let tstart_nsec: TimeSpec =
+                TimeValLike::nanoseconds(
+                    u32::from_be_bytes([pkt[22], pkt[23], pkt[24], pkt[25]]) as i64
+                );
+            tstart = tstart_sec + tstart_nsec;
+            tdiff = tend - tstart;
+            println!(
+                "{:08X} {} {} {}.{:09} → {}.{:09} {}.{:09}",
+                id,
+                srcmac,
+                dstmac,
+                tstart.tv_sec(),
+                tstart.tv_nsec(),
+                tend.tv_sec(),
+                tend.tv_nsec(),
+                tdiff.tv_sec(),
+                tdiff.tv_nsec()
+            );
         }
     }
 }
@@ -256,10 +264,8 @@ fn do_client(
                 } else if id == i as u32 {
                     received = true;
                 }
-                unsafe {
-                    if received || RUNNING == 0 {
-                        break;
-                    }
+                if received || RUNNING.load(Ordering::Relaxed) {
+                    break;
                 }
             }
 
@@ -417,8 +423,8 @@ fn main() -> Result<(), std::io::Error> {
     thread::spawn(move || {
         for _ in signals.forever() {
             println!("Interrrupted");
+            RUNNING.fetch_and(false, Ordering::Relaxed);
             unsafe {
-                RUNNING = 0;
                 tsn::tsn_sock_close(&mut SOCK);
             }
             std::process::exit(1);
