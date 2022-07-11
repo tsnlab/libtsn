@@ -6,13 +6,11 @@ use std::{mem, str};
 
 extern crate socket;
 
-struct TsnSocket {
-    fd: i32,
-    ifname: String,
-    vlanid: u32,
+pub struct TsnSocket {
+    pub fd: i32,
+    pub ifname: String,
+    pub vlanid: u32,
 }
-
-static mut SOCKETS: Vec<TsnSocket> = Vec::new();
 
 const CONTROL_SOCK_PATH: &str = "/var/run/tsn.sock";
 
@@ -35,7 +33,12 @@ fn delete_vlan(ifname: &str, vlanid: u32) -> Result<String, std::io::Error> {
 }
 
 #[allow(clippy::missing_safety_doc)]
-pub unsafe fn tsn_sock_open(ifname: &str, vlanid: u32, priority: u32, proto: u32) -> i32 {
+pub unsafe fn tsn_sock_open(
+    ifname: &str,
+    vlanid: u32,
+    priority: u32,
+    proto: u32,
+) -> Result<TsnSocket, i32> {
     match create_vlan(ifname, vlanid) {
         Ok(v) => println!("{}", v),
         Err(_) => {
@@ -53,7 +56,7 @@ pub unsafe fn tsn_sock_open(ifname: &str, vlanid: u32, priority: u32, proto: u32
     );
     if sock < 0 {
         println!("last OS error: {:?}", Error::last_os_error());
-        return sock;
+        return Err(sock);
     }
     let prio: *const u32 = &priority;
     let res = libc::setsockopt(
@@ -67,7 +70,7 @@ pub unsafe fn tsn_sock_open(ifname: &str, vlanid: u32, priority: u32, proto: u32
     if res < 0 {
         println!("socket option error");
         println!("last OS error: {:?}", Error::last_os_error());
-        return res;
+        return Err(res);
     }
 
     let sock_ll = libc::sockaddr_ll {
@@ -87,26 +90,23 @@ pub unsafe fn tsn_sock_open(ifname: &str, vlanid: u32, priority: u32, proto: u32
     );
     if res < 0 {
         println!("last OS error: {:?}", Error::last_os_error());
-        return res;
+        return Err(res);
     }
 
-    SOCKETS.push(TsnSocket {
+    Ok(TsnSocket {
         fd: sock,
         ifname: ifname.to_string(),
         vlanid,
-    });
-
-    sock
+    })
 }
 
 #[allow(clippy::missing_safety_doc)]
-pub unsafe fn tsn_sock_close(sock: i32) {
-    let index = SOCKETS.iter().position(|x| x.fd == sock).unwrap();
-    match delete_vlan(&SOCKETS[index].ifname, SOCKETS[index].vlanid) {
+pub unsafe fn tsn_sock_close(sock: &mut TsnSocket) {
+    match delete_vlan(&(*sock).ifname, sock.vlanid) {
         Ok(v) => {
             println!("{}", v);
-            libc::close(sock);
-        },
+            libc::close(sock.fd);
+        }
         Err(_) => {
             println!("Delete vlan fails");
             panic!("last OS error: {:?}", Error::last_os_error());
@@ -141,140 +141,4 @@ pub unsafe fn tsn_recv(sock: i32, buf: *mut libc::c_void, n: i32) -> isize {
 #[allow(clippy::missing_safety_doc)]
 pub unsafe fn tsn_recv_msg(sock: i32, msg: *mut libc::msghdr) -> isize {
     libc::recvmsg(sock, msg, 0)
-}
-
-static mut ERROR_CLOCK_GETTIME: libc::timespec = libc::timespec {
-    tv_sec: -1,
-    tv_nsec: 0,
-};
-
-static mut ERROR_NANOSLEEP: libc::timespec = libc::timespec {
-    tv_sec: -1,
-    tv_nsec: 0,
-};
-
-unsafe fn is_analysed() -> bool {
-    ERROR_CLOCK_GETTIME.tv_sec != -1 && ERROR_NANOSLEEP.tv_sec != -1
-}
-
-unsafe fn tsn_time_analyze() {
-    if is_analysed() {
-        return;
-    }
-
-    println!("Calculating sleep errors\n");
-
-    const COUNT: i32 = 10;
-
-    let mut start: libc::timespec = libc::timespec {
-        tv_sec: 0,
-        tv_nsec: 0,
-    };
-    let mut end: libc::timespec = libc::timespec {
-        tv_sec: 0,
-        tv_nsec: 0,
-    };
-    let mut diff: libc::timespec = libc::timespec {
-        tv_sec: 0,
-        tv_nsec: 0,
-    };
-
-    libc::clock_gettime(libc::CLOCK_REALTIME, &mut start);
-    for _ in 0..COUNT {
-        libc::clock_gettime(libc::CLOCK_REALTIME, &mut end);
-    }
-
-    tsn_timespec_diff(&start, &end, &mut diff);
-    ERROR_CLOCK_GETTIME.tv_sec = 0;
-    ERROR_CLOCK_GETTIME.tv_nsec = diff.tv_nsec / COUNT as i64;
-
-    // Analyse nanosleep
-    let request: libc::timespec = libc::timespec {
-        tv_sec: 1,
-        tv_nsec: 0,
-    };
-
-    for _ in 0..COUNT {
-        libc::clock_gettime(libc::CLOCK_REALTIME, &mut start);
-        libc::nanosleep(&request, std::ptr::null_mut::<libc::timespec>());
-        libc::clock_gettime(libc::CLOCK_REALTIME, &mut end);
-    }
-
-    tsn_timespec_diff(&start, &end, &mut diff);
-    ERROR_NANOSLEEP.tv_sec = 0;
-    ERROR_NANOSLEEP.tv_nsec = diff.tv_nsec / COUNT as i64;
-}
-
-#[allow(clippy::missing_safety_doc)]
-pub unsafe extern "C" fn tsn_timespec_diff(
-    start: *const libc::timespec,
-    stop: *const libc::timespec,
-    result: *mut libc::timespec,
-) {
-    // Check if reverse
-    if (*start).tv_sec > (*stop).tv_sec
-        || ((*start).tv_sec == (*stop).tv_sec && (*start).tv_nsec > (*stop).tv_nsec)
-    {
-        tsn_timespec_diff(stop, start, result);
-        (*result).tv_sec *= -1;
-        return;
-    }
-
-    if ((*stop).tv_nsec - (*start).tv_nsec) < 0 {
-        (*result).tv_sec = (*stop).tv_sec - (*start).tv_sec - 1;
-        (*result).tv_nsec = (*stop).tv_nsec - (*start).tv_nsec + 1000000000;
-    } else {
-        (*result).tv_sec = (*stop).tv_sec - (*start).tv_sec;
-        (*result).tv_nsec = (*stop).tv_nsec - (*start).tv_nsec;
-    }
-}
-
-#[allow(clippy::missing_safety_doc)]
-pub unsafe extern "C" fn tsn_time_sleep_until(realtime: *const libc::timespec) -> i64 {
-    if !is_analysed() {
-        tsn_time_analyze();
-    }
-
-    let mut now: libc::timespec = libc::timespec {
-        tv_sec: 0,
-        tv_nsec: 0,
-    };
-    libc::clock_gettime(libc::CLOCK_REALTIME, &mut now);
-
-    // If already future, Don't need to sleep
-    if tsn_timespec_compare(&now, realtime) >= 0 {
-        return 0;
-    }
-
-    let mut request: libc::timespec = libc::timespec {
-        tv_sec: 0,
-        tv_nsec: 0,
-    };
-    tsn_timespec_diff(&now, realtime, &mut request);
-
-    if tsn_timespec_compare(&request, &ERROR_NANOSLEEP) < 0 {
-        libc::nanosleep(&request, std::ptr::null_mut::<libc::timespec>());
-    };
-
-    let mut diff: libc::timespec = libc::timespec {
-        tv_sec: 0,
-        tv_nsec: 0,
-    };
-    loop {
-        libc::clock_gettime(libc::CLOCK_REALTIME, &mut now);
-        tsn_timespec_diff(&now, realtime, &mut diff);
-        if tsn_timespec_compare(&diff, &ERROR_CLOCK_GETTIME) < 0 {
-            break;
-        }
-    }
-
-    diff.tv_nsec
-}
-
-unsafe fn tsn_timespec_compare(a: *const libc::timespec, b: *const libc::timespec) -> i64 {
-    if (*a).tv_sec == (*b).tv_sec {
-        return (*a).tv_nsec - (*b).tv_nsec;
-    }
-
-    (*a).tv_sec - (*b).tv_sec
 }

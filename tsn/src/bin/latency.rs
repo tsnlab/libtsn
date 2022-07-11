@@ -1,10 +1,17 @@
+use clap::{Arg, Command as ClapCommand};
+use nix::sys::socket::cmsghdr;
+use nix::sys::socket::msghdr;
+use nix::sys::time::TimeSpec;
+use nix::sys::time::TimeValLike;
+use nix::time::clock_gettime;
+use nix::time::ClockId;
 use rand::Rng;
 use std::io::Error;
 use std::mem;
+use std::str::FromStr;
 use std::vec::Vec;
+use std::{thread, time::Duration};
 
-extern crate argparse;
-extern crate arguments;
 extern crate hex;
 extern crate ifstructs;
 extern crate socket as soc;
@@ -15,56 +22,38 @@ const ETHERTYPE_PERF: u32 = 0x1337;
 static mut RUNNING: i32 = 1;
 const TIMEOUT_SEC: u32 = 1;
 
-#[derive(Debug, Default)]
-struct Arguments {
-    verbose: bool,
-    iface: String,
-    mode: String,
-    target: String,
-    count: i32,
-    size: i32,
-    precise: bool,
-    oneway: bool,
-}
-
-static mut SOCK: i32 = 0_i32;
+static mut SOCK: tsn::TsnSocket = tsn::TsnSocket {
+    fd: 0,
+    ifname: String::new(),
+    vlanid: 0,
+};
 
 fn sigint() {
     unsafe {
         println!("Interrrupted");
         RUNNING = 0;
-        tsn::tsn_sock_close(SOCK);
-        libc::exit(1);
+        tsn::tsn_sock_close(&mut SOCK);
+        std::process::exit(1);
     }
 }
 
-fn do_server(sock: i32, size: i32, oneway: bool, _verbose: bool) {
+fn do_server(sock: &mut i32, size: i32, oneway: bool, _verbose: bool) {
     unsafe {
-        let pkt = libc::malloc(size as usize);
+        let mut pkt: Vec<u8> = vec![0; size as usize];
         let mut recv_bytes;
-
-        let mut tstart: libc::timespec = libc::timespec {
-            tv_sec: 0,
-            tv_nsec: 0,
-        };
-        let mut tend: libc::timespec = libc::timespec {
-            tv_sec: 0,
-            tv_nsec: 0,
-        };
-        let mut tdiff: libc::timespec = libc::timespec {
-            tv_sec: 0,
-            tv_nsec: 0,
-        };
+        let mut tstart: TimeSpec;
+        let mut tend: TimeSpec = clock_gettime(ClockId::CLOCK_REALTIME).unwrap();
+        let mut tdiff: TimeSpec;
 
         const CONTROLSIZE: usize = 1024;
         let mut control: [libc::c_char; CONTROLSIZE] = [0; CONTROLSIZE];
 
         let mut iov: libc::iovec = libc::iovec {
-            iov_base: pkt,
+            iov_base: pkt.as_mut_ptr() as *mut libc::c_void,
             iov_len: size as usize,
         };
 
-        let mut msg = libc::msghdr {
+        let mut msg = msghdr {
             msg_iov: &mut iov as *mut libc::iovec,
             msg_iovlen: 1,
             msg_control: control.as_mut_ptr() as *mut libc::c_void,
@@ -74,14 +63,14 @@ fn do_server(sock: i32, size: i32, oneway: bool, _verbose: bool) {
             msg_namelen: 0,
         };
 
-        let mut cmsg: *mut libc::cmsghdr;
+        let mut cmsg: *mut cmsghdr;
 
         let sockflags: u32 = libc::SOF_TIMESTAMPING_RX_HARDWARE
             | libc::SOF_TIMESTAMPING_RAW_HARDWARE
             | libc::SOF_TIMESTAMPING_SOFTWARE;
 
         let res = libc::setsockopt(
-            sock,
+            *sock,
             libc::SOL_SOCKET,
             libc::SO_TIMESTAMPNS,
             &sockflags as *const u32 as *const libc::c_void,
@@ -95,8 +84,8 @@ fn do_server(sock: i32, size: i32, oneway: bool, _verbose: bool) {
 
         while RUNNING == 1 {
             if oneway {
-                recv_bytes = tsn::tsn_recv_msg(sock, &mut msg as *mut libc::msghdr);
-                libc::clock_gettime(libc::CLOCK_REALTIME, &mut tend);
+                recv_bytes = tsn::tsn_recv_msg(*sock, &mut msg as *mut libc::msghdr);
+                tend = clock_gettime(ClockId::CLOCK_REALTIME).unwrap();
                 cmsg = libc::CMSG_FIRSTHDR(&msg);
                 while cmsg.is_null() {
                     let cmsg_level = (*cmsg).cmsg_level;
@@ -114,47 +103,53 @@ fn do_server(sock: i32, size: i32, oneway: bool, _verbose: bool) {
                     }
                 }
             } else {
-                recv_bytes = tsn::tsn_recv(sock, pkt, size);
+                recv_bytes = tsn::tsn_recv(*sock, pkt.as_mut_ptr() as *mut libc::c_void, size);
             }
 
-            let mut tmpmac: [u8; 6] = [0; 6];
-            libc::memcpy(tmpmac.as_mut_ptr() as *mut libc::c_void, pkt, 6);
-            libc::memcpy(pkt as *mut libc::c_void, pkt.add(6), 6);
-            libc::memcpy(pkt.add(6), tmpmac.as_mut_ptr() as *mut libc::c_void, 6);
-            tsn::tsn_send(sock, pkt, recv_bytes as i32);
+            let mut dstmac: [u8; 6] = [0; 6];
+            let mut srcmac: [u8; 6] = [0; 6];
+            dstmac[0..6].copy_from_slice(&pkt[0..6]);
+            srcmac[0..6].copy_from_slice(&pkt[6..12]);
+            pkt[0..6].copy_from_slice(&srcmac);
+            pkt[6..12].copy_from_slice(&dstmac);
+
+            tsn::tsn_send(
+                *sock,
+                pkt.as_mut_ptr() as *mut libc::c_void,
+                recv_bytes as i32,
+            );
 
             if oneway {
-                let mut packet: Vec<u8> = vec![0; recv_bytes as usize];
-                libc::memcpy(
-                    packet.as_mut_ptr() as *mut libc::c_void,
-                    pkt,
-                    recv_bytes as usize,
-                );
-                let id = u32::from_be_bytes([packet[14], packet[15], packet[16], packet[17]]);
+                let id = u32::from_be_bytes([pkt[14], pkt[15], pkt[16], pkt[17]]);
                 let srcmac = format!(
                     "{:02X}:{:02X}:{:02X}:{:02X}:{:02X}:{:02X}",
-                    packet[0], packet[1], packet[2], packet[3], packet[4], packet[5]
+                    pkt[0], pkt[1], pkt[2], pkt[3], pkt[4], pkt[5]
                 );
                 let dstmac = format!(
                     "{:02X}:{:02X}:{:02X}:{:02X}:{:02X}:{:02X}",
-                    packet[6], packet[7], packet[8], packet[9], packet[10], packet[11]
+                    pkt[6], pkt[7], pkt[8], pkt[9], pkt[10], pkt[11]
                 );
-                tstart.tv_sec =
-                    u32::from_be_bytes([packet[18], packet[19], packet[20], packet[21]]) as i64;
-                tstart.tv_nsec =
-                    u32::from_be_bytes([packet[22], packet[23], packet[24], packet[25]]) as i64;
-                tsn::tsn_timespec_diff(&tstart, &tend, &mut tdiff);
+
+                let tstart_sec: TimeSpec =
+                    TimeValLike::seconds(
+                        u32::from_be_bytes([pkt[18], pkt[19], pkt[20], pkt[21]]) as i64
+                    );
+                let tstart_nsec: TimeSpec = TimeValLike::nanoseconds(u32::from_be_bytes([
+                    pkt[22], pkt[23], pkt[24], pkt[25],
+                ]) as i64);
+                tstart = tstart_sec + tstart_nsec;
+                tdiff = tend - tstart;
                 println!(
                     "{:08X} {} {} {}.{:09} → {}.{:09} {}.{:09}",
                     id,
                     srcmac,
                     dstmac,
-                    tstart.tv_sec,
-                    tstart.tv_nsec,
-                    tend.tv_sec,
-                    tend.tv_nsec,
-                    tdiff.tv_sec,
-                    tdiff.tv_nsec
+                    tstart.tv_sec(),
+                    tstart.tv_nsec(),
+                    tend.tv_sec(),
+                    tend.tv_nsec(),
+                    tdiff.tv_sec(),
+                    tdiff.tv_nsec()
                 );
             }
         }
@@ -162,8 +157,8 @@ fn do_server(sock: i32, size: i32, oneway: bool, _verbose: bool) {
 }
 
 fn do_client(
-    sock: i32,
-    mut iface: String,
+    sock: &i32,
+    iface: String,
     size: i32,
     target: String,
     count: i32,
@@ -171,25 +166,25 @@ fn do_client(
     oneway: bool,
 ) {
     unsafe {
-        let pkt = libc::malloc(size as usize);
+        let mut pkt: Vec<u8> = vec![0; size as usize];
 
         let timeout: libc::timeval = libc::timeval {
             tv_sec: TIMEOUT_SEC as i64,
             tv_usec: 0,
         };
         let res = libc::setsockopt(
-            sock,
+            *sock,
             libc::SOL_SOCKET,
-            libc::SO_TIMESTAMPNS,
+            libc::SO_RCVTIMEO,
             &timeout as *const _ as *const libc::c_void,
             mem::size_of_val(&timeout) as u32,
         );
 
-        let mut src_mac: [u8; 6] = [0; 6];
-
         if res < 0 {
             panic!("last OS error: {:?}", Error::last_os_error());
         }
+
+        let mut srcmac: [u8; 6] = [0; 6];
 
         // Get Mac addr from device
         let mut ifr: ifstructs::ifreq = ifstructs::ifreq {
@@ -201,113 +196,67 @@ fn do_client(
                 },
             },
         };
-        libc::strcpy(
-            ifr.ifr_name.as_mut_ptr() as *mut i8,
-            iface.as_mut_ptr() as *mut i8,
-        );
 
-        if libc::ioctl(sock, libc::SIOCGIFHWADDR, &ifr) == 0 {
+        ifr.ifr_name[..iface.len()].clone_from_slice(iface.as_bytes());
+
+        if libc::ioctl(*sock, libc::SIOCGIFHWADDR, &ifr) == 0 {
             libc::memcpy(
-                src_mac.as_mut_ptr() as *mut _ as *mut libc::c_void,
+                srcmac.as_mut_ptr() as *mut libc::c_void,
                 ifr.ifr_ifru.ifr_addr.sa_data.as_mut_ptr() as *const libc::c_void,
                 6,
             );
         } else {
             println!("Failed to get mac adddr");
+            panic!("last OS error: {:?}", Error::last_os_error());
         }
 
-        let dst_mac: Vec<&str> = target.split(':').collect();
-        let mut dst_mac = [
-            hex::decode(dst_mac[0]).unwrap()[0],
-            hex::decode(dst_mac[1]).unwrap()[0],
-            hex::decode(dst_mac[2]).unwrap()[0],
-            hex::decode(dst_mac[3]).unwrap()[0],
-            hex::decode(dst_mac[4]).unwrap()[0],
-            hex::decode(dst_mac[5]).unwrap()[0],
+        let dstmac: Vec<&str> = target.split(':').collect();
+        let dstmac = [
+            hex::decode(dstmac[0]).unwrap()[0],
+            hex::decode(dstmac[1]).unwrap()[0],
+            hex::decode(dstmac[2]).unwrap()[0],
+            hex::decode(dstmac[3]).unwrap()[0],
+            hex::decode(dstmac[4]).unwrap()[0],
+            hex::decode(dstmac[5]).unwrap()[0],
         ];
-        println!(
-            "{:0X} {:0X} {:0X} {:0X} {:0X} {:0X}",
-            dst_mac[0], dst_mac[1], dst_mac[2], dst_mac[3], dst_mac[4], dst_mac[5]
-        );
 
-        let mut tstart: libc::timespec = libc::timespec {
-            tv_sec: 0,
-            tv_nsec: 0,
-        };
-        let mut tend: libc::timespec = libc::timespec {
-            tv_sec: 0,
-            tv_nsec: 0,
-        };
-        let mut tdiff: libc::timespec = libc::timespec {
-            tv_sec: 0,
-            tv_nsec: 0,
-        };
-        let mut request: libc::timespec = libc::timespec {
-            tv_sec: 0,
-            tv_nsec: 0,
-        };
+        let mut tstart: TimeSpec;
+        let mut tend: TimeSpec;
+        let mut tdiff: TimeSpec;
 
         println!("Starting");
-
         for i in 0..count {
-            libc::memcpy(pkt, dst_mac.as_mut_ptr() as *const libc::c_void, 6);
-            libc::memcpy(
-                pkt.add(6),
-                ifr.ifr_ifru.ifr_addr.sa_data.as_mut_ptr() as *const libc::c_void,
-                6,
-            );
-            libc::memcpy(
-                pkt.add(12),
-                &soc::htons(ETHERTYPE_PERF as u16).to_le_bytes() as *const _ as *const libc::c_void,
-                2,
-            );
-            libc::memcpy(
-                pkt.add(14),
-                &soc::htonl(i as u32).to_le_bytes() as *const _ as *const libc::c_void,
-                4,
-            );
+            pkt[0..6].copy_from_slice(&dstmac);
+            pkt[6..12].copy_from_slice(&srcmac);
+            pkt[12..14].copy_from_slice(&soc::htons(ETHERTYPE_PERF as u16).to_le_bytes());
+            pkt[14..18].copy_from_slice(&soc::htonl(i as u32).to_le_bytes());
 
             if precise {
-                libc::clock_gettime(libc::CLOCK_REALTIME, &mut request);
-                request.tv_sec += 1;
-                request.tv_nsec = 0;
-                tsn::tsn_time_sleep_until(&request);
+                let one_sec = Duration::from_secs(1);
+                thread::sleep(one_sec);
             }
 
-            libc::clock_gettime(libc::CLOCK_REALTIME, &mut tstart);
+            tstart = clock_gettime(ClockId::CLOCK_REALTIME).unwrap();
 
-            libc::memcpy(
-                pkt.add(18),
-                &soc::htonl(tstart.tv_sec as u32).to_le_bytes() as *const _ as *const libc::c_void,
-                4,
-            );
-            libc::memcpy(
-                pkt.add(22),
-                &soc::htonl(tstart.tv_nsec as u32).to_le_bytes() as *const _ as *const libc::c_void,
-                4,
-            );
+            pkt[18..22].copy_from_slice(&soc::htonl(tstart.tv_sec() as u32).to_le_bytes());
+            pkt[22..26].copy_from_slice(&soc::htonl(tstart.tv_nsec() as u32).to_le_bytes());
 
-            let sent = tsn::tsn_send(sock, pkt, size);
+            let sent = tsn::tsn_send(*sock, pkt.as_mut_ptr() as *mut libc::c_void, size);
             if sent < 0 {
-                panic!("last OS error: {:?}", Error::last_os_error());
+                println!("last OS error: {:?}", Error::last_os_error());
             }
-
-            let mut packet: Vec<u8> = vec![0; sent as usize];
-            libc::memcpy(packet.as_mut_ptr() as *mut libc::c_void, pkt, sent as usize);
 
             if !oneway {
                 let mut received = false;
 
                 loop {
-                    let len = tsn::tsn_recv(sock, pkt, size);
-                    libc::clock_gettime(libc::CLOCK_REALTIME, &mut tend);
+                    let len = tsn::tsn_recv(*sock, pkt.as_mut_ptr() as *mut libc::c_void, size);
+                    tend = clock_gettime(ClockId::CLOCK_REALTIME).unwrap();
 
-                    tsn::tsn_timespec_diff(&tstart, &tend, &mut tdiff);
-                    let mut packet: Vec<u8> = vec![0; len as usize];
-                    libc::memcpy(packet.as_mut_ptr() as *mut libc::c_void, pkt, len as usize);
-                    let id = u32::from_be_bytes([packet[14], packet[15], packet[16], packet[17]]);
+                    tdiff = tend - tstart;
+                    let id = u32::from_be_bytes([pkt[14], pkt[15], pkt[16], pkt[17]]);
                     // Check perf pkt
-                    if len < 0 && tdiff.tv_nsec >= TIMEOUT_SEC as i64 {
+                    if len < 0 && tdiff.tv_nsec() >= TIMEOUT_SEC as i64 {
                         // TIMEOUT
                         break;
                     } else if id == i as u32 {
@@ -319,112 +268,176 @@ fn do_client(
                 }
 
                 if received {
-                    let elapsed_ns = tdiff.tv_sec * 1000000000 + tdiff.tv_nsec;
                     println!(
-                        "RTT: {}.{:03} µs ({} → {})",
-                        elapsed_ns / 1000,
-                        elapsed_ns % 1000,
-                        tstart.tv_nsec,
-                        tend.tv_nsec
+                        "RTT: {:.03} µs ({} → {})",
+                        tdiff,
+                        tstart.tv_nsec(),
+                        tend.tv_nsec()
                     );
                 } else {
-                    println!("TIMEOUT: -1µs ({} -> N/A)", tstart.tv_nsec);
+                    println!("TIMEOUT: -1µs ({} -> N/A)", tstart.tv_nsec());
                 }
             }
             if !precise {
-                request.tv_sec = 0;
-                request.tv_nsec =
-                    700 * 1000 * 1000 + (rand::thread_rng().gen_range(0..32767) as i64 % 10000000);
-                libc::nanosleep(&request, std::ptr::null_mut::<libc::timespec>());
+                let random_usec =
+                    Duration::from_micros(700 * 1000 + rand::thread_rng().gen_range(0..32767));
+                thread::sleep(random_usec);
             }
         }
     }
 }
 
-fn main() {
+fn main() -> Result<(), std::io::Error> {
     unsafe {
-        let arguments = std::env::args();
-        let arguments = arguments::parse(arguments).unwrap();
-        let mut args: Arguments = Arguments {
-            ..Default::default()
-        };
+        let verbose: bool;
+        let iface: &str;
+        let size: &str;
+        let oneway: bool;
+        let mut target: &str = "";
+        let mut count: &str = "";
+        let mut precise: bool = false;
+        let mode: &str;
 
-        let mode = arguments
-            .get::<String>("mode")
-            .expect("Need mode to run server or client");
-        if mode == "s" {
-            args = Arguments {
-                verbose: arguments
-                    .get::<bool>("verbose")
-                    .expect("Need verbose on/off"),
-                iface: arguments
-                    .get::<String>("interface")
-                    .expect("Need interface to use"),
-                mode,
-                target: String::from(""),
-                count: 0,
-                size: arguments.get::<i32>("size").expect("Need packet size"),
-                precise: false,
-                oneway: arguments
-                    .get::<bool>("oneway")
-                    .expect("Check latency on receiver side"),
-            };
-        } else if mode == "c" {
-            args = Arguments {
-                verbose: arguments
-                    .get::<bool>("verbose")
-                    .expect("Need verbose on/off"),
-                iface: arguments
-                    .get::<String>("interface")
-                    .expect("Need interface to use"),
-                mode,
-                target: arguments
-                    .get::<String>("target")
-                    .expect("Need target MAC address"),
-                count: arguments
-                    .get::<i32>("count")
-                    .expect("Need count to send packet"),
-                size: arguments.get::<i32>("size").expect("Need packet size"),
-                precise: arguments
-                    .get::<bool>("precise")
-                    .expect("Send packet at precise 0ns or not"),
-                oneway: arguments
-                    .get::<bool>("oneway")
-                    .expect("Check latency on receiver side"),
-            };
-        } else {
-            println!("Unknown mode");
+        let server_command = ClapCommand::new("server")
+            .about("Server mode")
+            .arg(
+                Arg::new("verbose")
+                    .long("verbose")
+                    .short('v')
+                    .takes_value(false)
+                    .required(false),
+            )
+            .arg(
+                Arg::new("interface")
+                    .long("interface")
+                    .short('i')
+                    .takes_value(true),
+            )
+            .arg(
+                Arg::new("oneway")
+                    .long("oneway")
+                    .short('o')
+                    .takes_value(false)
+                    .required(false),
+            )
+            .arg(
+                Arg::new("size")
+                    .long("size")
+                    .short('s')
+                    .takes_value(true)
+                    .default_value("1460"),
+            );
+
+        let client_command = ClapCommand::new("client")
+            .about("Client mode")
+            .arg(
+                Arg::new("verbose")
+                    .long("verbose")
+                    .short('v')
+                    .takes_value(false)
+                    .required(false),
+            )
+            .arg(
+                Arg::new("interface")
+                    .long("interface")
+                    .short('i')
+                    .takes_value(true),
+            )
+            .arg(
+                Arg::new("oneway")
+                    .long("oneway")
+                    .short('o')
+                    .takes_value(false)
+                    .required(false),
+            )
+            .arg(
+                Arg::new("size")
+                    .long("size")
+                    .short('s')
+                    .takes_value(true)
+                    .default_value("1460"),
+            )
+            .arg(
+                Arg::new("target")
+                    .long("target")
+                    .short('t')
+                    .takes_value(true),
+            )
+            .arg(
+                Arg::new("count")
+                    .long("count")
+                    .short('c')
+                    .takes_value(true)
+                    .default_value("100"),
+            )
+            .arg(
+                Arg::new("precise")
+                    .long("precise")
+                    .short('p')
+                    .takes_value(false)
+                    .required(false),
+            );
+
+        let matched_command = ClapCommand::new("run")
+            .subcommand_required(true)
+            .arg_required_else_help(true)
+            .subcommand(server_command)
+            .subcommand(client_command)
+            .get_matches();
+
+        match matched_command.subcommand() {
+            Some(("server", sub_matches)) => {
+                iface = sub_matches.value_of("interface").expect("interface to use");
+                size = sub_matches.value_of("size").expect("packet size");
+                oneway = sub_matches.is_present("oneway");
+                verbose = sub_matches.is_present("verbose");
+                mode = "s";
+            }
+            Some(("client", sub_matches)) => {
+                iface = sub_matches.value_of("interface").expect("interface to use");
+                size = sub_matches.value_of("size").expect("packet size");
+                oneway = sub_matches.is_present("oneway");
+                verbose = sub_matches.is_present("verbose");
+                target = sub_matches.value_of("target").expect("target MAC address");
+                count = sub_matches
+                    .value_of("count")
+                    .expect("how many send packets");
+                precise = sub_matches.is_present("precise");
+                mode = "c"
+            }
+            _ => unreachable!(),
         }
 
-        SOCK = tsn::tsn_sock_open(
-            args.iface.as_bytes().as_ptr() as *const u8,
-            VLAN_ID_PERF,
-            VLAN_PRI_PERF,
-            ETHERTYPE_PERF,
-        );
+        SOCK = tsn::tsn_sock_open(iface, VLAN_ID_PERF, VLAN_PRI_PERF, ETHERTYPE_PERF).unwrap();
 
-        if SOCK <= 0 {
+        if SOCK.fd <= 0 {
             println!("socket create error");
             panic!("last OS error: {:?}", Error::last_os_error());
         }
 
+
         libc::signal(libc::SIGINT, sigint as usize);
 
-        if args.mode == "s" {
-            do_server(SOCK, args.size, args.oneway, args.verbose);
-        } else if args.mode == "c" {
+        if mode == "s" {
+            do_server(
+                &mut SOCK.fd,
+                FromStr::from_str(size).unwrap(),
+                oneway,
+                verbose,
+            );
+        } else if mode == "c" {
             do_client(
-                SOCK,
-                args.iface,
-                args.size,
-                args.target,
-                args.count,
-                args.precise,
-                args.oneway,
+                &SOCK.fd,
+                iface.to_string(),
+                FromStr::from_str(size).unwrap(),
+                target.to_string(),
+                FromStr::from_str(count).unwrap(),
+                precise,
+                oneway,
             );
         }
 
-        println!("Closing socket");
-        tsn::tsn_sock_close(SOCK);
+        tsn::tsn_sock_close(&mut SOCK);
+        Ok(())
     }
 }
