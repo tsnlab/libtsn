@@ -142,49 +142,50 @@ fn do_server(sock: &mut i32, verbose: bool, size: i32) {
                 // ethernet.payload = bincode::serialize(&pkt_info).unwrap();
                 send_perf(sock, &mut pkt, recv_bytes as usize);
             }
-            // perf_opcode::PERF_DATA => unsafe {
-            //     STATS.pkt_count += 1;
-            //     STATS.total_bytes += (recv_bytes + 4) as u64;
-            //     STATS.last_id = socket::ntohl(pkt_info.id);
-            // },
-            // perf_opcode::PERF_REQ_END => {
-            //     tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
-            //     println!("Received end {:08x}", eth.payload.id);
-            //     unsafe {
-            //         STATS.running = false;
-            //     }
+            perf_opcode::PERF_DATA => unsafe {
+                STATS.pkt_count += 1;
+                STATS.total_bytes += (recv_bytes + 4) as u64;
+                STATS.last_id = socket::ntohl(pkt_info.id);
+            },
+            perf_opcode::PERF_REQ_END => {
+                tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
+                println!("Received end {:08x}", pkt_info.id);
+                unsafe {
+                    STATS.running = false;
+                }
 
-            //     if let Some(thread_handle) = thread_handle.take() {
-            //         thread_handle.join().unwrap();
-            //     }
-            //     pkt_info.op = perf_opcode::PERF_REQ_END as u8;
+                if let Some(thread_handle) = thread_handle.take() {
+                    thread_handle.join().unwrap();
+                }
+                pkt_info.id = socket::htonl(pkt_info.id);
+                pkt_info.op = perf_opcode::PERF_REQ_END as u8;
+                let mut pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
 
-            //     send_perf(sock, id, &mut eth, recv_bytes as usize);
-            // }
-            // perf_opcode::PERF_REQ_RESULT => {
-            //     tsn::tsn_timespecff_diff(&mut tstart, &mut tend, &mut tdiff);
-            //     id = socket::ntohl(eth.payload.id);
-            //     eth.payload.op = perf_opcode::PERF_RES_RESULT as u8;
-            //     eth.payload.pkt_perf.pkt_perf_result.elapsed_sec = tdiff.tv_sec();
-            //     eth.payload.pkt_perf.pkt_perf_result.elapsed_nsec = tdiff.tv_nsec();
-            //     unsafe {
-            //         println!("BEFORE");
-            //         println!("result pkt_count = {:0x}", STATS.pkt_count);
-            //         println!("result pkt_size = {:0x}", STATS.total_bytes);
-            //         eth.payload.pkt_perf.pkt_perf_result.pkt_count = STATS.pkt_count.to_be();
-            //         eth.payload.pkt_perf.pkt_perf_result.pkt_size = STATS.total_bytes.to_be();
-            //         println!("AFTER");
-            //         println!(
-            //             "result pkt_count = {:0x}",
-            //             eth.payload.pkt_perf.pkt_perf_result.pkt_count
-            //         );
-            //         println!(
-            //             "result pkt_size = {:0x}",
-            //             eth.payload.pkt_perf.pkt_perf_result.pkt_size
-            //         );
-            //     }
-            //     send_perf(sock, id, &mut eth, size as usize);
-            // }
+                pkt.append(&mut pkt_info_bytes);
+
+                send_perf(sock, &mut pkt, recv_bytes as usize);
+            }
+            perf_opcode::PERF_REQ_RESULT => {
+                tsn::tsn_timespecff_diff(&mut tstart, &mut tend, &mut tdiff);
+                pkt_info.id = socket::htonl(pkt_info.id);
+                pkt_info.op = perf_opcode::PERF_RES_RESULT as u8;
+                unsafe {
+                    println!("BEFORE");
+                    println!("result pkt_count = {:0x}", STATS.pkt_count);
+                    println!("result pkt_size = {:0x}", STATS.total_bytes);
+                    let pkt_result: PktPerfResult = PktPerfResult {
+                        pkt_count: STATS.pkt_count.to_be(),
+                        pkt_size: STATS.total_bytes.to_be(),
+                        elapsed_sec: tdiff.tv_sec(),
+                        elapsed_nsec: tdiff.tv_nsec(),
+                    };
+                    println!("AFTER");
+                    println!("result pkt_count = {:0x}", pkt_result.pkt_count);
+                    println!("result pkt_size = {:0x}", pkt_result.pkt_size);
+                }
+
+                send_perf(sock, &mut pkt, size as usize);
+            }
             _ => todo!(),
         }
     }
