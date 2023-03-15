@@ -120,9 +120,9 @@ fn do_server(sock: &mut i32, verbose: bool, size: i32) {
         };
 
         println!("initial ether_type = {:0x}", ethernet.ether_type);
-        println!("initial id = {}", pkt_info.id);
+        println!("initial id = {:08x}", pkt_info.id);
         //eth = bincode::deserialize(&pkt).unwrap();
-        let mut id = socket::ntohl(pkt_info.id);
+        // let mut id = socket::ntohl(pkt_info.id);
         let temp_mac = ethernet.dest;
         ethernet.dest = ethernet.src;
         ethernet.src = temp_mac;
@@ -130,11 +130,11 @@ fn do_server(sock: &mut i32, verbose: bool, size: i32) {
 
         match opcode {
             perf_opcode::PERF_REQ_START => {
-                println!("Received start '{:08x}'", id);
-                thread_handle = Some(thread::spawn(move || unsafe {
-                    statistics_thread(&STATS);
-                }));
-                pkt_info.id = socket::htonl(id);
+                println!("Received start '{:08x}'", pkt_info.id);
+                // thread_handle = Some(thread::spawn(move || unsafe {
+                //     statistics_thread(&STATS);
+                // }));
+                pkt_info.id = socket::htonl(pkt_info.id);
                 pkt_info.op = perf_opcode::PERF_RES_START as u8;
 
                 ethernet.ether_type = socket::htons(ethernet.ether_type);
@@ -368,14 +368,19 @@ fn send_perf(sock: &mut i32, ethernet: &mut Ethernet, size: usize) {
     let mut pkt: Vec<u8> = bincode::serialize(&ethernet).unwrap();
     *ethernet = bincode::deserialize(&pkt).unwrap();
     println!("---------Check data before send---------");
-    println!("dest : {:?}", ethernet.dest);
-    println!("src : {:?}", ethernet.src);
+    println!("dest : {:0x?}", ethernet.dest);
+    println!("src : {:0x?}", ethernet.src);
     println!("ether_type : {:0x}", ethernet.ether_type);
     println!(
-        "id : {:08x}",
-        u32::from_be_bytes(ethernet.payload[0..4].try_into().unwrap())
+        "id : {:08x?}",
+        [
+            ethernet.payload[0],
+            ethernet.payload[1],
+            ethernet.payload[2],
+            ethernet.payload[3]
+        ]
     );
-    println!("op : {:?}", ethernet.payload[4]);
+    println!("op : {:0x}", ethernet.payload[4]);
     // if ethernet.payload.op == perf_opcode::PERF_RES_RESULT as u8 {
     //     println!(
     //         "result pkt_count = {:0x}",
