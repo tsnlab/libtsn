@@ -109,12 +109,12 @@ fn do_server(sock: &mut i32, verbose: bool, size: i32) {
         ethernet = Ethernet {
             dest: pkt[0..6].try_into().unwrap(),
             src: pkt[6..12].try_into().unwrap(),
-            ether_type: u16::from_be_bytes(pkt[12..14].try_into().unwrap()),
+            ether_type: u16::from_be_bytes([pkt[12], pkt[13]]),
         };
 
         let mut pkt_info = PktInfo {
-            id: u32::from_be_bytes(pkt[14..16].try_into().unwrap()),
-            op: pkt[16],
+            id: u32::from_be_bytes([pkt[14], pkt[15], pkt[16], pkt[17]]),
+            op: pkt[18],
         };
 
         println!("initial ether_type = {:0x}", ethernet.ether_type);
