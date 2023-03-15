@@ -146,9 +146,7 @@ fn do_server(sock: &mut i32, verbose: bool, size: i32) {
                 unsafe {
                     STATS.running = false;
                 }
-                if let Some(thread_handle) = thread_handle {
-                    thread_handle.join().unwrap();
-                }
+
                 eth.payload.op = perf_opcode::PERF_REQ_END as u8;
 
                 send_perf(sock, id, &mut eth, recv_bytes as usize);
@@ -170,6 +168,9 @@ fn do_server(sock: &mut i32, verbose: bool, size: i32) {
             }
             _ => todo!(),
         }
+    }
+    if let Some(thread_handle) = thread_handle {
+        thread_handle.join().unwrap();
     }
 }
 
