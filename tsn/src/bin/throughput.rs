@@ -94,7 +94,12 @@ static mut SOCK: tsn::TsnSocket = tsn::TsnSocket {
 
 fn do_server(sock: &mut i32, verbose: bool, size: i32) {
     let mut ethernet: Ethernet;
-    let mut pkt: Vec<u8> = vec![0; size as usize];
+    let mut pkt: Vec<u8> = vec![
+        0;
+        mem::size_of::<Ethernet>()
+            + mem::size_of::<PktInfo>()
+            + mem::size_of::<PktPerfResult>()
+    ];
     let mut recv_bytes;
     let mut tstart = TimeSpec::zero();
     let mut tend = TimeSpec::zero();
