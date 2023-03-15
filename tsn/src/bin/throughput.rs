@@ -119,6 +119,8 @@ fn do_server(sock: &mut i32, verbose: bool, size: i32) {
             op: ethernet.payload[4],
         };
 
+        println!("initial ether_type = {:0x}", ethernet.ether_type);
+        println!("initial id = {}", pkt_info.id);
         //eth = bincode::deserialize(&pkt).unwrap();
         let mut id = socket::ntohl(pkt_info.id);
         let temp_mac = ethernet.dest;
@@ -134,6 +136,8 @@ fn do_server(sock: &mut i32, verbose: bool, size: i32) {
                 }));
                 pkt_info.id = socket::htonl(id);
                 pkt_info.op = perf_opcode::PERF_RES_START as u8;
+
+                ethernet.ether_type = socket::htons(ethernet.ether_type);
                 ethernet.payload = bincode::serialize(&pkt_info).unwrap();
                 // ethernet.payload =
                 send_perf(sock, &mut ethernet, recv_bytes as usize);
