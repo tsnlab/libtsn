@@ -127,19 +127,15 @@ fn do_server(sock: &mut i32, verbose: bool, size: i32) {
 
                 eth.payload.op = perf_opcode::PERF_RES_START as u8;
                 send_perf(sock, id, &mut eth, recv_bytes as usize);
-                break;
             }
-            perf_opcode::PERF_DATA => {
-                unsafe {
-                    STATS.pkt_count += 1;
-                    STATS.total_bytes += (recv_bytes + 4) as u64;
-                    STATS.last_id = socket::ntohl(eth.payload.id);
-                    println!("pkt_count = {}", STATS.pkt_count);
-                    println!("total_bytes = {}", STATS.total_bytes);
-                    println!("last_id = {}", STATS.last_id);
-                }
-                break;
-            }
+            perf_opcode::PERF_DATA => unsafe {
+                STATS.pkt_count += 1;
+                STATS.total_bytes += (recv_bytes + 4) as u64;
+                STATS.last_id = socket::ntohl(eth.payload.id);
+                println!("pkt_count = {}", STATS.pkt_count);
+                println!("total_bytes = {}", STATS.total_bytes);
+                println!("last_id = {}", STATS.last_id);
+            },
             perf_opcode::PERF_REQ_END => {
                 tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
                 println!("Received end {:08x}", eth.payload.id);
@@ -147,10 +143,12 @@ fn do_server(sock: &mut i32, verbose: bool, size: i32) {
                     STATS.running = false;
                 }
 
+                if let Some(thread_handle) = thread_handle.take() {
+                    thread_handle.join().unwrap();
+                }
                 eth.payload.op = perf_opcode::PERF_REQ_END as u8;
 
                 send_perf(sock, id, &mut eth, recv_bytes as usize);
-                break;
             }
             perf_opcode::PERF_REQ_RESULT => {
                 tsn::tsn_timespecff_diff(&mut tstart, &mut tend, &mut tdiff);
@@ -164,13 +162,9 @@ fn do_server(sock: &mut i32, verbose: bool, size: i32) {
 
                 // eth.payload.pkt_perf.pkt_perf_result.pkt_size = STATS.total_bytes;
                 send_perf(sock, id, &mut eth, size as usize);
-                break;
             }
             _ => todo!(),
         }
-    }
-    if let Some(thread_handle) = thread_handle {
-        thread_handle.join().unwrap();
     }
 }
 
