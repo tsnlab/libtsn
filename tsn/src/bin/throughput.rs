@@ -116,7 +116,6 @@ fn do_server(sock: &mut i32, verbose: bool, size: i32) {
         eth.dest = eth.src;
         eth.src = temp_mac;
         let opcode = perf_opcode::from(eth.payload.op);
-        println!("opcode = {:?}", opcode);
 
         match opcode {
             perf_opcode::PERF_REQ_START => {
