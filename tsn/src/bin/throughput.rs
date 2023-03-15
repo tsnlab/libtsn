@@ -231,7 +231,7 @@ fn statistics_thread(stat: &Statistics) {
         } else {
             println!("---------Sleep---------");
             let remaining_ns: u64 = (1000000000) - tdiff.tv_nsec() as u64;
-            let duration = Duration::from_nanos(remaining_ns / 1000);
+            let duration = Duration::from_nanos(remaining_ns);
             thread::sleep(duration);
         }
         println!();

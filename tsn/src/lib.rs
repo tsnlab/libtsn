@@ -164,7 +164,7 @@ pub fn tsn_timespecff_diff(start: &mut TimeSpec, stop: &mut TimeSpec, result: &m
         return;
     }
 
-    if (stop.tv_sec() - start.tv_nsec()) < 0 {
+    if (stop.tv_nsec() - start.tv_nsec()) < 0 {
         let result_sec: TimeSpec = TimeValLike::seconds(stop.tv_sec() - start.tv_sec() - 1);
         let result_nsec: TimeSpec =
             TimeValLike::nanoseconds(stop.tv_nsec() - start.tv_nsec() + 1000000000);
