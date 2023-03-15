@@ -132,9 +132,6 @@ fn do_server(sock: &mut i32, verbose: bool, size: i32) {
                 STATS.pkt_count += 1;
                 STATS.total_bytes += (recv_bytes + 4) as u64;
                 STATS.last_id = socket::ntohl(eth.payload.id);
-                println!("pkt_count = {}", STATS.pkt_count);
-                println!("total_bytes = {}", STATS.total_bytes);
-                println!("last_id = {}", STATS.last_id);
             },
             perf_opcode::PERF_REQ_END => {
                 tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
@@ -170,9 +167,6 @@ fn do_server(sock: &mut i32, verbose: bool, size: i32) {
 
 fn statistics_thread(stat: &Statistics) {
     let mut tdiff = TimeSpec::zero();
-
-    //let tlast_sec: TimeSpec = TimeValLike::seconds(stat.start_sec);
-    //let tlast_nsec: TimeSpec = TimeValLike::nanoseconds(stat.start_nsec);
     let mut start = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
     let mut tlast = start;
 
@@ -183,13 +177,12 @@ fn statistics_thread(stat: &Statistics) {
     //TODO:let format_str = "Stat {} {} pps {} bps loss {:.3}%";
 
     while stat.running {
-        println!("---------Check statistic data---------");
+        // println!("---------Check statistic data---------");
         let mut tnow = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
-        println!("tlast = {}.{}", tlast.tv_sec(), tlast.tv_nsec());
-        println!("tnow = {}.{}", tnow.tv_sec(), tnow.tv_nsec());
-        println!("tdiff before calc = {}.{}", tdiff.tv_sec(), tdiff.tv_nsec());
+        // println!("tlast = {}.{}", tlast.tv_sec(), tlast.tv_nsec());
+        // println!("tnow = {}.{}", tnow.tv_sec(), tnow.tv_nsec());
         tsn::tsn_timespecff_diff(&mut tlast, &mut tnow, &mut tdiff);
-        println!("tdiff after calc = {}.{}", tdiff.tv_sec(), tdiff.tv_nsec());
+        // println!("tdiff after calc = {}.{}", tdiff.tv_sec(), tdiff.tv_nsec());
 
         if tdiff.tv_sec() >= 1 {
             tlast = tnow.clone();
@@ -204,8 +197,8 @@ fn statistics_thread(stat: &Statistics) {
             let diff_total_bytes: u64 = current_total_bytes - last_total_bytes;
             let mut loss_rate = 0.0;
 
-            println!("current_id = {}", current_id);
-            println!("last_id = {}", last_id);
+            // println!("current_id = {}", current_id);
+            // println!("last_id = {}", last_id);
 
             if current_id as u64 - last_id as u64 == 0 {
             } else {
