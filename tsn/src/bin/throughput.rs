@@ -127,6 +127,7 @@ fn do_server(sock: &mut i32, verbose: bool, size: i32) {
 
                 eth.payload.op = perf_opcode::PERF_RES_START as u8;
                 send_perf(sock, id, &mut eth, recv_bytes as usize);
+                break;
             }
             perf_opcode::PERF_DATA => {
                 unsafe {
@@ -536,5 +537,6 @@ fn main() -> Result<(), std::io::Error> {
     unsafe {
         tsn::tsn_sock_close(&mut SOCK);
     }
+    println!("sock closed");
     Ok(())
 }
