@@ -14,7 +14,6 @@ use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::vec::Vec;
 use std::{thread, time::Duration};
-
 const VLAN_ID_PERF: u32 = 10;
 const VLAN_PRI_PERF: u32 = 3;
 const ETHERTYPE_PERF: u16 = 0x1337;
@@ -48,24 +47,23 @@ impl From<u8> for perf_opcode {
 }
 
 #[derive(Serialize, Deserialize)]
-struct MyEthernet {
+struct Ethernet {
     dest: [u8; 6],
     src: [u8; 6],
     ether_type: u16,
-    payload: Payload,
+    payload: Vec<u8>,
 }
-
 #[derive(Serialize, Deserialize)]
-struct Payload {
+struct PktInfo {
     id: u32,
     op: u8,
-    pkt_perf: PktPerf,
+    // pkt_perf: PktPerf,
 }
 
 #[derive(Serialize, Deserialize)]
 struct PktPerf {
     pkt_count: u64,
-    pkt_perf_result: PktPerfResult,
+    // pkt_perf_result: PktPerfResult,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -97,7 +95,7 @@ static mut SOCK: tsn::TsnSocket = tsn::TsnSocket {
 };
 
 fn do_server(sock: &mut i32, verbose: bool, size: i32) {
-    let mut eth: MyEthernet;
+    let mut ethernet: Ethernet;
     let mut pkt: Vec<u8> = vec![0; size as usize];
     let mut recv_bytes;
     let mut tstart = TimeSpec::zero();
@@ -109,13 +107,24 @@ fn do_server(sock: &mut i32, verbose: bool, size: i32) {
     println!("Starting server");
     while RUNNING.load(Ordering::Relaxed) {
         recv_bytes = tsn::tsn_recv(*sock, pkt.as_mut_ptr(), size);
+        ethernet = Ethernet {
+            dest: pkt[0..6].try_into().unwrap(),
+            src: pkt[6..12].try_into().unwrap(),
+            ether_type: u16::from_be_bytes(pkt[12..14].try_into().unwrap()),
+            payload: pkt[14..].to_vec(),
+        };
 
-        eth = bincode::deserialize(&pkt).unwrap();
-        let mut id = socket::ntohl(eth.payload.id);
-        let temp_mac = eth.dest;
-        eth.dest = eth.src;
-        eth.src = temp_mac;
-        let opcode = perf_opcode::from(eth.payload.op);
+        let mut pkt_info = PktInfo {
+            id: u32::from_be_bytes(ethernet.payload[0..4].try_into().unwrap()),
+            op: ethernet.payload[4],
+        };
+
+        //eth = bincode::deserialize(&pkt).unwrap();
+        let mut id = socket::ntohl(pkt_info.id);
+        let temp_mac = ethernet.dest;
+        ethernet.dest = ethernet.src;
+        ethernet.src = temp_mac;
+        let opcode = perf_opcode::from(pkt_info.op);
 
         match opcode {
             perf_opcode::PERF_REQ_START => {
@@ -123,53 +132,55 @@ fn do_server(sock: &mut i32, verbose: bool, size: i32) {
                 thread_handle = Some(thread::spawn(move || unsafe {
                     statistics_thread(&STATS);
                 }));
-
-                eth.payload.op = perf_opcode::PERF_RES_START as u8;
-                send_perf(sock, id, &mut eth, recv_bytes as usize);
+                pkt_info.id = socket::htonl(id);
+                pkt_info.op = perf_opcode::PERF_RES_START as u8;
+                ethernet.payload = bincode::serialize(&pkt_info).unwrap();
+                // ethernet.payload =
+                send_perf(sock, &mut ethernet, recv_bytes as usize);
             }
-            perf_opcode::PERF_DATA => unsafe {
-                STATS.pkt_count += 1;
-                STATS.total_bytes += (recv_bytes + 4) as u64;
-                STATS.last_id = socket::ntohl(eth.payload.id);
-            },
-            perf_opcode::PERF_REQ_END => {
-                tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
-                println!("Received end {:08x}", eth.payload.id);
-                unsafe {
-                    STATS.running = false;
-                }
+            // perf_opcode::PERF_DATA => unsafe {
+            //     STATS.pkt_count += 1;
+            //     STATS.total_bytes += (recv_bytes + 4) as u64;
+            //     STATS.last_id = socket::ntohl(pkt_info.id);
+            // },
+            // perf_opcode::PERF_REQ_END => {
+            //     tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
+            //     println!("Received end {:08x}", eth.payload.id);
+            //     unsafe {
+            //         STATS.running = false;
+            //     }
 
-                if let Some(thread_handle) = thread_handle.take() {
-                    thread_handle.join().unwrap();
-                }
-                eth.payload.op = perf_opcode::PERF_REQ_END as u8;
+            //     if let Some(thread_handle) = thread_handle.take() {
+            //         thread_handle.join().unwrap();
+            //     }
+            //     pkt_info.op = perf_opcode::PERF_REQ_END as u8;
 
-                send_perf(sock, id, &mut eth, recv_bytes as usize);
-            }
-            perf_opcode::PERF_REQ_RESULT => {
-                tsn::tsn_timespecff_diff(&mut tstart, &mut tend, &mut tdiff);
-                id = socket::ntohl(eth.payload.id);
-                eth.payload.op = perf_opcode::PERF_RES_RESULT as u8;
-                eth.payload.pkt_perf.pkt_perf_result.elapsed_sec = tdiff.tv_sec();
-                eth.payload.pkt_perf.pkt_perf_result.elapsed_nsec = tdiff.tv_nsec();
-                unsafe {
-                    println!("BEFORE");
-                    println!("result pkt_count = {:0x}", STATS.pkt_count);
-                    println!("result pkt_size = {:0x}", STATS.total_bytes);
-                    eth.payload.pkt_perf.pkt_perf_result.pkt_count = STATS.pkt_count.to_be();
-                    eth.payload.pkt_perf.pkt_perf_result.pkt_size = STATS.total_bytes.to_be();
-                    println!("AFTER");
-                    println!(
-                        "result pkt_count = {:0x}",
-                        eth.payload.pkt_perf.pkt_perf_result.pkt_count
-                    );
-                    println!(
-                        "result pkt_size = {:0x}",
-                        eth.payload.pkt_perf.pkt_perf_result.pkt_size
-                    );
-                }
-                send_perf(sock, id, &mut eth, size as usize);
-            }
+            //     send_perf(sock, id, &mut eth, recv_bytes as usize);
+            // }
+            // perf_opcode::PERF_REQ_RESULT => {
+            //     tsn::tsn_timespecff_diff(&mut tstart, &mut tend, &mut tdiff);
+            //     id = socket::ntohl(eth.payload.id);
+            //     eth.payload.op = perf_opcode::PERF_RES_RESULT as u8;
+            //     eth.payload.pkt_perf.pkt_perf_result.elapsed_sec = tdiff.tv_sec();
+            //     eth.payload.pkt_perf.pkt_perf_result.elapsed_nsec = tdiff.tv_nsec();
+            //     unsafe {
+            //         println!("BEFORE");
+            //         println!("result pkt_count = {:0x}", STATS.pkt_count);
+            //         println!("result pkt_size = {:0x}", STATS.total_bytes);
+            //         eth.payload.pkt_perf.pkt_perf_result.pkt_count = STATS.pkt_count.to_be();
+            //         eth.payload.pkt_perf.pkt_perf_result.pkt_size = STATS.total_bytes.to_be();
+            //         println!("AFTER");
+            //         println!(
+            //             "result pkt_count = {:0x}",
+            //             eth.payload.pkt_perf.pkt_perf_result.pkt_count
+            //         );
+            //         println!(
+            //             "result pkt_size = {:0x}",
+            //             eth.payload.pkt_perf.pkt_perf_result.pkt_size
+            //         );
+            //     }
+            //     send_perf(sock, id, &mut eth, size as usize);
+            // }
             _ => todo!(),
         }
     }
@@ -346,29 +357,32 @@ fn do_client(sock: &i32, iface: String, size: i32, target: String, time: i32) {
     // let isSucessful = recv_perf(&sock, custom_id, perf_opcode::PERF_REQ_START, &mut pkt);
 }
 
-fn send_perf(sock: &mut i32, id: u32, eth: &mut MyEthernet, size: usize) {
-    eth.payload.id = socket::htonl(id);
-    eth.ether_type = socket::htons(ETHERTYPE_PERF);
+fn send_perf(sock: &mut i32, ethernet: &mut Ethernet, size: usize) {
+    // eth.payload.id = socket::htonl(id);
+    // eth.ether_type = socket::htons(ETHERTYPE_PERF);
 
-    let mut pkt: Vec<u8> = bincode::serialize(&eth).unwrap();
-    *eth = bincode::deserialize(&pkt).unwrap();
+    let mut pkt: Vec<u8> = bincode::serialize(&ethernet).unwrap();
+    *ethernet = bincode::deserialize(&pkt).unwrap();
     println!("---------Check data before send---------");
-    println!("dest : {:?}", eth.dest);
-    println!("src : {:?}", eth.src);
-    println!("ether_type : {:0x}", eth.ether_type);
-    println!("id : {:08x}", eth.payload.id);
-    println!("op : {:?}", eth.payload.op);
-    if eth.payload.op == perf_opcode::PERF_RES_RESULT as u8 {
-        println!(
-            "result pkt_count = {:0x}",
-            eth.payload.pkt_perf.pkt_perf_result.pkt_count
-        );
-        println!(
-            "result pkt_size = {:0x}",
-            eth.payload.pkt_perf.pkt_perf_result.pkt_size
-        );
-    }
-    println!("byte array = {:?}", pkt);
+    println!("dest : {:?}", ethernet.dest);
+    println!("src : {:?}", ethernet.src);
+    println!("ether_type : {:0x}", ethernet.ether_type);
+    println!(
+        "id : {:08x}",
+        u32::from_be_bytes(ethernet.payload[0..4].try_into().unwrap())
+    );
+    println!("op : {:?}", ethernet.payload[4]);
+    // if ethernet.payload.op == perf_opcode::PERF_RES_RESULT as u8 {
+    //     println!(
+    //         "result pkt_count = {:0x}",
+    //         ethernet.payload.pkt_perf.pkt_perf_result.pkt_count
+    //     );
+    //     println!(
+    //         "result pkt_size = {:0x}",
+    //         ethernet.payload.pkt_perf.pkt_perf_result.pkt_size
+    //     );
+    // }
+    println!("byte array = {:0x?}", pkt);
     println!("----------------------------------------");
     let sent = tsn::tsn_send(*sock, pkt.as_mut_ptr(), size as i32);
 
