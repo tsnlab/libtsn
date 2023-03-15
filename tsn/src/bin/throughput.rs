@@ -157,12 +157,13 @@ fn do_server(sock: &mut i32, verbose: bool, size: i32) {
                 if let Some(thread_handle) = thread_handle.take() {
                     thread_handle.join().unwrap();
                 }
+                println!("perf_res_end send ready");
                 pkt = bincode::serialize(&ethernet).unwrap();
                 pkt_info.id = socket::htonl(pkt_info.id);
-                pkt_info.op = perf_opcode::PERF_REQ_END as u8;
+                pkt_info.op = perf_opcode::PERF_RES_END as u8;
                 let mut pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
                 pkt.append(&mut pkt_info_bytes);
-
+                println!("perf_res_end send");
                 send_perf(sock, &mut pkt, recv_bytes as usize);
             }
             perf_opcode::PERF_REQ_RESULT => {
@@ -373,28 +374,28 @@ fn do_client(sock: &i32, iface: String, size: i32, target: String, time: i32) {
 
 fn send_perf(sock: &mut i32, pkt: &mut Vec<u8>, size: usize) {
     println!("---------Check data before send---------");
-    println!(
-        "dest : {:0x?}",
-        [pkt[0], pkt[1], pkt[2], pkt[3], pkt[4], pkt[5]]
-    );
-    println!(
-        "src : {:0x?}",
-        [pkt[6], pkt[7], pkt[8], pkt[9], pkt[10], pkt[11]]
-    );
-    println!("ether_type : {:0x?}", [pkt[12], pkt[13]]);
-    println!("id : {:0x?}", [pkt[14], pkt[15], pkt[16], pkt[17]]);
-    println!("op : {:0x}", pkt[18]);
-    if pkt[18] == perf_opcode::PERF_RES_RESULT as u8 {
-        println!(
-            "result pkt_count = {:0x?}",
-            [pkt[19], pkt[20], pkt[21], pkt[22], pkt[23], pkt[24], pkt[25], pkt[26]]
-        );
-        println!(
-            "result pkt_size = {:0x?}",
-            [pkt[27], pkt[28], pkt[29], pkt[31], pkt[32], pkt[33], pkt[34], pkt[35]]
-        );
-    }
-    println!("byte array = {:0x?}", pkt);
+    // println!(
+    //     "dest : {:0x?}",
+    //     [pkt[0], pkt[1], pkt[2], pkt[3], pkt[4], pkt[5]]
+    // );
+    // println!(
+    //     "src : {:0x?}",
+    //     [pkt[6], pkt[7], pkt[8], pkt[9], pkt[10], pkt[11]]
+    // );
+    // println!("ether_type : {:0x?}", [pkt[12], pkt[13]]);
+    // println!("id : {:0x?}", [pkt[14], pkt[15], pkt[16], pkt[17]]);
+    // println!("op : {:0x}", pkt[18]);
+    // if pkt[18] == perf_opcode::PERF_RES_RESULT as u8 {
+    //     println!(
+    //         "result pkt_count = {:0x?}",
+    //         [pkt[19], pkt[20], pkt[21], pkt[22], pkt[23], pkt[24], pkt[25], pkt[26]]
+    //     );
+    //     println!(
+    //         "result pkt_size = {:0x?}",
+    //         [pkt[27], pkt[28], pkt[29], pkt[31], pkt[32], pkt[33], pkt[34], pkt[35]]
+    //     );
+    // }
+    // println!("byte array = {:0x?}", pkt);
     println!("----------------------------------------");
     let sent = tsn::tsn_send(*sock, pkt.as_mut_ptr(), size as i32);
 
