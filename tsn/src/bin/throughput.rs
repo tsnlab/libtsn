@@ -156,8 +156,14 @@ fn do_server(sock: &mut i32, verbose: bool, size: i32) {
                     htonll(eth.payload.pkt_perf.pkt_perf_result.pkt_count);
                 eth.payload.pkt_perf.pkt_perf_result.pkt_size =
                     htonll(eth.payload.pkt_perf.pkt_perf_result.pkt_size);
-
-                // eth.payload.pkt_perf.pkt_perf_result.pkt_size = STATS.total_bytes;
+                println!(
+                    "result pkt_count = {}",
+                    eth.payload.pkt_perf.pkt_perf_result.pkt_count
+                );
+                println!(
+                    "result pkt_size = {}",
+                    eth.payload.pkt_perf.pkt_perf_result.pkt_size
+                );
                 send_perf(sock, id, &mut eth, size as usize);
             }
             _ => todo!(),
@@ -349,6 +355,16 @@ fn send_perf(sock: &mut i32, id: u32, eth: &mut MyEthernet, size: usize) {
     println!("ether_type : {:0x}", eth.ether_type);
     println!("id : {:08x}", eth.payload.id);
     println!("op : {:?}", eth.payload.op);
+    if eth.payload.op == perf_opcode::PERF_RES_RESULT as u8 {
+        println!(
+            "result pkt_count = {}",
+            eth.payload.pkt_perf.pkt_perf_result.pkt_count
+        );
+        println!(
+            "result pkt_size = {}",
+            eth.payload.pkt_perf.pkt_perf_result.pkt_size
+        );
+    }
     println!("----------------------------------------");
     let sent = tsn::tsn_send(*sock, pkt.as_mut_ptr(), size as i32);
 
