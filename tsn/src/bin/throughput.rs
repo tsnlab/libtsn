@@ -154,17 +154,17 @@ fn do_server(sock: &mut i32, verbose: bool, size: i32) {
                 eth.payload.pkt_perf.pkt_perf_result.elapsed_nsec = tdiff.tv_nsec();
                 unsafe {
                     println!("BEFORE");
-                    println!("result pkt_count = {}", STATS.pkt_count);
-                    println!("result pkt_size = {}", STATS.total_bytes);
+                    println!("result pkt_count = {:0x}", STATS.pkt_count);
+                    println!("result pkt_size = {:0x}", STATS.total_bytes);
                     eth.payload.pkt_perf.pkt_perf_result.pkt_count = STATS.pkt_count.to_be();
                     eth.payload.pkt_perf.pkt_perf_result.pkt_size = STATS.total_bytes.to_be();
                     println!("AFTER");
                     println!(
-                        "result pkt_count = {}",
+                        "result pkt_count = {:0x}",
                         eth.payload.pkt_perf.pkt_perf_result.pkt_count
                     );
                     println!(
-                        "result pkt_size = {}",
+                        "result pkt_size = {:0x}",
                         eth.payload.pkt_perf.pkt_perf_result.pkt_size
                     );
                 }
@@ -233,7 +233,6 @@ fn statistics_thread(stat: &Statistics) {
             let duration = Duration::from_nanos(remaining_ns);
             thread::sleep(duration);
         }
-        println!();
     }
 
     //final result
@@ -361,14 +360,15 @@ fn send_perf(sock: &mut i32, id: u32, eth: &mut MyEthernet, size: usize) {
     println!("op : {:?}", eth.payload.op);
     if eth.payload.op == perf_opcode::PERF_RES_RESULT as u8 {
         println!(
-            "result pkt_count = {}",
+            "result pkt_count = {:0x}",
             eth.payload.pkt_perf.pkt_perf_result.pkt_count
         );
         println!(
-            "result pkt_size = {}",
+            "result pkt_size = {:0x}",
             eth.payload.pkt_perf.pkt_perf_result.pkt_size
         );
     }
+    println!("byte array = {:?}", pkt);
     println!("----------------------------------------");
     let sent = tsn::tsn_send(*sock, pkt.as_mut_ptr(), size as i32);
 
