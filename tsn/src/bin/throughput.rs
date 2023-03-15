@@ -156,8 +156,8 @@ fn do_server(sock: &mut i32, verbose: bool, size: i32) {
                     println!("BEFORE");
                     println!("result pkt_count = {}", STATS.pkt_count);
                     println!("result pkt_size = {}", STATS.total_bytes);
-                    eth.payload.pkt_perf.pkt_perf_result.pkt_count = htonll(STATS.pkt_count);
-                    eth.payload.pkt_perf.pkt_perf_result.pkt_size = htonll(STATS.total_bytes);
+                    eth.payload.pkt_perf.pkt_perf_result.pkt_count = STATS.pkt_count.to_be();
+                    eth.payload.pkt_perf.pkt_perf_result.pkt_size = STATS.total_bytes.to_be();
                     println!("AFTER");
                     println!(
                         "result pkt_count = {}",
