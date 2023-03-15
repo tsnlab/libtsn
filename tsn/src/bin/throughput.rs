@@ -116,10 +116,6 @@ fn do_server(sock: &mut i32, verbose: bool, size: i32) {
             op: pkt[18],
         };
 
-        println!("initial ether_type = {:0x}", ethernet.ether_type);
-        println!("initial id = {:08x}", pkt_info.id);
-        //eth = bincode::deserialize(&pkt).unwrap();
-        // let mut id = socket::ntohl(pkt_info.id);
         let temp_mac = ethernet.dest;
         ethernet.dest = ethernet.src;
         ethernet.src = temp_mac;
@@ -143,7 +139,7 @@ fn do_server(sock: &mut i32, verbose: bool, size: i32) {
             perf_opcode::PERF_DATA => unsafe {
                 STATS.pkt_count += 1;
                 STATS.total_bytes += (recv_bytes + 4) as u64;
-                STATS.last_id = socket::ntohl(pkt_info.id);
+                STATS.last_id = pkt_info.id;
             },
             perf_opcode::PERF_REQ_END => {
                 tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
@@ -383,11 +379,11 @@ fn send_perf(sock: &mut i32, pkt: &mut Vec<u8>, size: usize) {
     if pkt[18] == perf_opcode::PERF_RES_RESULT as u8 {
         println!(
             "result pkt_count = {:0x?}",
-            [pkt[18], pkt[19], pkt[20], pkt[21], pkt[22], pkt[23], pkt[24], pkt[25]]
+            [pkt[19], pkt[20], pkt[21], pkt[22], pkt[23], pkt[24], pkt[25], pkt[26]]
         );
         println!(
             "result pkt_size = {:0x?}",
-            [pkt[26], pkt[27], pkt[28], pkt[29], pkt[30], pkt[31], pkt[32], pkt[33]]
+            [pkt[27], pkt[28], pkt[29], pkt[31], pkt[32], pkt[33], pkt[34], pkt[35]]
         );
     }
     println!("byte array = {:0x?}", pkt);
