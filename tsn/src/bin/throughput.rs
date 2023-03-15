@@ -158,10 +158,12 @@ fn do_server(sock: &mut i32, verbose: bool, size: i32) {
                     thread_handle.join().unwrap();
                 }
                 println!("perf_res_end send ready");
-                pkt = bincode::serialize(&ethernet).unwrap();
+                pkt = bincode::serialize(&ethernet).expect("ethernet serialization error");
                 pkt_info.id = socket::htonl(pkt_info.id);
                 pkt_info.op = perf_opcode::PERF_RES_END as u8;
-                let mut pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
+                let mut pkt_info_bytes =
+                    bincode::serialize(&pkt_info).expect("pkt_info serialization error");
+                println!("append");
                 pkt.append(&mut pkt_info_bytes);
                 println!("perf_res_end send");
                 send_perf(sock, &mut pkt, recv_bytes as usize);
