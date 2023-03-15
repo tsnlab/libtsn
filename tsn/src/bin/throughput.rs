@@ -51,7 +51,6 @@ struct Ethernet {
     dest: [u8; 6],
     src: [u8; 6],
     ether_type: u16,
-    payload: Vec<u8>,
 }
 #[derive(Serialize, Deserialize)]
 struct PktInfo {
@@ -111,12 +110,11 @@ fn do_server(sock: &mut i32, verbose: bool, size: i32) {
             dest: pkt[0..6].try_into().unwrap(),
             src: pkt[6..12].try_into().unwrap(),
             ether_type: u16::from_be_bytes(pkt[12..14].try_into().unwrap()),
-            payload: pkt[14..].to_vec(),
         };
 
         let mut pkt_info = PktInfo {
-            id: u32::from_be_bytes(ethernet.payload[0..4].try_into().unwrap()),
-            op: ethernet.payload[4],
+            id: u32::from_be_bytes(pkt[14..16].try_into().unwrap()),
+            op: pkt[16],
         };
 
         println!("initial ether_type = {:0x}", ethernet.ether_type);
@@ -126,6 +124,8 @@ fn do_server(sock: &mut i32, verbose: bool, size: i32) {
         let temp_mac = ethernet.dest;
         ethernet.dest = ethernet.src;
         ethernet.src = temp_mac;
+        ethernet.ether_type = socket::htons(ethernet.ether_type);
+
         let opcode = perf_opcode::from(pkt_info.op);
 
         match opcode {
@@ -136,11 +136,11 @@ fn do_server(sock: &mut i32, verbose: bool, size: i32) {
                 // }));
                 pkt_info.id = socket::htonl(pkt_info.id);
                 pkt_info.op = perf_opcode::PERF_RES_START as u8;
-
-                ethernet.ether_type = socket::htons(ethernet.ether_type);
-                ethernet.payload = bincode::serialize(&pkt_info).unwrap();
-                // ethernet.payload =
-                send_perf(sock, &mut ethernet, recv_bytes as usize);
+                pkt = bincode::serialize(&ethernet).unwrap();
+                let mut pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
+                pkt.append(&mut pkt_info_bytes);
+                // ethernet.payload = bincode::serialize(&pkt_info).unwrap();
+                send_perf(sock, &mut pkt, recv_bytes as usize);
             }
             // perf_opcode::PERF_DATA => unsafe {
             //     STATS.pkt_count += 1;
@@ -361,26 +361,24 @@ fn do_client(sock: &i32, iface: String, size: i32, target: String, time: i32) {
     // let isSucessful = recv_perf(&sock, custom_id, perf_opcode::PERF_REQ_START, &mut pkt);
 }
 
-fn send_perf(sock: &mut i32, ethernet: &mut Ethernet, size: usize) {
+fn send_perf(sock: &mut i32, pkt: &mut Vec<u8>, size: usize) {
     // eth.payload.id = socket::htonl(id);
     // eth.ether_type = socket::htons(ETHERTYPE_PERF);
 
-    let mut pkt: Vec<u8> = bincode::serialize(&ethernet).unwrap();
-    *ethernet = bincode::deserialize(&pkt).unwrap();
+    // let mut pkt: Vec<u8> = bincode::serialize(&ethernet).unwrap();
+    // *ethernet = bincode::deserialize(&pkt).unwrap();
     println!("---------Check data before send---------");
-    println!("dest : {:0x?}", ethernet.dest);
-    println!("src : {:0x?}", ethernet.src);
-    println!("ether_type : {:0x}", ethernet.ether_type);
     println!(
-        "id : {:08x?}",
-        [
-            ethernet.payload[0],
-            ethernet.payload[1],
-            ethernet.payload[2],
-            ethernet.payload[3]
-        ]
+        "dest : {:0x?}",
+        [pkt[0], pkt[1], pkt[2], pkt[3], pkt[4], pkt[5]]
     );
-    println!("op : {:0x}", ethernet.payload[4]);
+    println!(
+        "src : {:0x?}",
+        [pkt[6], pkt[7], pkt[8], pkt[9], pkt[10], pkt[11]]
+    );
+    println!("ether_type : {:0x?}", [pkt[12], pkt[13]]);
+    println!("id : {:0x?}", [pkt[14], pkt[15], pkt[16], pkt[17]]);
+    println!("op : {:0x}", pkt[18]);
     // if ethernet.payload.op == perf_opcode::PERF_RES_RESULT as u8 {
     //     println!(
     //         "result pkt_count = {:0x}",
@@ -426,12 +424,6 @@ fn send_perf(sock: &mut i32, ethernet: &mut Ethernet, size: usize) {
 
 //     return received;
 // }
-
-fn htonll(x: u64) -> u64 {
-    let lo = x as u32;
-    let hi = (x >> 32) as u32;
-    ((lo.to_be() as u64) << 32) | (hi.to_be() as u64)
-}
 
 fn main() -> Result<(), std::io::Error> {
     let verbose: bool;
