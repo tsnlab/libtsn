@@ -152,9 +152,10 @@ fn do_server(sock: &mut i32, verbose: bool, size: i32) {
                 eth.payload.op = perf_opcode::PERF_RES_RESULT as u8;
                 eth.payload.pkt_perf.pkt_perf_result.elapsed_sec = tdiff.tv_sec();
                 eth.payload.pkt_perf.pkt_perf_result.elapsed_nsec = tdiff.tv_nsec();
-                // TODO:eth.payload.pkt_perf.pkt_perf_result.pkt_count =
-                //     (((socket::htonl(STATS.pkt_count as u32) as u64) << 32)
-                //         + htonl(STATS.pkt_count >> 32));
+                eth.payload.pkt_perf.pkt_perf_result.pkt_count =
+                    htonll(eth.payload.pkt_perf.pkt_perf_result.pkt_count);
+                eth.payload.pkt_perf.pkt_perf_result.pkt_size =
+                    htonll(eth.payload.pkt_perf.pkt_perf_result.pkt_size);
 
                 // eth.payload.pkt_perf.pkt_perf_result.pkt_size = STATS.total_bytes;
                 send_perf(sock, id, &mut eth, size as usize);
@@ -217,7 +218,7 @@ fn statistics_thread(stat: &Statistics) {
             );
             io::stdout().flush().unwrap();
         } else {
-            println!("---------Sleep---------");
+            //println!("---------Sleep---------");
             let remaining_ns: u64 = (1000000000) - tdiff.tv_nsec() as u64;
             let duration = Duration::from_nanos(remaining_ns);
             thread::sleep(duration);
@@ -382,6 +383,12 @@ fn send_perf(sock: &mut i32, id: u32, eth: &mut MyEthernet, size: usize) {
 
 //     return received;
 // }
+
+fn htonll(x: u64) -> u64 {
+    let lo = x as u32;
+    let hi = (x >> 32) as u32;
+    ((lo.to_be() as u64) << 32) | (hi.to_be() as u64)
+}
 
 fn main() -> Result<(), std::io::Error> {
     let verbose: bool;
