@@ -232,12 +232,12 @@ fn statistics_thread(stat: &Statistics) {
             let diff_total_bytes: u64 = current_total_bytes - last_total_bytes;
             let mut loss_rate = 0.0;
 
-            println!("current_pkt_count = {}", current_pkt_count);
-            println!("last_pkt_count = {}", last_pkt_count);
-            println!("diff_pkt_count = {}", diff_pkt_count);
-            println!("current_id = {}", current_id);
-            println!("last_id = {}", last_id);
-            println!("diff_id = {}", current_id - last_id);
+            // println!("current_pkt_count = {}", current_pkt_count);
+            // println!("last_pkt_count = {}", last_pkt_count);
+            // println!("diff_pkt_count = {}", diff_pkt_count);
+            // println!("current_id = {}", current_id);
+            // println!("last_id = {}", last_id);
+            // println!("diff_id = {}", current_id - last_id);
 
             if current_id as u64 - last_id as u64 == 0 {
                 //TODO: panic!
@@ -250,7 +250,7 @@ fn statistics_thread(stat: &Statistics) {
             }
 
             println!(
-                "Stat {} {} pps {} bps loss {:.6}%",
+                "Stat {} {} pps {} bps loss {:.3}%",
                 time_elapsed,
                 diff_pkt_count,
                 diff_total_bytes * 8,
@@ -266,7 +266,7 @@ fn statistics_thread(stat: &Statistics) {
     }
 
     //final result
-    println!("---------Start processing final result---------");
+    // println!("---------Start processing final result---------");
     let mut tnow = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
     tsn::tsn_timespecff_diff(&mut tlast, &mut tnow, &mut tdiff);
     if tdiff.tv_sec() >= 1 {
@@ -281,11 +281,11 @@ fn statistics_thread(stat: &Statistics) {
         let diff_total_bytes: u64 = current_total_bytes - last_total_bytes;
         let loss_rate: f64 = 1.0 - ((diff_pkt_count) / (current_id as u64 - last_id as u64)) as f64;
 
-        println!("current_pkt_count = {}", current_pkt_count);
-        println!("last_pkt_count = {}", last_pkt_count);
-        println!("diff_pkt_count = {}", diff_pkt_count);
-        println!("current_id = {}", current_id);
-        println!("last_id = {}", last_id);
+        // println!("current_pkt_count = {}", current_pkt_count);
+        // println!("last_pkt_count = {}", last_pkt_count);
+        // println!("diff_pkt_count = {}", diff_pkt_count);
+        // println!("current_id = {}", current_id);
+        // println!("last_id = {}", last_id);
 
         last_pkt_count = current_pkt_count;
         last_total_bytes = current_total_bytes;
@@ -299,7 +299,7 @@ fn statistics_thread(stat: &Statistics) {
         );
         io::stdout().flush().unwrap();
     }
-    println!("---------finish processing final result---------");
+    // println!("---------finish processing final result---------");
 }
 fn do_client(sock: &i32, iface: String, size: i32, target: String, time: i32) {
     let mut pkt: Vec<u8> = vec![0; size as usize];
@@ -384,42 +384,43 @@ fn do_client(sock: &i32, iface: String, size: i32, target: String, time: i32) {
 }
 
 fn send_perf(sock: &mut i32, pkt: &mut Vec<u8>, size: usize) {
-    println!("---------Check data before send---------");
-    println!(
-        "dest : {:0x?}",
-        [pkt[0], pkt[1], pkt[2], pkt[3], pkt[4], pkt[5]]
-    );
-    println!(
-        "src : {:0x?}",
-        [pkt[6], pkt[7], pkt[8], pkt[9], pkt[10], pkt[11]]
-    );
-    println!("ether_type : {:0x?}", [pkt[12], pkt[13]]);
-    println!("id : {:0x?}", [pkt[14], pkt[15], pkt[16], pkt[17]]);
-    println!("op : {:0x}", pkt[18]);
-    if pkt[18] == perf_opcode::PERF_RES_RESULT as u8 {
-        println!(
-            "result pkt_count = {:0x?}",
-            [pkt[19], pkt[20], pkt[21], pkt[22], pkt[23], pkt[24], pkt[25], pkt[26]]
-        );
-        println!(
-            "result pkt_size = {:0x?}",
-            [pkt[27], pkt[28], pkt[29], pkt[30], pkt[31], pkt[32], pkt[33], pkt[34]]
-        );
-        println!(
-            "result ellased_sec = {}",
-            i64::from_be_bytes([
-                pkt[35], pkt[36], pkt[37], pkt[38], pkt[39], pkt[40], pkt[41], pkt[42]
-            ])
-        );
-        println!(
-            "result ellased_nsec = {}",
-            i64::from_be_bytes([
-                pkt[43], pkt[44], pkt[45], pkt[46], pkt[47], pkt[48], pkt[49], pkt[50]
-            ])
-        );
-    }
-    println!("byte array = {:0x?}", pkt);
-    println!("----------------------------------------");
+    // if pkt[18] == perf_opcode::PERF_RES_RESULT as u8 {
+    //     println!("---------Check data before send---------");
+    //     println!(
+    //         "dest : {:0x?}",
+    //         [pkt[0], pkt[1], pkt[2], pkt[3], pkt[4], pkt[5]]
+    //     );
+    //     println!(
+    //         "src : {:0x?}",
+    //         [pkt[6], pkt[7], pkt[8], pkt[9], pkt[10], pkt[11]]
+    //     );
+    //     println!("ether_type : {:0x?}", [pkt[12], pkt[13]]);
+    //     println!("id : {:0x?}", [pkt[14], pkt[15], pkt[16], pkt[17]]);
+    //     println!("op : {:0x}", pkt[18]);
+
+    //     println!(
+    //         "result pkt_count = {:0x?}",
+    //         [pkt[19], pkt[20], pkt[21], pkt[22], pkt[23], pkt[24], pkt[25], pkt[26]]
+    //     );
+    //     println!(
+    //         "result pkt_size = {:0x?}",
+    //         [pkt[27], pkt[28], pkt[29], pkt[30], pkt[31], pkt[32], pkt[33], pkt[34]]
+    //     );
+    //     println!(
+    //         "result ellased_sec = {}",
+    //         i64::from_be_bytes([
+    //             pkt[35], pkt[36], pkt[37], pkt[38], pkt[39], pkt[40], pkt[41], pkt[42]
+    //         ])
+    //     );
+    //     println!(
+    //         "result ellased_nsec = {}",
+    //         i64::from_be_bytes([
+    //             pkt[43], pkt[44], pkt[45], pkt[46], pkt[47], pkt[48], pkt[49], pkt[50]
+    //         ])
+    //     );
+    // }
+    // println!("byte array = {:0x?}", pkt);
+    // println!("----------------------------------------");
     let sent = tsn::tsn_send(*sock, pkt.as_mut_ptr(), size as i32);
 
     if sent < 0 {
