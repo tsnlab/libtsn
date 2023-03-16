@@ -94,12 +94,7 @@ static mut SOCK: tsn::TsnSocket = tsn::TsnSocket {
 
 fn do_server(sock: &mut i32, verbose: bool, size: i32) {
     let mut ethernet: Ethernet;
-    let mut pkt: Vec<u8> = vec![
-        0;
-        mem::size_of::<Ethernet>()
-            + mem::size_of::<PktInfo>()
-            + mem::size_of::<PktPerfResult>()
-    ];
+    let mut pkt: Vec<u8> = vec![0; size as usize];
     let mut recv_bytes;
     let mut tstart = TimeSpec::zero();
     let mut tend = TimeSpec::zero();
@@ -135,13 +130,12 @@ fn do_server(sock: &mut i32, verbose: bool, size: i32) {
                 thread_handle = Some(thread::spawn(move || unsafe {
                     statistics_thread(&STATS);
                 }));
-                pkt.clear();
-                pkt = bincode::serialize(&ethernet).unwrap();
+                let mut send_pkt = bincode::serialize(&ethernet).unwrap();
                 pkt_info.id = socket::htonl(pkt_info.id);
                 pkt_info.op = perf_opcode::PERF_RES_START as u8;
                 let mut pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
-                pkt.append(&mut pkt_info_bytes);
-                send_perf(sock, &mut pkt, recv_bytes as usize);
+                send_pkt.append(&mut pkt_info_bytes);
+                send_perf(sock, &mut send_pkt, recv_bytes as usize);
             }
             perf_opcode::PERF_DATA => unsafe {
                 STATS.pkt_count += 1;
@@ -159,16 +153,17 @@ fn do_server(sock: &mut i32, verbose: bool, size: i32) {
                     thread_handle.join().unwrap();
                 }
                 println!("perf_res_end send ready");
-                pkt.clear();
-                pkt = bincode::serialize(&ethernet).expect("ethernet serialization error");
+
+                let mut send_pkt =
+                    bincode::serialize(&ethernet).expect("ethernet serialization error");
                 pkt_info.id = socket::htonl(pkt_info.id);
                 pkt_info.op = perf_opcode::PERF_RES_END as u8;
                 let mut pkt_info_bytes =
                     bincode::serialize(&pkt_info).expect("pkt_info serialization error");
                 println!("append");
-                pkt.append(&mut pkt_info_bytes);
+                send_pkt.append(&mut pkt_info_bytes);
                 println!("perf_res_end send");
-                send_perf(sock, &mut pkt, recv_bytes as usize);
+                send_perf(sock, &mut send_pkt, recv_bytes as usize);
             }
             perf_opcode::PERF_REQ_RESULT => {
                 println!("PERF_REQ_RESULT");
