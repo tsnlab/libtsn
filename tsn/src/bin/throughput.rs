@@ -234,10 +234,14 @@ fn statistics_thread(stat: &Statistics) {
             let diff_total_bytes: u64 = current_total_bytes - last_total_bytes;
             let mut loss_rate = 0.0;
 
-            // println!("current_id = {}", current_id);
-            // println!("last_id = {}", last_id);
+            println!("current_pkt_count = {}", current_pkt_count);
+            println!("last_pkt_count = {}", last_pkt_count);
+            println!("diff_pkt_count = {}", diff_pkt_count);
+            println!("current_id = {}", current_id);
+            println!("last_id = {}", last_id);
 
             if current_id as u64 - last_id as u64 == 0 {
+                //TODO: panic!
             } else {
                 loss_rate = 1.0 - ((diff_pkt_count) / (current_id as u64 - last_id as u64)) as f64;
 
@@ -277,6 +281,12 @@ fn statistics_thread(stat: &Statistics) {
         let diff_pkt_count: u64 = current_pkt_count - last_pkt_count;
         let diff_total_bytes: u64 = current_total_bytes - last_total_bytes;
         let loss_rate: f64 = 1.0 - ((diff_pkt_count) / (current_id as u64 - last_id as u64)) as f64;
+
+        println!("current_pkt_count = {}", current_pkt_count);
+        println!("last_pkt_count = {}", last_pkt_count);
+        println!("diff_pkt_count = {}", diff_pkt_count);
+        println!("current_id = {}", current_id);
+        println!("last_id = {}", last_id);
 
         last_pkt_count = current_pkt_count;
         last_total_bytes = current_total_bytes;
