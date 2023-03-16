@@ -155,10 +155,11 @@ fn do_server(sock: &mut i32, verbose: bool, size: i32) {
                 unsafe {
                     STATS.running = false;
                 }
-
+                println!("thread join start");
                 if let Some(thread_handle) = thread_handle.take() {
                     thread_handle.join().unwrap();
                 }
+                println!("thread join end");
 
                 let mut send_pkt =
                     bincode::serialize(&ethernet).expect("ethernet serialization error");
