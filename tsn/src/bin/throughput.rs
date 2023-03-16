@@ -127,6 +127,13 @@ fn do_server(sock: &mut i32, verbose: bool, size: i32) {
             perf_opcode::PERF_REQ_START => {
                 println!("Received start '{:08x}'", pkt_info.id);
                 tstart = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
+
+                unsafe {
+                    STATS.pkt_count = 0;
+                    STATS.total_bytes = 0;
+                    STATS.running = true;
+                }
+
                 thread_handle = Some(thread::spawn(move || unsafe {
                     statistics_thread(&STATS);
                 }));
@@ -163,12 +170,10 @@ fn do_server(sock: &mut i32, verbose: bool, size: i32) {
                 send_perf(sock, &mut send_pkt, recv_bytes as usize);
             }
             perf_opcode::PERF_REQ_RESULT => {
-                println!("PERF_REQ_RESULT");
                 let pkt_result: PktPerfResult;
                 tsn::tsn_timespecff_diff(&mut tstart, &mut tend, &mut tdiff);
                 pkt_info.id = socket::htonl(pkt_info.id);
                 pkt_info.op = perf_opcode::PERF_RES_RESULT as u8;
-                println!("Unsafe start");
                 unsafe {
                     // println!("BEFORE");
                     // println!("result pkt_count = {:0x}", STATS.pkt_count);
