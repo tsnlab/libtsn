@@ -489,7 +489,7 @@ fn main() -> Result<(), std::io::Error> {
         .arg(
             Arg::new("size")
                 .long("size")
-                .short('s')
+                .short('p')
                 .takes_value(true)
                 .default_value("1460"),
         );
