@@ -116,7 +116,7 @@ fn do_server(sock: &mut i32, size: i32) {
             id: u32::from_be_bytes([pkt[14], pkt[15], pkt[16], pkt[17]]),
             op: pkt[18],
         };
-
+        println!("recv opcode = {:0x}", pkt_info.op);
         let temp_mac = ethernet.dest;
         ethernet.dest = ethernet.src;
         ethernet.src = temp_mac;
