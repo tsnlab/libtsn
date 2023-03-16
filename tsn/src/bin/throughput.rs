@@ -135,6 +135,7 @@ fn do_server(sock: &mut i32, verbose: bool, size: i32) {
                 thread_handle = Some(thread::spawn(move || unsafe {
                     statistics_thread(&STATS);
                 }));
+                pkt.clear();
                 pkt = bincode::serialize(&ethernet).unwrap();
                 pkt_info.id = socket::htonl(pkt_info.id);
                 pkt_info.op = perf_opcode::PERF_RES_START as u8;
@@ -158,6 +159,7 @@ fn do_server(sock: &mut i32, verbose: bool, size: i32) {
                     thread_handle.join().unwrap();
                 }
                 println!("perf_res_end send ready");
+                pkt.clear();
                 pkt = bincode::serialize(&ethernet).expect("ethernet serialization error");
                 pkt_info.id = socket::htonl(pkt_info.id);
                 pkt_info.op = perf_opcode::PERF_RES_END as u8;
@@ -189,6 +191,7 @@ fn do_server(sock: &mut i32, verbose: bool, size: i32) {
                     println!("result pkt_count = {:0x}", pkt_result.pkt_count);
                     println!("result pkt_size = {:0x}", pkt_result.pkt_size);
                 }
+                pkt.clear();
                 pkt = bincode::serialize(&ethernet).unwrap();
                 pkt_info.id = socket::htonl(pkt_info.id);
                 pkt_info.op = perf_opcode::PERF_REQ_END as u8;
