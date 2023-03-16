@@ -242,7 +242,7 @@ fn statistics_thread(stat: &Statistics) {
             if current_id as u64 - last_id as u64 == 0 {
                 //TODO: panic!
             } else {
-                loss_rate = 1.0 - ((diff_pkt_count) as f64 / (current_id as f64 - last_id as f64));
+                loss_rate = 1.0 - ((diff_pkt_count) as f64 / ((current_id - last_id) as f64));
 
                 last_pkt_count = current_pkt_count;
                 last_total_bytes = current_total_bytes;
