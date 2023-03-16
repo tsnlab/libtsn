@@ -403,18 +403,18 @@ fn send_perf(sock: &mut i32, pkt: &mut Vec<u8>, size: usize) {
         );
         println!(
             "result pkt_size = {:0x?}",
-            [pkt[27], pkt[28], pkt[29], pkt[31], pkt[32], pkt[33], pkt[34], pkt[35]]
+            [pkt[27], pkt[28], pkt[29], pkt[30], pkt[31], pkt[32], pkt[33], pkt[34]]
         );
         println!(
             "result ellased_sec = {}",
             i64::from_be_bytes([
-                pkt[36], pkt[37], pkt[38], pkt[39], pkt[40], pkt[41], pkt[42], pkt[43]
+                pkt[35], pkt[36], pkt[37], pkt[38], pkt[39], pkt[40], pkt[41], pkt[42]
             ])
         );
         println!(
             "result ellased_nsec = {}",
             i64::from_be_bytes([
-                pkt[44], pkt[45], pkt[46], pkt[47], pkt[48], pkt[49], pkt[50], pkt[51]
+                pkt[43], pkt[44], pkt[45], pkt[46], pkt[47], pkt[48], pkt[49], pkt[50]
             ])
         );
     }
