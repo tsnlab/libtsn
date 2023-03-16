@@ -189,8 +189,6 @@ fn do_server(sock: &mut i32, verbose: bool, size: i32) {
                     // println!("result pkt_size = {:0x}", pkt_result.pkt_size);
                 }
                 let mut send_pkt = bincode::serialize(&ethernet).unwrap();
-                pkt_info.id = socket::htonl(pkt_info.id);
-                pkt_info.op = perf_opcode::PERF_REQ_END as u8;
                 let mut pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
                 let mut pkt_result_bytes = bincode::serialize(&pkt_result).unwrap();
                 send_pkt.append(&mut pkt_info_bytes);
@@ -239,6 +237,7 @@ fn statistics_thread(stat: &Statistics) {
             println!("diff_pkt_count = {}", diff_pkt_count);
             println!("current_id = {}", current_id);
             println!("last_id = {}", last_id);
+            println!("diff_id = {}", current_id - last_id);
 
             if current_id as u64 - last_id as u64 == 0 {
                 //TODO: panic!
@@ -251,7 +250,7 @@ fn statistics_thread(stat: &Statistics) {
             }
 
             println!(
-                "Stat {} {} pps {} bps loss {:.3}%",
+                "Stat {} {} pps {} bps loss {:.6}%",
                 time_elapsed,
                 diff_pkt_count,
                 diff_total_bytes * 8,
