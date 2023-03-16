@@ -1,6 +1,6 @@
 use nix::net::if_::if_nametoindex;
 use nix::sys::socket::msghdr;
-use nix::sys::time::{TimeSpec, TimeVal, TimeValLike};
+use nix::sys::time::{TimeSpec, TimeValLike};
 use nix::unistd::close;
 use std::io::prelude::*;
 use std::io::Error;
