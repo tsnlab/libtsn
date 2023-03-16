@@ -126,7 +126,7 @@ fn do_server(sock: &mut i32, size: i32) {
 
         match opcode {
             PerfOpcode::PerfReqStart => {
-                println!("Received start '{:08x}'", pkt_info.id);
+                eprintln!("Received start '{:08x}'", pkt_info.id);
                 tstart = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
 
                 unsafe {
@@ -152,7 +152,7 @@ fn do_server(sock: &mut i32, size: i32) {
             },
             PerfOpcode::RerqReqEnd => {
                 tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
-                println!("Received end {:08x}", pkt_info.id);
+                eprintln!("Received end {:08x}", pkt_info.id);
                 unsafe {
                     STATS.running = false;
                 }
@@ -170,7 +170,7 @@ fn do_server(sock: &mut i32, size: i32) {
                 send_perf(sock, &mut send_pkt, recv_bytes as usize);
             }
             PerfOpcode::PerfReqResult => {
-                println!("Received result {:08x}", pkt_info.id);
+                eprintln!("Received result {:08x}", pkt_info.id);
                 let pkt_result: PktPerfResult;
                 tsn::tsn_timespecff_diff(&mut tstart, &mut tend, &mut tdiff);
                 pkt_info.id = socket::htonl(pkt_info.id);
