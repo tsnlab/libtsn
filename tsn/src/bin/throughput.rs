@@ -145,11 +145,9 @@ fn do_server(sock: &mut i32, verbose: bool, size: i32) {
                 send_perf(sock, &mut send_pkt, recv_bytes as usize);
             }
             perf_opcode::PERF_DATA => unsafe {
-                println!("perf data start");
                 STATS.pkt_count += 1;
                 STATS.total_bytes += (recv_bytes + 4) as u64;
                 STATS.last_id = pkt_info.id;
-                println!("perf data end");
             },
             perf_opcode::PERF_REQ_END => {
                 tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
@@ -157,11 +155,9 @@ fn do_server(sock: &mut i32, verbose: bool, size: i32) {
                 unsafe {
                     STATS.running = false;
                 }
-                println!("thread join start");
                 if let Some(thread_handle) = thread_handle.take() {
                     thread_handle.join().unwrap();
                 }
-                println!("thread join end");
 
                 let mut send_pkt =
                     bincode::serialize(&ethernet).expect("ethernet serialization error");
@@ -235,12 +231,12 @@ fn statistics_thread(stat: &Statistics) {
             let diff_total_bytes: u64 = current_total_bytes - last_total_bytes;
             let mut loss_rate = 0.0;
 
-            // println!("current_pkt_count = {}", current_pkt_count);
-            // println!("last_pkt_count = {}", last_pkt_count);
-            // println!("diff_pkt_count = {}", diff_pkt_count);
-            // println!("current_id = {}", current_id);
-            // println!("last_id = {}", last_id);
-            // println!("diff_id = {}", current_id - last_id);
+            println!("current_pkt_count = {}", current_pkt_count);
+            println!("last_pkt_count = {}", last_pkt_count);
+            println!("diff_pkt_count = {}", diff_pkt_count);
+            println!("current_id = {}", current_id);
+            println!("last_id = {}", last_id);
+            println!("diff_id = {}", current_id - last_id);
 
             if current_id as u64 - last_id as u64 == 0 {
                 //TODO: panic!
