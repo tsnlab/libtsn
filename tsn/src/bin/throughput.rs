@@ -105,7 +105,7 @@ fn do_server(sock: &mut i32, size: i32) {
     println!("Starting server");
     while RUNNING.load(Ordering::Relaxed) {
         recv_bytes = tsn::tsn_recv(*sock, pkt.as_mut_ptr(), size);
-
+        println!("recv_bytes = {}", recv_bytes);
         ethernet = Ethernet {
             dest: pkt[0..6].try_into().unwrap(),
             src: pkt[6..12].try_into().unwrap(),
@@ -203,11 +203,11 @@ fn do_server(sock: &mut i32, size: i32) {
 fn statistics_thread(stat: &Statistics) {
     let mut tdiff = TimeSpec::zero();
     let mut start = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
-    let mut tlast = start.clone();
+    let mut tlast = start;
 
-    let mut last_id: Box<u32> = Box::new(0);
-    let mut last_pkt_count: Box<u64> = Box::new(0);
-    let mut last_total_bytes: Box<u64> = Box::new(0);
+    let mut last_id: u32 = 0;
+    let mut last_pkt_count: u64 = 0;
+    let mut last_total_bytes: u64 = 0;
 
     //TODO:let format_str = "Stat {} {} pps {} bps loss {:.3}%";
 
@@ -224,13 +224,13 @@ fn statistics_thread(stat: &Statistics) {
             tsn::tsn_timespecff_diff(&mut start, &mut tnow, &mut tdiff);
             let time_elapsed: u16 = tdiff.tv_sec() as u16;
 
-            let current_pkt_count = Box::new(stat.pkt_count);
-            let current_total_bytes = Box::new(stat.total_bytes);
-            let current_id = Box::new(stat.last_id);
+            let current_pkt_count: u64 = stat.pkt_count;
+            let current_total_bytes: u64 = stat.total_bytes;
+            let current_id: u32 = stat.last_id;
 
-            let diff_pkt_count = Box::new(*current_pkt_count - *last_pkt_count);
-            let diff_total_bytes = Box::new(*current_total_bytes - *last_total_bytes);
-            let mut loss_rate: Box<f64> = Box::new(1.0);
+            let diff_pkt_count: u64 = current_pkt_count - last_pkt_count;
+            let diff_total_bytes: u64 = current_total_bytes - last_total_bytes;
+            let loss_rate;
 
             // println!("current_pkt_count = {}", current_pkt_count);
             // println!("last_pkt_count = {}", last_pkt_count);
@@ -239,12 +239,11 @@ fn statistics_thread(stat: &Statistics) {
             // println!("last_id = {}", last_id);
             // println!("diff_id = {}", current_id - last_id);
 
-            if *current_id - *last_id == 0 {
+            if current_id as u64 - last_id as u64 == 0 {
                 //TODO: panic!
                 continue;
             } else {
-                loss_rate =
-                    Box::new(1.0 - ((*diff_pkt_count) as f64 / ((*current_id - *last_id) as f64)));
+                loss_rate = 1.0 - ((diff_pkt_count) as f64 / ((current_id - last_id) as f64));
 
                 last_pkt_count = current_pkt_count;
                 last_total_bytes = current_total_bytes;
@@ -255,8 +254,8 @@ fn statistics_thread(stat: &Statistics) {
                 "Stat {} {} pps {} bps loss {:.3}%",
                 time_elapsed,
                 diff_pkt_count,
-                *diff_total_bytes * 8,
-                *loss_rate * 100 as f64
+                diff_total_bytes * 8,
+                loss_rate * 100 as f64
             );
             io::stdout().flush().unwrap();
         } else {
@@ -279,9 +278,9 @@ fn statistics_thread(stat: &Statistics) {
         let current_total_bytes: u64 = stat.total_bytes;
         let current_id: u32 = stat.last_id;
 
-        let diff_pkt_count: u64 = current_pkt_count - *last_pkt_count;
-        let diff_total_bytes: u64 = current_total_bytes - *last_total_bytes;
-        let loss_rate: f64 = 1.0 - ((diff_pkt_count) as f64 / ((current_id - *last_id) as f64));
+        let diff_pkt_count: u64 = current_pkt_count - last_pkt_count;
+        let diff_total_bytes: u64 = current_total_bytes - last_total_bytes;
+        let loss_rate: f64 = 1.0 - ((diff_pkt_count) as f64 / ((current_id - last_id) as f64));
 
         // println!("current_pkt_count = {}", current_pkt_count);
         // println!("last_pkt_count = {}", last_pkt_count);
