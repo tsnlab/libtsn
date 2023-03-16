@@ -145,9 +145,11 @@ fn do_server(sock: &mut i32, verbose: bool, size: i32) {
                 send_perf(sock, &mut send_pkt, recv_bytes as usize);
             }
             perf_opcode::PERF_DATA => unsafe {
+                println!("perf data start");
                 STATS.pkt_count += 1;
                 STATS.total_bytes += (recv_bytes + 4) as u64;
                 STATS.last_id = pkt_info.id;
+                println!("perf data end");
             },
             perf_opcode::PERF_REQ_END => {
                 tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
