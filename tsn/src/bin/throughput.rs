@@ -266,7 +266,7 @@ fn statistics_thread(stat: &Statistics) {
     }
 
     //final result
-    // println!("---------Start processing final result---------");
+    println!("---------Start processing final result---------");
     let mut tnow = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
     tsn::tsn_timespecff_diff(&mut tlast, &mut tnow, &mut tdiff);
     if tdiff.tv_sec() >= 1 {
@@ -279,7 +279,7 @@ fn statistics_thread(stat: &Statistics) {
 
         let diff_pkt_count: u64 = current_pkt_count - last_pkt_count;
         let diff_total_bytes: u64 = current_total_bytes - last_total_bytes;
-        let loss_rate: f64 = 1.0 - ((diff_pkt_count) / (current_id as u64 - last_id as u64)) as f64;
+        let loss_rate: f64 = 1.0 - ((diff_pkt_count) as f64 / ((current_id - last_id) as f64));
 
         // println!("current_pkt_count = {}", current_pkt_count);
         // println!("last_pkt_count = {}", last_pkt_count);
@@ -299,9 +299,9 @@ fn statistics_thread(stat: &Statistics) {
         );
         io::stdout().flush().unwrap();
     }
-    // println!("---------finish processing final result---------");
+    println!("---------finish processing final result---------");
 }
-fn do_client(sock: &i32, iface: String, size: i32, target: String, time: i32) {
+fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32) {
     let mut pkt: Vec<u8> = vec![0; size as usize];
 
     let timeout: libc::timeval = libc::timeval {
@@ -365,7 +365,7 @@ fn do_client(sock: &i32, iface: String, size: i32, target: String, time: i32) {
     let mut tend: TimeSpec;
     let mut tdiff: TimeSpec;
 
-    println!("Starting");
+    println!("Starting client");
 
     let custom_id: u32 = 0xdeadbeef;
 
@@ -375,12 +375,18 @@ fn do_client(sock: &i32, iface: String, size: i32, target: String, time: i32) {
     pkt[14..18].copy_from_slice(&socket::htonl(custom_id).to_le_bytes());
     pkt[18] = perf_opcode::PERF_REQ_START as u8;
 
-    let sent = tsn::tsn_send(*sock, pkt.as_mut_ptr(), mem::size_of_val(&pkt) as i32);
+    let mut is_successful = false;
 
-    if sent < 0 {
-        println!("failed to send");
+    while !is_successful {
+        send_perf(sock, &mut pkt, size as usize);
+        is_successful = recv_perf(
+            &sock,
+            custom_id,
+            perf_opcode::PERF_REQ_START,
+            &mut pkt,
+            size as usize,
+        );
     }
-    // let isSucessful = recv_perf(&sock, custom_id, perf_opcode::PERF_REQ_START, &mut pkt);
 }
 
 fn send_perf(sock: &mut i32, pkt: &mut Vec<u8>, size: usize) {
@@ -428,32 +434,35 @@ fn send_perf(sock: &mut i32, pkt: &mut Vec<u8>, size: usize) {
         //TODO: proper error message
     }
 }
-// fn recv_perf(sock: &i32, id: u32, op: perf_opcode, pkt: &mut Vec<u8>) -> bool {
-//     // let mut RecvPkt: Vec<u8> = pkt.clone();
-//     let mut eth: MyEthernet;
-//     let tstart: TimeSpec;
-//     let mut tend: TimeSpec;
-//     let mut tdiff: TimeSpec;
-//     let mut received = false;
-//     let size = mem::size_of_val(&pkt);
+fn recv_perf(sock: &i32, id: u32, op: perf_opcode, pkt: &mut Vec<u8>, size: usize) -> bool {
+    let tstart: TimeSpec;
+    let mut tend: TimeSpec;
+    let mut tdiff: TimeSpec;
+    let mut received = false;
+    let size = mem::size_of_val(&pkt);
 
-//     tstart = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
+    tstart = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
 
-//     while !received {
-//         let len = tsn::tsn_recv(*sock, pkt.as_mut_ptr(), size as i32);
-//         eth = bincode::deserialize(&pkt).unwrap();
-//         tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
-//         tdiff = tend - tstart;
+    while !received {
+        let len = tsn::tsn_recv(*sock, pkt.as_mut_ptr(), size as i32);
+        tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
+        tdiff = tend - tstart;
 
-//         if len < 0 && tdiff.tv_nsec() >= TIMEOUT_SEC as i64 {
-//             break;
-//         } else if socket::ntohl(eth.payload.id) == id && eth.payload.op == op {
-//             received = true;
-//         }
-//     }
+        let ethernet_size = mem::size_of::<Ethernet>();
+        let pkt_info: PktInfo = PktInfo {
+            id: u32::from_be_bytes(pkt[ethernet_size..ethernet_size + 4].try_into().unwrap()),
+            op: pkt[ethernet_size + 4],
+        };
 
-//     return received;
-// }
+        if len < 0 && tdiff.tv_nsec() >= TIMEOUT_SEC as i64 {
+            break;
+        } else if socket::ntohl(pkt_info.id) == id && pkt_info.op == op as u8 {
+            received = true;
+        }
+    }
+
+    return received;
+}
 
 fn main() -> Result<(), std::io::Error> {
     let verbose: bool;
@@ -581,7 +590,7 @@ fn main() -> Result<(), std::io::Error> {
         },
         "c" => unsafe {
             do_client(
-                &SOCK.fd,
+                &mut SOCK.fd,
                 iface.to_string(),
                 FromStr::from_str(size).unwrap(),
                 target.to_string(),
