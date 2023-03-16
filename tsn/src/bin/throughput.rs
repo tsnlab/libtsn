@@ -491,7 +491,7 @@ fn main() -> Result<(), std::io::Error> {
                 .long("size")
                 .short('p')
                 .takes_value(true)
-                .default_value("1460"),
+                .default_value("100"),
         );
 
     let client_command = ClapCommand::new("client")
