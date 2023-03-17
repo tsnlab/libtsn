@@ -23,7 +23,7 @@ const TIMEOUT_SEC: u32 = 1;
 #[derive(Clone, Copy, Serialize, Deserialize, Debug)]
 enum PerfOpcode {
     PerfReqStart = 0x00,
-    RerqReqEnd = 0x01,
+    PerfReqEnd = 0x01,
     PerfResStart = 0x20,
     PerfResEnd = 0x21,
     PerfData = 0x30,
@@ -35,7 +35,7 @@ impl From<u8> for PerfOpcode {
     fn from(value: u8) -> Self {
         match value {
             0x00 => PerfOpcode::PerfReqStart,
-            0x01 => PerfOpcode::RerqReqEnd,
+            0x01 => PerfOpcode::PerfReqEnd,
             0x20 => PerfOpcode::PerfResStart,
             0x21 => PerfOpcode::PerfResEnd,
             0x30 => PerfOpcode::PerfData,
@@ -100,15 +100,15 @@ fn do_server(sock: &mut i32, size: i32) {
     let mut tend = TimeSpec::zero();
     let mut tdiff = TimeSpec::zero();
 
-    let stack_size = 10 * 1024 * 1024; // set the stack size to 10 MB
+    // let stack_size = 10 * 1024 * 1024; // set the stack size to 10 MB
 
     let mut thread_handle: Option<thread::JoinHandle<()>> = None;
 
     println!("Starting server");
     while RUNNING.load(Ordering::Relaxed) {
-        let builder = thread::Builder::new().stack_size(stack_size);
+        // let builder = thread::Builder::new().stack_size(stack_size);
         recv_bytes = tsn::tsn_recv(*sock, pkt.as_mut_ptr(), size);
-        println!("recv_bytes = {}", recv_bytes);
+        // println!("recv_bytes = {}", recv_bytes);
         ethernet = Ethernet {
             dest: pkt[0..6].try_into().unwrap(),
             src: pkt[6..12].try_into().unwrap(),
@@ -119,7 +119,7 @@ fn do_server(sock: &mut i32, size: i32) {
             id: u32::from_be_bytes([pkt[14], pkt[15], pkt[16], pkt[17]]),
             op: pkt[18],
         };
-        println!("recv opcode = {:0x}", pkt_info.op);
+        // println!("recv opcode = {:0x}", pkt_info.op);
         let temp_mac = ethernet.dest;
         ethernet.dest = ethernet.src;
         ethernet.src = temp_mac;
@@ -138,13 +138,9 @@ fn do_server(sock: &mut i32, size: i32) {
                     STATS.running = true;
                 }
 
-                thread_handle = Some(
-                    builder
-                        .spawn(move || unsafe {
-                            statistics_thread(&STATS);
-                        })
-                        .unwrap(),
-                );
+                thread_handle = Some(thread::spawn(move || unsafe {
+                    statistics_thread(&STATS);
+                }));
                 let mut send_pkt = bincode::serialize(&ethernet).unwrap();
                 pkt_info.id = socket::htonl(pkt_info.id);
                 pkt_info.op = PerfOpcode::PerfResStart as u8;
@@ -157,7 +153,7 @@ fn do_server(sock: &mut i32, size: i32) {
                 STATS.total_bytes += (recv_bytes + 4) as u64;
                 STATS.last_id = pkt_info.id;
             },
-            PerfOpcode::RerqReqEnd => {
+            PerfOpcode::PerfReqEnd => {
                 tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
                 eprintln!("Received end {:08x}", pkt_info.id);
                 unsafe {
@@ -201,9 +197,11 @@ fn do_server(sock: &mut i32, size: i32) {
                 let mut pkt_result_bytes = bincode::serialize(&pkt_result).unwrap();
                 send_pkt.append(&mut pkt_info_bytes);
                 send_pkt.append(&mut pkt_result_bytes);
-                send_perf(sock, &mut send_pkt, size as usize);
+                // send_perf(sock, &mut send_pkt, size as usize);
             }
-            _ => todo!(),
+            _ => {
+                println!("opcode = {:0x}", opcode as u8);
+            }
         }
     }
 }
@@ -432,7 +430,7 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     pkt.clear();
     pkt_info_bytes.clear();
     pkt_info.id = socket::htonl(custom_id);
-    pkt_info.op = PerfOpcode::RerqReqEnd as u8;
+    pkt_info.op = PerfOpcode::PerfReqEnd as u8;
     pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
     pkt = ethernet_bytes.clone();
     pkt.append(&mut pkt_info_bytes);
