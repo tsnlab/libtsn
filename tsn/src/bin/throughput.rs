@@ -259,6 +259,10 @@ fn statistics_thread(stat: &Statistics) {
             if last_total_bytes > current_total_bytes {
                 last_total_bytes = 0;
             }
+
+            if last_id > current_id {
+                last_id = 0;
+            }
             //
 
             let diff_pkt_count: u64 = current_pkt_count - last_pkt_count;
