@@ -187,8 +187,8 @@ fn do_server(sock: &mut i32, size: i32) {
                 let pkt_result: PktPerfResult;
                 //tsn::tsn_timespecff_diff(&mut tstart, &mut tend, &mut tdiff);
                 tdiff = tend - tstart;
-                println!("elapsed_sec = {}", tdiff.tv_sec());
-                println!("elapsed_nsec = {}", tdiff.tv_nsec());
+                // println!("elapsed_sec = {}", tdiff.tv_sec());
+                // println!("elapsed_nsec = {}", tdiff.tv_nsec());
 
                 pkt_info.id = socket::htonl(pkt_info.id);
                 pkt_info.op = PerfOpcode::PerfResResult as u8;
@@ -248,8 +248,8 @@ fn statistics_thread(stat: &Statistics) {
             let current_total_bytes: u64 = stat.total_bytes;
             let current_id: u32 = stat.last_id;
 
-            println!("current_pkt_count = {}", current_pkt_count);
-            println!("last_pkt_count = {}", last_pkt_count);
+            // println!("current_pkt_count = {}", current_pkt_count);
+            // println!("last_pkt_count = {}", last_pkt_count);
 
             //TODO: this code might need to be fixed
             if last_pkt_count > current_pkt_count {
@@ -271,7 +271,7 @@ fn statistics_thread(stat: &Statistics) {
 
             // println!("current_pkt_count = {}", current_pkt_count);
             // println!("last_pkt_count = {}", last_pkt_count);
-            println!("diff_pkt_count = {}", diff_pkt_count);
+            // println!("diff_pkt_count = {}", diff_pkt_count);
             // println!("current_id = {}", current_id);
             // println!("last_id = {}", last_id);
             // println!("diff_id = {}", current_id - last_id);
