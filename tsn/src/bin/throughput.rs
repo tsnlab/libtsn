@@ -253,15 +253,15 @@ fn statistics_thread(stat: &Statistics) {
 
             //TODO: this code might need to be fixed
             if last_pkt_count > current_pkt_count {
-                last_pkt_count = 0;
+                continue;
             }
 
             if last_total_bytes > current_total_bytes {
-                last_total_bytes = 0;
+                continue;
             }
 
             if last_id > current_id {
-                last_id = 0;
+                continue;
             }
             //
 
