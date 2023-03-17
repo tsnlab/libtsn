@@ -237,13 +237,16 @@ fn statistics_thread(stat: &Statistics) {
             let current_total_bytes: u64 = stat.total_bytes;
             let current_id: u32 = stat.last_id;
 
+            println!("current_pkt_count = {}", current_pkt_count);
+            println!("last_pkt_count = {}", last_pkt_count);
+
             let diff_pkt_count: u64 = current_pkt_count - last_pkt_count;
             let diff_total_bytes: u64 = current_total_bytes - last_total_bytes;
             let loss_rate;
 
             // println!("current_pkt_count = {}", current_pkt_count);
             // println!("last_pkt_count = {}", last_pkt_count);
-            // println!("diff_pkt_count = {}", diff_pkt_count);
+            println!("diff_pkt_count = {}", diff_pkt_count);
             // println!("current_id = {}", current_id);
             // println!("last_id = {}", last_id);
             // println!("diff_id = {}", current_id - last_id);
