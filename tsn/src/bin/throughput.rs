@@ -109,7 +109,7 @@ fn do_server(sock: &mut i32, size: i32) {
     while RUNNING.load(Ordering::Relaxed) {
         // let builder = thread::Builder::new().stack_size(stack_size);
 
-        let my_thread = thread::Builder::new().name("PrintStats".to_string());
+        let my_thread = thread::Builder::new().name("PrintStatsThread".to_string());
 
         recv_bytes = tsn::tsn_recv(*sock, pkt.as_mut_ptr(), size);
         // println!("recv_bytes = {}", recv_bytes);
