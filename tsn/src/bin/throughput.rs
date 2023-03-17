@@ -95,6 +95,7 @@ static mut SOCK: tsn::TsnSocket = tsn::TsnSocket {
 fn do_server(sock: &mut i32, size: i32) {
     let mut ethernet: Ethernet;
     let mut pkt: Vec<u8> = vec![0; size as usize];
+    let mut pkt_info: PktInfo;
     let mut recv_bytes;
     let mut tstart = TimeSpec::zero();
     let mut tend = TimeSpec::zero();
@@ -110,27 +111,16 @@ fn do_server(sock: &mut i32, size: i32) {
         recv_bytes = tsn::tsn_recv(*sock, pkt.as_mut_ptr(), size);
         // println!("recv_bytes = {}", recv_bytes);
 
-        let mut pkt_info = PktInfo {
-            id: u32::from_be_bytes([pkt[14], pkt[15], pkt[16], pkt[17]]),
-            op: pkt[18],
-        };
-        println!("op = {:0x}", pkt_info.op);
-
-        if pkt_info.op == PerfOpcode::PerfData as u8 {
-            unsafe {
-                STATS.pkt_count += 1;
-                STATS.total_bytes += (recv_bytes + 4) as u64;
-                STATS.last_id = pkt_info.id;
-            }
-            continue;
-        }
-
         ethernet = Ethernet {
             dest: pkt[0..6].try_into().unwrap(),
             src: pkt[6..12].try_into().unwrap(),
             ether_type: u16::from_be_bytes([pkt[12], pkt[13]]),
         };
 
+        pkt_info = PktInfo {
+            id: u32::from_be_bytes([pkt[14], pkt[15], pkt[16], pkt[17]]),
+            op: pkt[18],
+        };
         // println!("recv opcode = {:0x}", pkt_info.op);
         let temp_mac = ethernet.dest;
         ethernet.dest = ethernet.src;
@@ -160,7 +150,11 @@ fn do_server(sock: &mut i32, size: i32) {
                 send_pkt.append(&mut pkt_info_bytes);
                 send_perf(sock, &mut send_pkt, recv_bytes as usize);
             }
-            PerfOpcode::PerfData => {}
+            PerfOpcode::PerfData => unsafe {
+                STATS.pkt_count += 1;
+                STATS.total_bytes += (recv_bytes + 4) as u64;
+                STATS.last_id = pkt_info.id;
+            },
             PerfOpcode::PerfReqEnd => {
                 tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
                 eprintln!("Received end '{:08x}'", pkt_info.id);
@@ -205,6 +199,7 @@ fn do_server(sock: &mut i32, size: i32) {
                 let mut pkt_result_bytes = bincode::serialize(&pkt_result).unwrap();
                 send_pkt.append(&mut pkt_info_bytes);
                 send_pkt.append(&mut pkt_result_bytes);
+                eprintln!("end result '{:08x}'", pkt_info.id);
                 // send_perf(sock, &mut send_pkt, size as usize);
             }
             _ => {
