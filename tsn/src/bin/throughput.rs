@@ -426,8 +426,9 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
 
     println!("id = {:08x}", pkt_info.id);
     println!("op = {:0x}", pkt_info.op);
-    println!("pkt byte array = {:?}", pkt);
+    println!("pkt byte array = {:0x?}", pkt);
     while !is_successful {
+        println!("initial message");
         send_perf(sock, &mut pkt, size as usize);
         is_successful = recv_perf(
             &sock,
