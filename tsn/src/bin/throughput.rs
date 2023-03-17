@@ -163,7 +163,7 @@ fn do_server(sock: &mut i32, size: i32) {
                 STATS.last_id = pkt_info.id;
             },
             PerfOpcode::PerfReqEnd => {
-                tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
+                // tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
                 eprintln!("Received end '{:08x}'", pkt_info.id);
                 unsafe {
                     STATS.running = false;
@@ -183,6 +183,7 @@ fn do_server(sock: &mut i32, size: i32) {
             }
             PerfOpcode::PerfReqResult => {
                 eprintln!("Received result '{:08x}'", pkt_info.id);
+                tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
                 let pkt_result: PktPerfResult;
                 //tsn::tsn_timespecff_diff(&mut tstart, &mut tend, &mut tdiff);
                 tdiff = tend - tstart;
@@ -254,6 +255,11 @@ fn statistics_thread(stat: &Statistics) {
             if last_pkt_count > current_pkt_count {
                 last_pkt_count = 0;
             }
+
+            if last_total_bytes > current_total_bytes {
+                last_total_bytes = 0;
+            }
+            //
 
             let diff_pkt_count: u64 = current_pkt_count - last_pkt_count;
             let diff_total_bytes: u64 = current_total_bytes - last_total_bytes;
