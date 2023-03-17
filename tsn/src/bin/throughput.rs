@@ -176,24 +176,24 @@ fn do_server(sock: &mut i32, size: i32) {
             }
             PerfOpcode::PerfReqResult => {
                 eprintln!("Received result '{:08x}'", pkt_info.id);
-                // let pkt_result: PktPerfResult;
-                // tsn::tsn_timespecff_diff(&mut tstart, &mut tend, &mut tdiff);
+                //let pkt_result: PktPerfResult;
+                //tsn::tsn_timespecff_diff(&mut tstart, &mut tend, &mut tdiff);
                 // pkt_info.id = socket::htonl(pkt_info.id);
                 // pkt_info.op = PerfOpcode::PerfResResult as u8;
-                // unsafe {
-                //     // println!("BEFORE");
-                //     // println!("result pkt_count = {:0x}", STATS.pkt_count);
-                //     // println!("result pkt_size = {:0x}", STATS.total_bytes);
-                //     pkt_result = PktPerfResult {
-                //         pkt_count: STATS.pkt_count.to_be(),
-                //         pkt_size: STATS.total_bytes.to_be(),
-                //         elapsed_sec: tdiff.tv_sec(),
-                //         elapsed_nsec: tdiff.tv_nsec(),
-                //     };
-                //     // println!("AFTER");
-                //     // println!("result pkt_count = {:0x}", pkt_result.pkt_count);
-                //     // println!("result pkt_size = {:0x}", pkt_result.pkt_size);
-                // }
+                unsafe {
+                    // println!("BEFORE");
+                    // println!("result pkt_count = {:0x}", STATS.pkt_count);
+                    // println!("result pkt_size = {:0x}", STATS.total_bytes);
+                    pkt_result = PktPerfResult {
+                        pkt_count: STATS.pkt_count.to_be(),
+                        pkt_size: STATS.total_bytes.to_be(),
+                        elapsed_sec: tdiff.tv_sec(),
+                        elapsed_nsec: tdiff.tv_nsec(),
+                    };
+                    // println!("AFTER");
+                    // println!("result pkt_count = {:0x}", pkt_result.pkt_count);
+                    // println!("result pkt_size = {:0x}", pkt_result.pkt_size);
+                }
                 // let mut send_pkt = bincode::serialize(&ethernet).unwrap();
                 // let mut pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
                 // let mut pkt_result_bytes = bincode::serialize(&pkt_result).unwrap();
