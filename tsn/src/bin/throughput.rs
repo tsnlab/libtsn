@@ -108,6 +108,9 @@ fn do_server(sock: &mut i32, size: i32) {
     println!("Starting server");
     while RUNNING.load(Ordering::Relaxed) {
         // let builder = thread::Builder::new().stack_size(stack_size);
+
+        let my_thread = thread::Builder::new().name("PrintStats".to_string());
+
         recv_bytes = tsn::tsn_recv(*sock, pkt.as_mut_ptr(), size);
         // println!("recv_bytes = {}", recv_bytes);
 
@@ -140,9 +143,13 @@ fn do_server(sock: &mut i32, size: i32) {
                     STATS.running = true;
                 }
 
-                thread_handle = Some(thread::spawn(move || unsafe {
-                    statistics_thread(&STATS);
-                }));
+                thread_handle = Some(
+                    my_thread
+                        .spawn(move || unsafe {
+                            statistics_thread(&STATS);
+                        })
+                        .unwrap(),
+                );
                 let mut send_pkt = bincode::serialize(&ethernet).unwrap();
                 pkt_info.id = socket::htonl(pkt_info.id);
                 pkt_info.op = PerfOpcode::PerfResStart as u8;
