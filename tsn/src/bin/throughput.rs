@@ -176,10 +176,10 @@ fn do_server(sock: &mut i32, size: i32) {
             }
             PerfOpcode::PerfReqResult => {
                 eprintln!("Received result '{:08x}'", pkt_info.id);
-                //let pkt_result: PktPerfResult;
-                //tsn::tsn_timespecff_diff(&mut tstart, &mut tend, &mut tdiff);
-                // pkt_info.id = socket::htonl(pkt_info.id);
-                // pkt_info.op = PerfOpcode::PerfResResult as u8;
+                let pkt_result: PktPerfResult;
+                tsn::tsn_timespecff_diff(&mut tstart, &mut tend, &mut tdiff);
+                pkt_info.id = socket::htonl(pkt_info.id);
+                pkt_info.op = PerfOpcode::PerfResResult as u8;
                 unsafe {
                     // println!("BEFORE");
                     // println!("result pkt_count = {:0x}", STATS.pkt_count);
@@ -194,9 +194,9 @@ fn do_server(sock: &mut i32, size: i32) {
                     // println!("result pkt_count = {:0x}", pkt_result.pkt_count);
                     // println!("result pkt_size = {:0x}", pkt_result.pkt_size);
                 }
-                // let mut send_pkt = bincode::serialize(&ethernet).unwrap();
-                // let mut pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
-                // let mut pkt_result_bytes = bincode::serialize(&pkt_result).unwrap();
+                let mut send_pkt = bincode::serialize(&ethernet).unwrap();
+                let mut pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
+                let mut pkt_result_bytes = bincode::serialize(&pkt_result).unwrap();
                 // send_pkt.append(&mut pkt_info_bytes);
                 // send_pkt.append(&mut pkt_result_bytes);
                 eprintln!("end result '{:08x}'", pkt_info.id);
