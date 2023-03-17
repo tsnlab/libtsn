@@ -109,16 +109,28 @@ fn do_server(sock: &mut i32, size: i32) {
         // let builder = thread::Builder::new().stack_size(stack_size);
         recv_bytes = tsn::tsn_recv(*sock, pkt.as_mut_ptr(), size);
         // println!("recv_bytes = {}", recv_bytes);
+
+        let mut pkt_info = PktInfo {
+            id: u32::from_be_bytes([pkt[14], pkt[15], pkt[16], pkt[17]]),
+            op: pkt[18],
+        };
+        println!("op = {:0x}", pkt_info.op);
+
+        if pkt_info.op == PerfOpcode::PerfData as u8 {
+            unsafe {
+                STATS.pkt_count += 1;
+                STATS.total_bytes += (recv_bytes + 4) as u64;
+                STATS.last_id = pkt_info.id;
+            }
+            continue;
+        }
+
         ethernet = Ethernet {
             dest: pkt[0..6].try_into().unwrap(),
             src: pkt[6..12].try_into().unwrap(),
             ether_type: u16::from_be_bytes([pkt[12], pkt[13]]),
         };
 
-        let mut pkt_info = PktInfo {
-            id: u32::from_be_bytes([pkt[14], pkt[15], pkt[16], pkt[17]]),
-            op: pkt[18],
-        };
         // println!("recv opcode = {:0x}", pkt_info.op);
         let temp_mac = ethernet.dest;
         ethernet.dest = ethernet.src;
@@ -148,14 +160,10 @@ fn do_server(sock: &mut i32, size: i32) {
                 send_pkt.append(&mut pkt_info_bytes);
                 send_perf(sock, &mut send_pkt, recv_bytes as usize);
             }
-            PerfOpcode::PerfData => unsafe {
-                STATS.pkt_count += 1;
-                STATS.total_bytes += (recv_bytes + 4) as u64;
-                STATS.last_id = pkt_info.id;
-            },
+            PerfOpcode::PerfData => {}
             PerfOpcode::PerfReqEnd => {
                 tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
-                eprintln!("Received end {:08x}", pkt_info.id);
+                eprintln!("Received end '{:08x}'", pkt_info.id);
                 unsafe {
                     STATS.running = false;
                 }
@@ -173,7 +181,7 @@ fn do_server(sock: &mut i32, size: i32) {
                 send_perf(sock, &mut send_pkt, recv_bytes as usize);
             }
             PerfOpcode::PerfReqResult => {
-                eprintln!("Received result {:08x}", pkt_info.id);
+                eprintln!("Received result '{:08x}'", pkt_info.id);
                 let pkt_result: PktPerfResult;
                 tsn::tsn_timespecff_diff(&mut tstart, &mut tend, &mut tdiff);
                 pkt_info.id = socket::htonl(pkt_info.id);
