@@ -197,8 +197,8 @@ fn do_server(sock: &mut i32, size: i32) {
                 let mut send_pkt = bincode::serialize(&ethernet).unwrap();
                 let mut pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
                 let mut pkt_result_bytes = bincode::serialize(&pkt_result).unwrap();
-                // send_pkt.append(&mut pkt_info_bytes);
-                // send_pkt.append(&mut pkt_result_bytes);
+                send_pkt.append(&mut pkt_info_bytes);
+                send_pkt.append(&mut pkt_result_bytes);
                 eprintln!("end result '{:08x}'", pkt_info.id);
                 // send_perf(sock, &mut send_pkt, size as usize);
             }
