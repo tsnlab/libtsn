@@ -566,7 +566,7 @@ fn recv_perf(sock: &i32, id: &u32, op: &PerfOpcode, pkt: &mut Vec<u8>, size: usi
         println!("*op = {:0x}", *op as u8);
         if len < 0 && tdiff.tv_nsec() >= TIMEOUT_SEC as i64 {
             break;
-        } else if socket::ntohl(pkt_info.id) == *id && pkt_info.op == *op as u8 {
+        } else if pkt_info.id == *id && pkt_info.op == *op as u8 {
             received = true;
         }
     }
