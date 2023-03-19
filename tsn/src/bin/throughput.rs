@@ -408,8 +408,8 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
 
     let custom_id: u32 = 0xdeadbeef;
     let ethernet: Ethernet = Ethernet {
-        dest: srcmac,
-        src: dstmac,
+        dest: dstmac,
+        src: srcmac,
         ether_type: socket::htons(ETHERTYPE_PERF),
     };
     let ethernet_bytes = bincode::serialize(&ethernet).unwrap();
