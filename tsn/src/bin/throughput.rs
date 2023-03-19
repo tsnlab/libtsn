@@ -559,7 +559,11 @@ fn recv_perf(sock: &i32, id: &u32, op: &PerfOpcode, pkt: &mut Vec<u8>, size: usi
             id: u32::from_be_bytes(pkt[ethernet_size..ethernet_size + 4].try_into().unwrap()),
             op: pkt[ethernet_size + 4],
         };
-
+        println!("ethernet size = {}", ethernet_size);
+        println!("id = {:08x}", pkt_info.id);
+        println!("op = {:0x}", pkt_info.op);
+        println!("*id = {:08x}", *id);
+        println!("*op = {:0x}", *op as u8);
         if len < 0 && tdiff.tv_nsec() >= TIMEOUT_SEC as i64 {
             break;
         } else if socket::ntohl(pkt_info.id) == *id && pkt_info.op == *op as u8 {
