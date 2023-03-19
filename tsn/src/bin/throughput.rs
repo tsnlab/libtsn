@@ -448,11 +448,14 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
 
     tstart = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
 
+    println!("-----------PERFDATA-----------");
     loop {
         pkt_info.id += 1;
         pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
         pkt.append(&mut pkt_info_bytes);
-
+        println!("id = {}", pkt_info.id);
+        println!("id = {:08x}", pkt_info.op);
+        println!("pkt array =  {:08x?}", pkt);
         send_perf(sock, &mut pkt, size as usize);
 
         tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
@@ -461,6 +464,7 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
             break;
         }
     }
+    println!("-----------------------------");
     eprintln!("Done");
     pkt.clear();
     pkt_info_bytes.clear();
@@ -469,6 +473,10 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
     pkt = ethernet_bytes.clone();
     pkt.append(&mut pkt_info_bytes);
+    println!("-----------PERFREQEND-----------");
+    println!("id = {}", pkt_info.id);
+    println!("id = {:08x}", pkt_info.op);
+    println!("pkt array =  {:08x?}", pkt);
     send_perf(sock, &mut pkt, size as usize);
     recv_perf(
         sock,
@@ -485,6 +493,10 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
     pkt = ethernet_bytes.clone();
     pkt.append(&mut pkt_info_bytes);
+    println!("-----------PERFREQRESULT-----------");
+    println!("id = {}", pkt_info.id);
+    println!("id = {:08x}", pkt_info.op);
+    println!("pkt array =  {:08x?}", pkt);
     send_perf(sock, &mut pkt, size as usize);
     recv_perf(
         sock,
@@ -549,7 +561,7 @@ fn recv_perf(sock: &i32, id: &u32, op: &PerfOpcode, pkt: &mut Vec<u8>, size: usi
 
     tstart = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
 
-    while !received {
+    while !received && RUNNING.load(Ordering::Relaxed) {
         let len = tsn::tsn_recv(*sock, pkt.as_mut_ptr(), size as i32);
         tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
         tdiff = tend - tstart;
@@ -559,11 +571,11 @@ fn recv_perf(sock: &i32, id: &u32, op: &PerfOpcode, pkt: &mut Vec<u8>, size: usi
             id: u32::from_be_bytes(pkt[ethernet_size..ethernet_size + 4].try_into().unwrap()),
             op: pkt[ethernet_size + 4],
         };
-        println!("ethernet size = {}", ethernet_size);
-        println!("id = {:08x}", socket::ntohl(pkt_info.id));
-        println!("op = {:0x}", pkt_info.op);
-        println!("*id = {:08x}", *id);
-        println!("*op = {:0x}", *op as u8);
+        // println!("ethernet size = {}", ethernet_size);
+        // println!("id = {:08x}", pkt_info.id);
+        // println!("op = {:0x}", pkt_info.op);
+        // println!("*id = {:08x}", *id);
+        // println!("*op = {:0x}", *op as u8);
         if len < 0 && tdiff.tv_nsec() >= TIMEOUT_SEC as i64 {
             break;
         } else if pkt_info.id == *id && pkt_info.op == *op as u8 {
