@@ -447,9 +447,10 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     pkt_info.op = PerfOpcode::PerfData as u8;
 
     tstart = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
-
+    tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
+    tsn::tsn_timespecff_diff(&mut tstart, &mut tend, &mut tdiff);
     println!("-----------PERFDATA-----------");
-    loop {
+    while RUNNING.load(Ordering::Relaxed) && tdiff.tv_sec() < time as i64 {
         pkt_info.id += 1;
         pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
         pkt.append(&mut pkt_info_bytes);
@@ -460,10 +461,8 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
 
         tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
         tsn::tsn_timespecff_diff(&mut tstart, &mut tend, &mut tdiff);
-        if RUNNING.load(Ordering::Relaxed) && tdiff.tv_sec() < time as i64 {
-            break;
-        }
     }
+
     println!("-----------------------------");
     eprintln!("Done");
     pkt.clear();
