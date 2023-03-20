@@ -453,9 +453,9 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
         pkt_info.id += 1;
         pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
         pkt.append(&mut pkt_info_bytes);
-        println!("id = {:08x}", pkt_info.id);
-        println!("id = {:0x}", pkt_info.op);
-        println!("pkt array =  {:0x?}", pkt);
+        // println!("id = {:08x}", pkt_info.id);
+        // println!("id = {:0x}", pkt_info.op);
+        // println!("pkt array =  {:0x?}", pkt);
         send_perf(sock, &mut pkt, size as usize);
 
         tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
@@ -463,6 +463,7 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     }
 
     let last_sent_id = pkt_info.id;
+    println!("last sent id = {}", last_sent_id);
 
     println!("-----------------------------");
     eprintln!("Done");
@@ -476,7 +477,7 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     println!("-----------PERFREQEND-----------");
     println!("id = {:08x}", pkt_info.id);
     println!("id = {:0x}", pkt_info.op);
-    println!("pkt array =  {:08x?}", pkt);
+    println!("pkt array =  {:0x?}", pkt);
     send_perf(sock, &mut pkt, size as usize);
     recv_perf(
         sock,
@@ -496,7 +497,7 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     println!("-----------PERFREQRESULT-----------");
     println!("id = {:08x}", pkt_info.id);
     println!("id = {:0x}", pkt_info.op);
-    println!("pkt array =  {:08x?}", pkt);
+    println!("pkt array =  {:0x?}", pkt);
     send_perf(sock, &mut pkt, size as usize);
     recv_perf(
         sock,
@@ -505,11 +506,10 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
         &mut pkt,
         size as usize,
     );
+    println!("pkt array =  {:0x?}", pkt);
 
-    let ethernet_size = mem::size_of::<Ethernet>();
-    let pktinfo_size = mem::size_of::<PktInfo>();
-    let pkt_perf_result: PktPerfResult =
-        bincode::deserialize(&pkt[ethernet_size + pktinfo_size..]).unwrap();
+    let result_idx = mem::size_of::<Ethernet>() + mem::size_of::<PktInfo>();
+    let pkt_perf_result: PktPerfResult = bincode::deserialize(&pkt[result_idx..]).unwrap();
     // let pkt_perf_result: PktPerfResult = PktPerfResult {
     //     pkt_count:
     // };
