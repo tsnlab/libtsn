@@ -59,11 +59,6 @@ struct PktInfo {
 }
 
 #[derive(Serialize, Deserialize)]
-struct PktPerf {
-    pkt_count: u64,
-}
-
-#[derive(Serialize, Deserialize)]
 struct PktPerfResult {
     pkt_count: u64,
     pkt_size: u64,
@@ -97,21 +92,16 @@ fn do_server(sock: &mut i32, size: i32) {
     let mut pkt_info: PktInfo;
     let mut recv_bytes;
     let mut tstart = TimeSpec::zero();
-    let mut tend = TimeSpec::zero();
-    let mut tdiff = TimeSpec::zero();
-
-    // let stack_size = 10 * 1024 * 1024; // set the stack size to 10 MB
+    let mut tend: TimeSpec;
+    let mut tdiff: TimeSpec;
 
     let mut thread_handle: Option<thread::JoinHandle<()>> = None;
 
     println!("Starting server");
     while RUNNING.load(Ordering::Relaxed) {
-        // let builder = thread::Builder::new().stack_size(stack_size);
-
         let my_thread = thread::Builder::new().name("PrintStatsThread".to_string());
 
         recv_bytes = tsn::tsn_recv(*sock, pkt.as_mut_ptr(), size);
-        // println!("recv_bytes = {}", recv_bytes);
 
         ethernet = Ethernet {
             dest: pkt[0..6].try_into().unwrap(),
@@ -123,7 +113,6 @@ fn do_server(sock: &mut i32, size: i32) {
             id: u32::from_be_bytes([pkt[14], pkt[15], pkt[16], pkt[17]]),
             op: pkt[18],
         };
-        // println!("recv opcode = {:0x}", pkt_info.op);
         let temp_mac = ethernet.dest;
         ethernet.dest = ethernet.src;
         ethernet.src = temp_mac;
@@ -162,6 +151,7 @@ fn do_server(sock: &mut i32, size: i32) {
                 STATS.last_id = pkt_info.id;
             },
             PerfOpcode::PerfReqEnd => {
+                //TODO: Need to figure out why PerfReqEnd is not properly received when the packet's size is large
                 // tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
                 eprintln!("Received end '{:08x}'", pkt_info.id);
                 unsafe {
@@ -184,26 +174,17 @@ fn do_server(sock: &mut i32, size: i32) {
                 eprintln!("Received result '{:08x}'", pkt_info.id);
                 tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
                 let pkt_result: PktPerfResult;
-                //tsn::tsn_timespecff_diff(&mut tstart, &mut tend, &mut tdiff);
                 tdiff = tend - tstart;
-                // println!("elapsed_sec = {}", tdiff.tv_sec());
-                // println!("elapsed_nsec = {}", tdiff.tv_nsec());
 
                 pkt_info.id = socket::htonl(pkt_info.id);
                 pkt_info.op = PerfOpcode::PerfResResult as u8;
                 unsafe {
-                    // println!("BEFORE");
-                    // println!("result pkt_count = {:0x}", STATS.pkt_count);
-                    // println!("result pkt_size = {:0x}", STATS.total_bytes);
                     pkt_result = PktPerfResult {
                         pkt_count: STATS.pkt_count.to_be(),
                         pkt_size: STATS.total_bytes.to_be(),
                         elapsed_sec: tdiff.tv_sec(),
                         elapsed_nsec: tdiff.tv_nsec(),
                     };
-                    // println!("AFTER");
-                    // println!("result pkt_count = {:0x}", pkt_result.pkt_count);
-                    // println!("result pkt_size = {:0x}", pkt_result.pkt_size);
                 }
                 let mut send_pkt = bincode::serialize(&ethernet).unwrap();
                 let mut pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
@@ -520,51 +501,6 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     eprint!("client done");
 }
 
-fn send_perf(sock: &mut i32, pkt: &mut Vec<u8>, size: usize) {
-    // if pkt[18] == PerfOpcode::PerfResResult as u8 {
-    //     println!("---------Check data before send---------");
-    //     println!(
-    //         "dest : {:0x?}",
-    //         [pkt[0], pkt[1], pkt[2], pkt[3], pkt[4], pkt[5]]
-    //     );
-    //     println!(
-    //         "src : {:0x?}",
-    //         [pkt[6], pkt[7], pkt[8], pkt[9], pkt[10], pkt[11]]
-    //     );
-    //     println!("ether_type : {:0x?}", [pkt[12], pkt[13]]);
-    //     println!("id : {:0x?}", [pkt[14], pkt[15], pkt[16], pkt[17]]);
-    //     println!("op : {:0x}", pkt[18]);
-
-    //     println!(
-    //         "result pkt_count = {:0x?}",
-    //         [pkt[19], pkt[20], pkt[21], pkt[22], pkt[23], pkt[24], pkt[25], pkt[26]]
-    //     );
-    //     println!(
-    //         "result pkt_size = {:0x?}",
-    //         [pkt[27], pkt[28], pkt[29], pkt[30], pkt[31], pkt[32], pkt[33], pkt[34]]
-    //     );
-    //     println!(
-    //         "result ellased_sec = {}",
-    //         i64::from_be_bytes([
-    //             pkt[35], pkt[36], pkt[37], pkt[38], pkt[39], pkt[40], pkt[41], pkt[42]
-    //         ])
-    //     );
-    //     println!(
-    //         "result ellased_nsec = {}",
-    //         i64::from_be_bytes([
-    //             pkt[43], pkt[44], pkt[45], pkt[46], pkt[47], pkt[48], pkt[49], pkt[50]
-    //         ])
-    //     );
-    // }
-    // println!("byte array = {:0x?}", pkt);
-    // println!("----------------------------------------");
-    let sent = tsn::tsn_send(*sock, pkt.as_mut_ptr(), size as i32);
-
-    if sent < 0 {
-        println!("failed to send");
-        //TODO: proper error message
-    }
-}
 fn recv_perf(sock: &i32, id: &u32, op: &PerfOpcode, pkt: &mut Vec<u8>, size: usize) -> bool {
     let tstart = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
     let mut tend: TimeSpec;
@@ -590,6 +526,14 @@ fn recv_perf(sock: &i32, id: &u32, op: &PerfOpcode, pkt: &mut Vec<u8>, size: usi
     }
 
     return received;
+}
+
+fn send_perf(sock: &mut i32, pkt: &mut Vec<u8>, size: usize) {
+    let sent = tsn::tsn_send(*sock, pkt.as_mut_ptr(), size as i32);
+
+    if sent < 0 {
+        eprintln!("failed to send");
+    }
 }
 
 fn main() -> Result<(), std::io::Error> {
@@ -683,11 +627,6 @@ fn main() -> Result<(), std::io::Error> {
         }
         _ => unreachable!(),
     }
-
-    // println!("mode = {}", mode);
-    // println!("mode = {}", iface);
-    // println!("mode = {}", size);
-    // println!("mode = {}", target);
 
     unsafe {
         SOCK =
