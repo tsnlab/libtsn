@@ -127,8 +127,8 @@ fn do_server(sock: &mut i32, size: i32) {
         //     op: pkt[18],
         // };
         let id = socket::ntohl(pkt_info.id);
-        println!("id = {:08x}", id);
-        println!("op = {:0x}", pkt_info.op);
+        // println!("id = {:08x}", id);
+        // println!("op = {:0x}", pkt_info.op);
 
         let temp_mac = ethernet.dest;
         ethernet.dest = ethernet.src;
@@ -183,10 +183,11 @@ fn do_server(sock: &mut i32, size: i32) {
 
                 let mut send_pkt =
                     bincode::serialize(&ethernet).expect("ethernet serialization error");
-                pkt_info.id = socket::htonl(pkt_info.id);
+
                 pkt_info.op = PerfOpcode::PerfResEnd as u8;
                 let mut pkt_info_bytes =
                     bincode::serialize(&pkt_info).expect("pkt_info serialization error");
+
                 send_pkt.append(&mut pkt_info_bytes);
                 send_perf(sock, &mut send_pkt, recv_bytes as usize);
             }
@@ -196,7 +197,6 @@ fn do_server(sock: &mut i32, size: i32) {
                 let pkt_result: PktPerfResult;
                 tdiff = tend - tstart;
 
-                pkt_info.id = socket::htonl(pkt_info.id);
                 pkt_info.op = PerfOpcode::PerfResResult as u8;
                 unsafe {
                     pkt_result = PktPerfResult {
