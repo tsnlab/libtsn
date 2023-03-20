@@ -462,22 +462,22 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     //     );
     // }
 
-    pkt_info.id = socket::htonl(custom_id);
-    pkt_info.op = PerfOpcode::PerfReqResult as u8;
-    pkt = make_ethernet_pkt(&ethernet_pkt, &pkt_info);
+    // pkt_info.id = socket::htonl(custom_id);
+    // pkt_info.op = PerfOpcode::PerfReqResult as u8;
+    // pkt = make_ethernet_pkt(&ethernet_pkt, &pkt_info);
 
-    send_perf(sock, &mut pkt, size as usize);
-    recv_perf(
-        sock,
-        &custom_id,
-        PerfOpcode::PerfResResult,
-        &mut pkt,
-        size as usize,
-    );
-    println!("ethernet size = {}", mem::size_of::<Ethernet>());
-    println!("pktinfo size = {}", mem::size_of::<PktInfo>());
-    println!("pkt len = {}", pkt.len());
-    println!("result pkt array =  {:0x?}", pkt);
+    // send_perf(sock, &mut pkt, size as usize);
+    // recv_perf(
+    //     sock,
+    //     &custom_id,
+    //     PerfOpcode::PerfResResult,
+    //     &mut pkt,
+    //     size as usize,
+    // );
+    // println!("ethernet size = {}", mem::size_of::<Ethernet>());
+    // println!("pktinfo size = {}", mem::size_of::<PktInfo>());
+    // println!("pkt len = {}", pkt.len());
+    // println!("result pkt array =  {:0x?}", pkt);
 
     // // let result_idx = mem::size_of::<Ethernet>() + mem::size_of::<PktInfo>();
     // // println!("result_idx = {}", result_idx);
@@ -520,12 +520,12 @@ fn recv_perf(sock: &i32, id: &u32, op: PerfOpcode, pkt: &mut Vec<u8>, size: usiz
             bincode::deserialize(&pkt[ethernet_size..ethernet_size + pkt_info_size])
                 .expect("Packet deserializing fail(pkt_info)");
         pkt_info.id = socket::ntohl(pkt_info.id);
-        let pktid = pkt_info.id;
+        // let pktid = pkt_info.id;
 
-        println!("recv id = {:0x}", pktid);
-        println!("recv op = {:0x}", pkt_info.op);
-        println!("Expected id = {:0x}", *id);
-        println!("Expected op = {:0x}", op as u8);
+        // println!("recv id = {:0x}", pktid);
+        // println!("recv op = {:0x}", pkt_info.op);
+        // println!("Expected id = {:0x}", *id);
+        // println!("Expected op = {:0x}", op as u8);
 
         if len < 0 && tdiff.tv_nsec() >= TIMEOUT_SEC as i64 {
             break;
