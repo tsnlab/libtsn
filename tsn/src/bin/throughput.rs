@@ -87,9 +87,11 @@ static mut SOCK: tsn::TsnSocket = tsn::TsnSocket {
 };
 
 fn do_server(sock: &mut i32, size: i32) {
-    let mut ethernet: Ethernet;
     let mut pkt: Vec<u8> = vec![0; size as usize];
+    let mut ethernet: Ethernet;
+    let ethernet_size = std::mem::size_of::<Ethernet>();
     let mut pkt_info: PktInfo;
+    let pkt_info_size = std::mem::size_of::<PktInfo>();
     let mut recv_bytes;
     let mut tstart = TimeSpec::zero();
     let mut tend: TimeSpec;
@@ -98,21 +100,32 @@ fn do_server(sock: &mut i32, size: i32) {
     let mut thread_handle: Option<thread::JoinHandle<()>> = None;
 
     println!("Starting server");
+    println!("ethernet size = {}", ethernet_size);
+    println!("pkt info size = {}", pkt_info_size);
     while RUNNING.load(Ordering::Relaxed) {
         let my_thread = thread::Builder::new().name("PrintStatsThread".to_string());
 
         recv_bytes = tsn::tsn_recv(*sock, pkt.as_mut_ptr(), size);
 
-        ethernet = Ethernet {
-            dest: pkt[0..6].try_into().unwrap(),
-            src: pkt[6..12].try_into().unwrap(),
-            ether_type: u16::from_be_bytes([pkt[12], pkt[13]]),
-        };
+        ethernet = bincode::deserialize(pkt[0..ethernet_size].try_into().unwrap()).unwrap();
+        // ethernet = Ethernet {
+        //     dest: pkt[0..6].try_into().unwrap(),
+        //     src: pkt[6..12].try_into().unwrap(),
+        //     ether_type: u16::from_be_bytes([pkt[12], pkt[13]]),
+        // };
+        pkt_info = bincode::deserialize(
+            pkt[ethernet_size..ethernet_size + pkt_info_size]
+                .try_into()
+                .unwrap(),
+        )
+        .unwrap();
+        // pkt_info = PktInfo {
+        //     id: u32::from_be_bytes([pkt[14], pkt[15], pkt[16], pkt[17]]),
+        //     op: pkt[18],
+        // };
+        println!("id = {:08x}", pkt_info.id);
+        println!("id = {:0x}", pkt_info.op);
 
-        pkt_info = PktInfo {
-            id: u32::from_be_bytes([pkt[14], pkt[15], pkt[16], pkt[17]]),
-            op: pkt[18],
-        };
         let temp_mac = ethernet.dest;
         ethernet.dest = ethernet.src;
         ethernet.src = temp_mac;
