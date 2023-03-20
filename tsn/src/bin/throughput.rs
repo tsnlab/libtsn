@@ -445,7 +445,6 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     pkt = ethernet_bytes.clone();
     pkt_info.id = 1;
     pkt_info.op = PerfOpcode::PerfData as u8;
-
     tstart = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
     tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
     tsn::tsn_timespecff_diff(&mut tstart, &mut tend, &mut tdiff);
@@ -454,14 +453,16 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
         pkt_info.id += 1;
         pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
         pkt.append(&mut pkt_info_bytes);
-        println!("id = {}", pkt_info.id);
-        println!("id = {:08x}", pkt_info.op);
-        println!("pkt array =  {:08x?}", pkt);
+        println!("id = {:08x}", pkt_info.id);
+        println!("id = {:0x}", pkt_info.op);
+        println!("pkt array =  {:0x?}", pkt);
         send_perf(sock, &mut pkt, size as usize);
 
         tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
         tsn::tsn_timespecff_diff(&mut tstart, &mut tend, &mut tdiff);
     }
+
+    let last_sent_id = pkt_info.id;
 
     println!("-----------------------------");
     eprintln!("Done");
@@ -473,8 +474,8 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     pkt = ethernet_bytes.clone();
     pkt.append(&mut pkt_info_bytes);
     println!("-----------PERFREQEND-----------");
-    println!("id = {}", pkt_info.id);
-    println!("id = {:08x}", pkt_info.op);
+    println!("id = {:08x}", pkt_info.id);
+    println!("id = {:0x}", pkt_info.op);
     println!("pkt array =  {:08x?}", pkt);
     send_perf(sock, &mut pkt, size as usize);
     recv_perf(
@@ -493,8 +494,8 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     pkt = ethernet_bytes.clone();
     pkt.append(&mut pkt_info_bytes);
     println!("-----------PERFREQRESULT-----------");
-    println!("id = {}", pkt_info.id);
-    println!("id = {:08x}", pkt_info.op);
+    println!("id = {:08x}", pkt_info.id);
+    println!("id = {:0x}", pkt_info.op);
     println!("pkt array =  {:08x?}", pkt);
     send_perf(sock, &mut pkt, size as usize);
     recv_perf(
@@ -504,7 +505,32 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
         &mut pkt,
         size as usize,
     );
-    eprint!("done done");
+
+    let ethernet_size = mem::size_of::<Ethernet>();
+    let pktinfo_size = mem::size_of::<PktInfo>();
+    let pkt_perf_result: PktPerfResult =
+        bincode::deserialize(&pkt[ethernet_size + pktinfo_size..]).unwrap();
+    // let pkt_perf_result: PktPerfResult = PktPerfResult {
+    //     pkt_count:
+    // };
+    let pkt_count: u64 = pkt_perf_result.pkt_count;
+    let pkt_size: u64 = pkt_perf_result.pkt_size;
+    let pps: u64 = pkt_count / pkt_perf_result.elapsed_sec as u64;
+    let bps: u64 = pkt_size / pkt_perf_result.elapsed_sec as u64 * 8;
+    let loss_rate: f64 = (last_sent_id as u64 - pkt_count) as f64 / last_sent_id as f64;
+
+    println!(
+        "Elapsed {}.{}",
+        pkt_perf_result.elapsed_sec, pkt_perf_result.elapsed_nsec
+    );
+    println!("Recieved {} pkts, {} bytes", pkt_count, pkt_size);
+    println!(
+        "Sent {} pkts, Loss {}",
+        last_sent_id,
+        loss_rate * 100 as f64
+    );
+    println!("Result {} pps, {} bps", pps, bps);
+    eprint!("client done");
 }
 
 fn send_perf(sock: &mut i32, pkt: &mut Vec<u8>, size: usize) {
