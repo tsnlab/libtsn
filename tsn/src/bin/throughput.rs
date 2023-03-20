@@ -109,24 +109,24 @@ fn do_server(sock: &mut i32, size: i32) {
 
         recv_bytes = tsn::tsn_recv(*sock, pkt.as_mut_ptr(), size);
 
-        ethernet = bincode::deserialize(pkt[0..ethernet_size].try_into().unwrap()).unwrap();
-        // ethernet = Ethernet {
-        //     dest: pkt[0..6].try_into().unwrap(),
-        //     src: pkt[6..12].try_into().unwrap(),
-        //     ether_type: u16::from_be_bytes([pkt[12], pkt[13]]),
-        // };
-        pkt_info = bincode::deserialize(
-            pkt[ethernet_size..ethernet_size + pkt_info_size]
-                .try_into()
-                .unwrap(),
-        )
-        .unwrap();
+        // ethernet = bincode::deserialize(pkt[0..ethernet_size].try_into().unwrap()).unwrap();
+        ethernet = Ethernet {
+            dest: pkt[0..6].try_into().unwrap(),
+            src: pkt[6..12].try_into().unwrap(),
+            ether_type: u16::from_be_bytes([pkt[12], pkt[13]]),
+        };
+        // pkt_info = bincode::deserialize(
+        //     pkt[ethernet_size..ethernet_size + pkt_info_size]
+        //         .try_into()
+        //         .unwrap(),
+        // )
+        // .unwrap();
 
+        pkt_info = PktInfo {
+            id: u32::from_be_bytes([pkt[14], pkt[15], pkt[16], pkt[17]]),
+            op: pkt[18],
+        };
         let id = socket::ntohl(pkt_info.id);
-        // pkt_info = PktInfo {
-        //     id: u32::from_be_bytes([pkt[14], pkt[15], pkt[16], pkt[17]]),
-        //     op: pkt[18],
-        // };
         println!("id = {:08x}", id);
         println!("op = {:0x}", pkt_info.op);
 
@@ -139,7 +139,7 @@ fn do_server(sock: &mut i32, size: i32) {
 
         match opcode {
             PerfOpcode::PerfReqStart => {
-                eprintln!("Received start '{:08x}'", id);
+                // eprintln!("Received start '{:08x}'", id);
                 tstart = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
 
                 unsafe {
@@ -156,8 +156,10 @@ fn do_server(sock: &mut i32, size: i32) {
                         .unwrap(),
                 );
                 let mut send_pkt = bincode::serialize(&ethernet).unwrap();
+
                 pkt_info.id = socket::htonl(pkt_info.id);
                 pkt_info.op = PerfOpcode::PerfResStart as u8;
+
                 let mut pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
                 send_pkt.append(&mut pkt_info_bytes);
 
@@ -173,6 +175,7 @@ fn do_server(sock: &mut i32, size: i32) {
                 //TODO: Need to figure out why PerfReqEnd is not properly received when the packet's size is large
                 // tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
                 eprintln!("Received end '{:08x}'", id);
+
                 unsafe {
                     STATS.running = false;
                 }
