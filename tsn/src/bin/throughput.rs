@@ -643,7 +643,7 @@ fn main() -> Result<(), std::io::Error> {
     thread::spawn(move || {
         for _ in signals.forever() {
             println!("Interrrupted");
-            RUNNING.fetch_and(false, Ordering::Relaxed);
+            RUNNING.store(false, Ordering::Relaxed);
             unsafe {
                 tsn::tsn_sock_close(&mut SOCK);
             }
