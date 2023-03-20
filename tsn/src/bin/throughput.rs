@@ -45,6 +45,7 @@ impl From<u8> for PerfOpcode {
         }
     }
 }
+
 #[derive(Serialize, Deserialize)]
 struct Ethernet {
     dest: [u8; 6],
@@ -496,13 +497,10 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
 
     let result_idx = mem::size_of::<Ethernet>() + mem::size_of::<PktInfo>();
     println!("result_idx = {}", result_idx);
-
-    struct PktInfo {
-        id: u32,
-        op: u8,
-    }
-
     let pkt_perf_result: PktPerfResult = bincode::deserialize(&pkt[19..]).unwrap();
+    // let pkt_perf_result: PktPerfResult = PktPerfResult {
+    //     pkt_count:
+    // };
     let pkt_count: u64 = pkt_perf_result.pkt_count;
     let pkt_size: u64 = pkt_perf_result.pkt_size;
     let pps: u64 = pkt_count / pkt_perf_result.elapsed_sec as u64;
