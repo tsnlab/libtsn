@@ -402,26 +402,26 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     let ethernet_pkt = bincode::serialize(&ethernet).unwrap();
 
     let mut pkt_info: PktInfo = PktInfo {
-        id: custom_id.to_be(),
+        id: socket::htonl(custom_id),
         op: PerfOpcode::PerfReqStart as u8,
     };
 
     pkt = make_ethernet_pkt(&ethernet_pkt, &pkt_info);
 
-    // let mut is_successful = false;
+    let mut is_successful = false;
 
-    // while !is_successful {
-    //     println!("init");
-    //     send_perf(sock, &mut pkt, size as usize);
-    //     is_successful = recv_perf(
-    //         sock,
-    //         &custom_id,
-    //         PerfOpcode::PerfResStart,
-    //         &mut pkt,
-    //         size as usize,
-    //     );
-    // }
-    // eprintln!("Fire");
+    while !is_successful {
+        println!("init");
+        send_perf(sock, &mut pkt, size as usize);
+        is_successful = recv_perf(
+            sock,
+            &custom_id,
+            PerfOpcode::PerfResStart,
+            &mut pkt,
+            size as usize,
+        );
+    }
+    eprintln!("Fire");
 
     // let mut sent_id = 1;
     // pkt_info.op = PerfOpcode::PerfData as u8;
