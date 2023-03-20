@@ -447,7 +447,6 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     tstart = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
     tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
     tsn::tsn_timespecff_diff(&mut tstart, &mut tend, &mut tdiff);
-    println!("-----------PERFDATA-----------");
     while RUNNING.load(Ordering::Relaxed) && tdiff.tv_sec() < time as i64 {
         pkt.clear();
         pkt = ethernet_bytes.clone();
@@ -455,20 +454,11 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
         pkt_info.id = socket::htonl(sent_id);
         pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
         pkt.append(&mut pkt_info_bytes);
-        // println!("id = {}", pkt_info.id);
-        // println!("id = {:0x}", pkt_info.op);
-        // println!("pkt array =  {:0x?}", pkt);
         send_perf(sock, &mut pkt, size as usize);
         sent_id += 1;
         tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
         tsn::tsn_timespecff_diff(&mut tstart, &mut tend, &mut tdiff);
     }
-    println!("pkt array =  {:0x?}", pkt);
-
-    let last_sent_id = pkt_info.id;
-    println!("last sent id = {}", last_sent_id);
-
-    println!("-----------------------------");
     eprintln!("Done");
     pkt.clear();
     pkt_info_bytes.clear();
@@ -477,10 +467,6 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
     pkt = ethernet_bytes.clone();
     pkt.append(&mut pkt_info_bytes);
-    println!("-----------PERFREQEND-----------");
-    println!("id = {:08x}", pkt_info.id);
-    println!("id = {:0x}", pkt_info.op);
-    println!("pkt array =  {:0x?}", pkt);
     send_perf(sock, &mut pkt, size as usize);
     recv_perf(
         sock,
@@ -497,10 +483,6 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
     pkt = ethernet_bytes.clone();
     pkt.append(&mut pkt_info_bytes);
-    println!("-----------PERFREQRESULT-----------");
-    println!("id = {:08x}", pkt_info.id);
-    println!("id = {:0x}", pkt_info.op);
-    println!("pkt array =  {:0x?}", pkt);
     send_perf(sock, &mut pkt, size as usize);
     recv_perf(
         sock,
@@ -509,7 +491,8 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
         &mut pkt,
         size as usize,
     );
-    println!("pkt array =  {:0x?}", pkt);
+    println!("pkt len = {}", pkt.len());
+    println!("result pkt array =  {:0x?}", pkt);
 
     let result_idx = mem::size_of::<Ethernet>() + mem::size_of::<PktInfo>();
     println!("result_idx = {}", result_idx);
