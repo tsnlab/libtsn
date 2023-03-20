@@ -110,11 +110,6 @@ fn do_server(sock: &mut i32, size: i32) {
         recv_bytes = tsn::tsn_recv(*sock, pkt.as_mut_ptr(), size);
 
         ethernet = bincode::deserialize(pkt[0..ethernet_size].try_into().unwrap()).unwrap();
-        // ethernet = Ethernet {
-        //     dest: pkt[0..6].try_into().unwrap(),
-        //     src: pkt[6..12].try_into().unwrap(),
-        //     ether_type: u16::from_be_bytes([pkt[12], pkt[13]]),
-        // };
         pkt_info = bincode::deserialize(
             pkt[ethernet_size..ethernet_size + pkt_info_size]
                 .try_into()
@@ -122,14 +117,7 @@ fn do_server(sock: &mut i32, size: i32) {
         )
         .unwrap();
 
-        // pkt_info = PktInfo {
-        //     id: u32::from_be_bytes([pkt[14], pkt[15], pkt[16], pkt[17]]),
-        //     op: pkt[18],
-        // };
         let id = socket::ntohl(pkt_info.id);
-        // println!("id = {:08x}", id);
-        // println!("op = {:0x}", pkt_info.op);
-
         let temp_mac = ethernet.dest;
         ethernet.dest = ethernet.src;
         ethernet.src = temp_mac;
@@ -462,6 +450,7 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
         tsn::tsn_timespecff_diff(&mut tstart, &mut tend, &mut tdiff);
     }
     eprintln!("Done");
+    is_successful = false;
     pkt.clear();
     pkt_info_bytes.clear();
     pkt_info.id = socket::htonl(custom_id);
@@ -469,14 +458,25 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
     pkt = ethernet_bytes.clone();
     pkt.append(&mut pkt_info_bytes);
-    send_perf(sock, &mut pkt, size as usize);
-    recv_perf(
-        sock,
-        &custom_id,
-        &PerfOpcode::PerfResEnd,
-        &mut pkt,
-        size as usize,
-    );
+    // send_perf(sock, &mut pkt, size as usize);
+    // recv_perf(
+    //     sock,
+    //     &custom_id,
+    //     &PerfOpcode::PerfResEnd,
+    //     &mut pkt,
+    //     size as usize,
+    // );
+
+    while !is_successful {
+        send_perf(sock, &mut pkt, size as usize);
+        is_successful = recv_perf(
+            &sock,
+            &custom_id,
+            &PerfOpcode::PerfResEnd,
+            &mut pkt,
+            size as usize,
+        );
+    }
 
     pkt.clear();
     pkt_info_bytes.clear();
