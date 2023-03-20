@@ -458,25 +458,25 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
     pkt = ethernet_bytes.clone();
     pkt.append(&mut pkt_info_bytes);
-    // send_perf(sock, &mut pkt, size as usize);
-    // recv_perf(
-    //     sock,
-    //     &custom_id,
-    //     &PerfOpcode::PerfResEnd,
-    //     &mut pkt,
-    //     size as usize,
-    // );
+    send_perf(sock, &mut pkt, size as usize);
+    recv_perf(
+        sock,
+        &custom_id,
+        &PerfOpcode::PerfResEnd,
+        &mut pkt,
+        size as usize,
+    );
 
-    while !is_successful {
-        send_perf(sock, &mut pkt, size as usize);
-        is_successful = recv_perf(
-            &sock,
-            &custom_id,
-            &PerfOpcode::PerfResEnd,
-            &mut pkt,
-            size as usize,
-        );
-    }
+    // while !is_successful {
+    //     send_perf(sock, &mut pkt, size as usize);
+    //     is_successful = recv_perf(
+    //         &sock,
+    //         &custom_id,
+    //         &PerfOpcode::PerfResEnd,
+    //         &mut pkt,
+    //         size as usize,
+    //     );
+    // }
 
     pkt.clear();
     pkt_info_bytes.clear();
