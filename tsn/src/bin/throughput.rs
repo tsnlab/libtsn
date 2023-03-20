@@ -436,7 +436,7 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
         pkt = ethernet_bytes.clone();
 
         pkt_info_bytes.clear();
-        pkt_info.id = sent_id;
+        pkt_info.id = sent_id.clone();
         pkt_info.id = socket::htonl(pkt_info.id);
         pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
 
