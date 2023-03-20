@@ -189,6 +189,7 @@ fn do_server(sock: &mut i32, size: i32) {
                     bincode::serialize(&pkt_info).expect("pkt_info serialization error");
 
                 send_pkt.append(&mut pkt_info_bytes);
+                println!("send pkt = {:0x?}", send_pkt);
                 send_perf(sock, &mut send_pkt, recv_bytes as usize);
             }
             PerfOpcode::PerfReqResult => {
@@ -211,6 +212,7 @@ fn do_server(sock: &mut i32, size: i32) {
                 let mut pkt_result_bytes = bincode::serialize(&pkt_result).unwrap();
                 send_pkt.append(&mut pkt_info_bytes);
                 send_pkt.append(&mut pkt_result_bytes);
+                println!("send pkt = {:0x?}", send_pkt);
                 send_perf(sock, &mut send_pkt, size as usize);
             }
             _ => {
