@@ -399,12 +399,12 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
         ether_type: socket::htons(ETHERTYPE_PERF),
     };
 
-    // let ethernet_pkt = bincode::serialize(&ethernet).unwrap();
+    let ethernet_pkt = bincode::serialize(&ethernet).unwrap();
 
-    // let mut pkt_info: PktInfo = PktInfo {
-    //     id: custom_id.to_be(),
-    //     op: PerfOpcode::PerfReqStart as u8,
-    // };
+    let mut pkt_info: PktInfo = PktInfo {
+        id: custom_id.to_be(),
+        op: PerfOpcode::PerfReqStart as u8,
+    };
 
     // pkt = make_ethernet_pkt(&ethernet_pkt, &pkt_info);
 
