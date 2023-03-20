@@ -103,17 +103,16 @@ fn do_server(sock: &mut i32, size: i32) {
 
     println!("Starting server");
     while RUNNING.load(Ordering::Relaxed) {
-        let my_thread = thread::Builder::new().name("PrintStatsThread".to_string());
-
         recv_bytes = tsn::tsn_recv(*sock, pkt.as_mut_ptr(), size);
 
-        ethernet = bincode::deserialize(pkt[0..ethernet_size].try_into().unwrap()).unwrap();
+        ethernet = bincode::deserialize(pkt[0..ethernet_size].try_into().unwrap())
+            .expect("Packet deserializing fail(ethernet)");
         pkt_info = bincode::deserialize(
             pkt[ethernet_size..ethernet_size + pkt_info_size]
                 .try_into()
-                .unwrap(),
+                .expect("Converting slice to array fail(pkt_info)"),
         )
-        .unwrap();
+        .expect("Packet deserializing fail(pkt_info)");
 
         let id = socket::ntohl(pkt_info.id);
         let temp_mac = ethernet.dest;
@@ -125,6 +124,8 @@ fn do_server(sock: &mut i32, size: i32) {
         match opcode {
             PerfOpcode::PerfReqStart => {
                 eprintln!("Received start '{:08x}'", id);
+                let my_thread = thread::Builder::new().name("PrintStatsThread".to_string());
+
                 tstart = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
 
                 unsafe {
@@ -166,12 +167,10 @@ fn do_server(sock: &mut i32, size: i32) {
                     thread_handle.join().unwrap();
                 }
 
-                let mut send_pkt =
-                    bincode::serialize(&ethernet).expect("ethernet serialization error");
+                let mut send_pkt = bincode::serialize(&ethernet).unwrap();
 
                 pkt_info.op = PerfOpcode::PerfResEnd as u8;
-                let mut pkt_info_bytes =
-                    bincode::serialize(&pkt_info).expect("pkt_info serialization error");
+                let mut pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
 
                 send_pkt.append(&mut pkt_info_bytes);
                 send_perf(sock, &mut send_pkt, recv_bytes as usize);
@@ -412,13 +411,13 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
 
     while !is_successful {
         send_perf(sock, &mut pkt, size as usize);
-        // is_successful = recv_perf(
-        //     sock,
-        //     &custom_id,
-        //     PerfOpcode::PerfResStart,
-        //     &mut pkt,
-        //     size as usize,
-        // );
+        is_successful = recv_perf(
+            sock,
+            &custom_id,
+            PerfOpcode::PerfResStart,
+            &mut pkt,
+            size as usize,
+        );
     }
     println!("Fire");
 
@@ -514,24 +513,25 @@ fn recv_perf(sock: &i32, id: &u32, op: PerfOpcode, pkt: &mut Vec<u8>, size: usiz
     let pkt_info_size = mem::size_of::<PktInfo>();
 
     while !received && RUNNING.load(Ordering::Relaxed) {
-        // let len = tsn::tsn_recv(*sock, pkt.as_mut_ptr(), size as i32);
-        // tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
-        // tdiff = tend - tstart;
-        // let mut pkt_info: PktInfo =
-        //     bincode::deserialize(&pkt[ethernet_size..ethernet_size + pkt_info_size]).unwrap();
-        // pkt_info.id = socket::ntohl(pkt_info.id);
-        // let pktid = pkt_info.id;
+        let len = tsn::tsn_recv(*sock, pkt.as_mut_ptr(), size as i32);
+        tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
+        tdiff = tend - tstart;
+        let mut pkt_info: PktInfo =
+            bincode::deserialize(&pkt[ethernet_size..ethernet_size + pkt_info_size])
+                .expect("Packet deserializing fail(pkt_info)");
+        pkt_info.id = socket::ntohl(pkt_info.id);
+        let pktid = pkt_info.id;
 
-        // println!("recv id = {:0x}", pktid);
-        // println!("recv op = {:0x}", pkt_info.op);
-        // println!("Expected id = {:0x}", *id);
-        // println!("Expected op = {:0x}", op as u8);
+        println!("recv id = {:0x}", pktid);
+        println!("recv op = {:0x}", pkt_info.op);
+        println!("Expected id = {:0x}", *id);
+        println!("Expected op = {:0x}", op as u8);
 
-        // if len < 0 && tdiff.tv_nsec() >= TIMEOUT_SEC as i64 {
-        //     break;
-        // } else if pkt_info.id == *id && pkt_info.op == op as u8 {
-        //     received = true;
-        // }
+        if len < 0 && tdiff.tv_nsec() >= TIMEOUT_SEC as i64 {
+            break;
+        } else if pkt_info.id == *id && pkt_info.op == op as u8 {
+            received = true;
+        }
     }
 
     return received;
