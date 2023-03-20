@@ -114,7 +114,7 @@ fn do_server(sock: &mut i32, size: i32) {
                 .unwrap(),
         )
         .unwrap();
-
+        println!("pkt {:0x?}", pkt);
         let id = socket::ntohl(pkt_info.id);
         let temp_mac = ethernet.dest;
         ethernet.dest = ethernet.src;
