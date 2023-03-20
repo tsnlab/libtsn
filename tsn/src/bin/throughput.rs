@@ -160,6 +160,8 @@ fn do_server(sock: &mut i32, size: i32) {
                 pkt_info.op = PerfOpcode::PerfResStart as u8;
                 let mut pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
                 send_pkt.append(&mut pkt_info_bytes);
+
+                println!("send pkt = {:0x?}", send_pkt);
                 send_perf(sock, &mut send_pkt, recv_bytes as usize);
             }
             PerfOpcode::PerfData => unsafe {
