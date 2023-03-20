@@ -402,7 +402,7 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     let ethernet_pkt = bincode::serialize(&ethernet).unwrap();
 
     let mut pkt_info: PktInfo = PktInfo {
-        id: custom_id.to_be(),
+        id: socket::htonl(custom_id),
         op: PerfOpcode::PerfReqStart as u8,
     };
 
