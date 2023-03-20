@@ -122,7 +122,7 @@ fn do_server(sock: &mut i32, size: i32) {
         )
         .unwrap();
 
-        let id = pkt_info.id;
+        let id = socket::ntohl(pkt_info.id);
         // pkt_info = PktInfo {
         //     id: u32::from_be_bytes([pkt[14], pkt[15], pkt[16], pkt[17]]),
         //     op: pkt[18],
