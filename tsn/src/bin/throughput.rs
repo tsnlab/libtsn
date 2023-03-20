@@ -133,13 +133,12 @@ fn do_server(sock: &mut i32, size: i32) {
         let temp_mac = ethernet.dest;
         ethernet.dest = ethernet.src;
         ethernet.src = temp_mac;
-        ethernet.ether_type = socket::htons(ethernet.ether_type);
 
         let opcode = PerfOpcode::from(pkt_info.op);
 
         match opcode {
             PerfOpcode::PerfReqStart => {
-                // eprintln!("Received start '{:08x}'", id);
+                eprintln!("Received start '{:08x}'", id);
                 tstart = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
 
                 unsafe {
@@ -157,7 +156,6 @@ fn do_server(sock: &mut i32, size: i32) {
                 );
                 let mut send_pkt = bincode::serialize(&ethernet).unwrap();
 
-                pkt_info.id = socket::htonl(pkt_info.id);
                 pkt_info.op = PerfOpcode::PerfResStart as u8;
 
                 let mut pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
