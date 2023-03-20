@@ -511,13 +511,15 @@ fn recv_perf(sock: &i32, id: &u32, op: PerfOpcode, pkt: &mut Vec<u8>, size: usiz
     let mut tdiff: TimeSpec;
     let mut received = false;
     let ethernet_size = mem::size_of::<Ethernet>();
+    let pkt_info_size = mem::size_of::<PktInfo>();
 
     while !received && RUNNING.load(Ordering::Relaxed) {
         let len = tsn::tsn_recv(*sock, pkt.as_mut_ptr(), size as i32);
         tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
         tdiff = tend - tstart;
 
-        let mut pkt_info: PktInfo = bincode::deserialize(&pkt[ethernet_size..]).unwrap();
+        let mut pkt_info: PktInfo =
+            bincode::deserialize(&pkt[ethernet_size..ethernet_size + pkt_info_size]).unwrap();
         pkt_info.id = socket::ntohl(pkt_info.id);
         let pktid = pkt_info.id;
         println!("recv id = {:0x}", pktid);
