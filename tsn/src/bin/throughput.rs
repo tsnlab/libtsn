@@ -406,9 +406,9 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
         op: PerfOpcode::PerfReqStart as u8,
     };
 
-    // pkt = make_ethernet_pkt(&ethernet_pkt, &pkt_info);
+    pkt = make_ethernet_pkt(&ethernet_pkt, &pkt_info);
 
-    // let mut is_successful = false;
+    let mut is_successful = false;
 
     // while !is_successful {
     //     send_perf(sock, &mut pkt, size as usize);
