@@ -102,8 +102,6 @@ fn do_server(sock: &mut i32, size: i32) {
     let mut thread_handle: Option<thread::JoinHandle<()>> = None;
 
     println!("Starting server");
-    println!("ethernet size = {}", ethernet_size);
-    println!("pkt info size = {}", pkt_info_size);
     while RUNNING.load(Ordering::Relaxed) {
         let my_thread = thread::Builder::new().name("PrintStatsThread".to_string());
 
@@ -412,10 +410,9 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     pkt.append(&mut pkt_info_bytes);
 
     // println!("id = {:08x}", pkt_info.id);
-    println!("op = {:0x}", pkt_info.op);
-    println!("pkt byte array = {:0x?}", pkt);
+    // println!("op = {:0x}", pkt_info.op);
+    // println!("pkt byte array = {:0x?}", pkt);
     while !is_successful {
-        println!("initial message");
         send_perf(sock, &mut pkt, size as usize);
         is_successful = recv_perf(
             sock,
@@ -439,7 +436,8 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
         pkt = ethernet_bytes.clone();
 
         pkt_info_bytes.clear();
-        pkt_info.id = socket::htonl(sent_id);
+        pkt_info.id = sent_id;
+        pkt_info.id = socket::htonl(pkt_info.id);
         pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
 
         pkt.append(&mut pkt_info_bytes);
@@ -449,8 +447,9 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
         tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
         tsn::tsn_timespecff_diff(&mut tstart, &mut tend, &mut tdiff);
     }
+
     eprintln!("Done");
-    is_successful = false;
+    // is_successful = false;
     pkt.clear();
     pkt_info_bytes.clear();
     pkt_info.id = socket::htonl(custom_id);
@@ -458,25 +457,25 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
     pkt = ethernet_bytes.clone();
     pkt.append(&mut pkt_info_bytes);
-    // send_perf(sock, &mut pkt, size as usize);
-    // recv_perf(
-    //     sock,
-    //     &custom_id,
-    //     &PerfOpcode::PerfResEnd,
-    //     &mut pkt,
-    //     size as usize,
-    // );
+    send_perf(sock, &mut pkt, size as usize);
+    recv_perf(
+        sock,
+        &custom_id,
+        &PerfOpcode::PerfResEnd,
+        &mut pkt,
+        size as usize,
+    );
 
-    while !is_successful {
-        send_perf(sock, &mut pkt, size as usize);
-        is_successful = recv_perf(
-            sock,
-            &custom_id,
-            &PerfOpcode::PerfResEnd,
-            &mut pkt,
-            size as usize,
-        );
-    }
+    // while !is_successful {
+    //     send_perf(sock, &mut pkt, size as usize);
+    //     is_successful = recv_perf(
+    //         sock,
+    //         &custom_id,
+    //         &PerfOpcode::PerfResEnd,
+    //         &mut pkt,
+    //         size as usize,
+    //     );
+    // }
 
     pkt.clear();
     pkt_info_bytes.clear();
@@ -498,29 +497,29 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     println!("pkt len = {}", pkt.len());
     println!("result pkt array =  {:0x?}", pkt);
 
-    // let result_idx = mem::size_of::<Ethernet>() + mem::size_of::<PktInfo>();
-    // println!("result_idx = {}", result_idx);
-    // let pkt_perf_result: PktPerfResult = bincode::deserialize(&pkt[19..]).unwrap();
-    let pkt_perf_result: PktPerfResult = PktPerfResult {
-        pkt_count: u64::from_be_bytes(pkt[19..27].try_into().unwrap()),
-        pkt_size: u64::from_be_bytes(pkt[27..35].try_into().unwrap()),
-        elapsed_sec: i64::from_be_bytes(pkt[35..43].try_into().unwrap()),
-        elapsed_nsec: i64::from_be_bytes(pkt[43..51].try_into().unwrap()),
-    };
-    let pkt_count: u64 = pkt_perf_result.pkt_count;
-    let pkt_size: u64 = pkt_perf_result.pkt_size;
-    let pps: u64 = pkt_count / pkt_perf_result.elapsed_sec as u64;
-    let bps: u64 = pkt_size / pkt_perf_result.elapsed_sec as u64 * 8;
-    let loss_rate: f64 = (sent_id as u64 - pkt_count) as f64 / sent_id as f64;
+    // // let result_idx = mem::size_of::<Ethernet>() + mem::size_of::<PktInfo>();
+    // // println!("result_idx = {}", result_idx);
+    // // let pkt_perf_result: PktPerfResult = bincode::deserialize(&pkt[19..]).unwrap();
+    // let pkt_perf_result: PktPerfResult = PktPerfResult {
+    //     pkt_count: u64::from_be_bytes(pkt[19..27].try_into().unwrap()),
+    //     pkt_size: u64::from_be_bytes(pkt[27..35].try_into().unwrap()),
+    //     elapsed_sec: i64::from_be_bytes(pkt[35..43].try_into().unwrap()),
+    //     elapsed_nsec: i64::from_be_bytes(pkt[43..51].try_into().unwrap()),
+    // };
+    // let pkt_count: u64 = pkt_perf_result.pkt_count;
+    // let pkt_size: u64 = pkt_perf_result.pkt_size;
+    // let pps: u64 = pkt_count / pkt_perf_result.elapsed_sec as u64;
+    // let bps: u64 = pkt_size / pkt_perf_result.elapsed_sec as u64 * 8;
+    // let loss_rate: f64 = (sent_id as u64 - pkt_count) as f64 / sent_id as f64;
 
-    println!(
-        "Elapsed {}.{}",
-        pkt_perf_result.elapsed_sec, pkt_perf_result.elapsed_nsec
-    );
-    println!("Recieved {} pkts, {} bytes", pkt_count, pkt_size);
-    println!("Sent {} pkts, Loss {}", sent_id, loss_rate * 100 as f64);
-    println!("Result {} pps, {} bps", pps, bps);
-    eprint!("client done");
+    // println!(
+    //     "Elapsed {}.{}",
+    //     pkt_perf_result.elapsed_sec, pkt_perf_result.elapsed_nsec
+    // );
+    // println!("Recieved {} pkts, {} bytes", pkt_count, pkt_size);
+    // println!("Sent {} pkts, Loss {}", sent_id, loss_rate * 100 as f64);
+    // println!("Result {} pps, {} bps", pps, bps);
+    // eprint!("client done");
 }
 
 fn recv_perf(sock: &i32, id: &u32, op: &PerfOpcode, pkt: &mut Vec<u8>, size: usize) -> bool {
