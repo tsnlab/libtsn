@@ -442,7 +442,7 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     pkt.clear();
     pkt_info_bytes.clear();
 
-    let mut sent_id = 0;
+    let mut sent_id = 1;
     pkt_info.op = PerfOpcode::PerfData as u8;
     tstart = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
     tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
@@ -452,13 +452,14 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
         pkt.clear();
         pkt = ethernet_bytes.clone();
         pkt_info_bytes.clear();
-        pkt_info.id = socket::htonl(sent_id + 1);
+        pkt_info.id = socket::htonl(sent_id);
         pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
         pkt.append(&mut pkt_info_bytes);
         // println!("id = {}", pkt_info.id);
         // println!("id = {:0x}", pkt_info.op);
         // println!("pkt array =  {:0x?}", pkt);
         send_perf(sock, &mut pkt, size as usize);
+        sent_id += 1;
         tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
         tsn::tsn_timespecff_diff(&mut tstart, &mut tend, &mut tdiff);
     }
