@@ -167,7 +167,7 @@ fn do_server(sock: &mut i32, size: i32) {
             PerfOpcode::PerfData => unsafe {
                 STATS.pkt_count += 1;
                 STATS.total_bytes += (recv_bytes + 4) as u64;
-                STATS.last_id = pkt_info.id;
+                STATS.last_id = socket::ntohl(pkt_info.id);
             },
             PerfOpcode::PerfReqEnd => {
                 //TODO: Need to figure out why PerfReqEnd is not properly received when the packet's size is large
