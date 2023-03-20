@@ -45,13 +45,15 @@ impl From<u8> for PerfOpcode {
         }
     }
 }
-
+#[repr(packed)]
 #[derive(Serialize, Deserialize)]
 struct Ethernet {
     dest: [u8; 6],
     src: [u8; 6],
     ether_type: u16,
 }
+
+#[repr(packed)]
 #[derive(Serialize, Deserialize)]
 struct PktInfo {
     id: u32,
@@ -119,12 +121,14 @@ fn do_server(sock: &mut i32, size: i32) {
                 .unwrap(),
         )
         .unwrap();
+
+        let id = pkt_info.id;
         // pkt_info = PktInfo {
         //     id: u32::from_be_bytes([pkt[14], pkt[15], pkt[16], pkt[17]]),
         //     op: pkt[18],
         // };
-        println!("id = {:08x}", pkt_info.id);
-        println!("id = {:0x}", pkt_info.op);
+        println!("id = {:08x}", id);
+        println!("op = {:0x}", pkt_info.op);
 
         let temp_mac = ethernet.dest;
         ethernet.dest = ethernet.src;
@@ -135,7 +139,7 @@ fn do_server(sock: &mut i32, size: i32) {
 
         match opcode {
             PerfOpcode::PerfReqStart => {
-                eprintln!("Received start '{:08x}'", pkt_info.id);
+                eprintln!("Received start '{:08x}'", id);
                 tstart = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
 
                 unsafe {
@@ -166,7 +170,7 @@ fn do_server(sock: &mut i32, size: i32) {
             PerfOpcode::PerfReqEnd => {
                 //TODO: Need to figure out why PerfReqEnd is not properly received when the packet's size is large
                 // tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
-                eprintln!("Received end '{:08x}'", pkt_info.id);
+                eprintln!("Received end '{:08x}'", id);
                 unsafe {
                     STATS.running = false;
                 }
@@ -184,7 +188,7 @@ fn do_server(sock: &mut i32, size: i32) {
                 send_perf(sock, &mut send_pkt, recv_bytes as usize);
             }
             PerfOpcode::PerfReqResult => {
-                eprintln!("Received result '{:08x}'", pkt_info.id);
+                eprintln!("Received result '{:08x}'", id);
                 tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
                 let pkt_result: PktPerfResult;
                 tdiff = tend - tstart;
@@ -417,7 +421,7 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     let mut is_successful = false;
     pkt.append(&mut pkt_info_bytes);
 
-    println!("id = {:08x}", pkt_info.id);
+    // println!("id = {:08x}", pkt_info.id);
     println!("op = {:0x}", pkt_info.op);
     println!("pkt byte array = {:0x?}", pkt);
     while !is_successful {
