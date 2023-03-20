@@ -442,25 +442,25 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     pkt_info.id = socket::htonl(custom_id);
     pkt_info.op = PerfOpcode::PerfReqEnd as u8;
     pkt = make_ethernet_pkt(&ethernet_pkt, &pkt_info);
-    // send_perf(sock, &mut pkt, size as usize);
-    // recv_perf(
-    //     sock,
-    //     &custom_id,
-    //     PerfOpcode::PerfResEnd,
-    //     &mut pkt,
-    //     size as usize,
-    // );
+    send_perf(sock, &mut pkt, size as usize);
+    recv_perf(
+        sock,
+        &custom_id,
+        PerfOpcode::PerfResEnd,
+        &mut pkt,
+        size as usize,
+    );
 
-    while !is_successful {
-        send_perf(sock, &mut pkt, size as usize);
-        is_successful = recv_perf(
-            sock,
-            &custom_id,
-            PerfOpcode::PerfResEnd,
-            &mut pkt,
-            size as usize,
-        );
-    }
+    // while !is_successful {
+    //     send_perf(sock, &mut pkt, size as usize);
+    //     is_successful = recv_perf(
+    //         sock,
+    //         &custom_id,
+    //         PerfOpcode::PerfResEnd,
+    //         &mut pkt,
+    //         size as usize,
+    //     );
+    // }
 
     pkt_info.id = socket::htonl(custom_id);
     pkt_info.op = PerfOpcode::PerfReqResult as u8;
