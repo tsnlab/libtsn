@@ -420,7 +420,7 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
             size as usize,
         );
     }
-    eprintln!("Fire");
+    println!("Fire");
 
     // let mut sent_id = 1;
     // pkt_info.op = PerfOpcode::PerfData as u8;
@@ -517,21 +517,22 @@ fn recv_perf(sock: &i32, id: &u32, op: PerfOpcode, pkt: &mut Vec<u8>, size: usiz
         let len = tsn::tsn_recv(*sock, pkt.as_mut_ptr(), size as i32);
         tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
         tdiff = tend - tstart;
+        received = true;
+        // let mut pkt_info: PktInfo =
+        //     bincode::deserialize(&pkt[ethernet_size..ethernet_size + pkt_info_size]).unwrap();
+        // pkt_info.id = socket::ntohl(pkt_info.id);
+        // let pktid = pkt_info.id;
 
-        let mut pkt_info: PktInfo =
-            bincode::deserialize(&pkt[ethernet_size..ethernet_size + pkt_info_size]).unwrap();
-        pkt_info.id = socket::ntohl(pkt_info.id);
-        let pktid = pkt_info.id;
-        println!("recv id = {:0x}", pktid);
-        println!("recv op = {:0x}", pkt_info.op);
-        println!("Expected id = {:0x}", *id);
-        println!("Expected op = {:0x}", op as u8);
+        // println!("recv id = {:0x}", pktid);
+        // println!("recv op = {:0x}", pkt_info.op);
+        // println!("Expected id = {:0x}", *id);
+        // println!("Expected op = {:0x}", op as u8);
 
-        if len < 0 && tdiff.tv_nsec() >= TIMEOUT_SEC as i64 {
-            break;
-        } else if pkt_info.id == *id && pkt_info.op == op as u8 {
-            received = true;
-        }
+        // if len < 0 && tdiff.tv_nsec() >= TIMEOUT_SEC as i64 {
+        //     break;
+        // } else if pkt_info.id == *id && pkt_info.op == op as u8 {
+        //     received = true;
+        // }
     }
 
     return received;
