@@ -391,23 +391,35 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
 
     println!("Starting client");
 
+    println!("1");
     let custom_id: u32 = 0xdeadbeef;
+    println!("2");
+
     let ethernet: Ethernet = Ethernet {
         dest: dstmac,
         src: srcmac,
         ether_type: socket::htons(ETHERTYPE_PERF),
     };
+    println!("3");
+
     let ethernet_bytes = bincode::serialize(&ethernet).unwrap();
+    println!("4");
 
     let mut pkt_info: PktInfo = PktInfo {
         id: socket::htonl(custom_id),
         op: PerfOpcode::PerfReqStart as u8,
     };
+    println!("5");
 
     pkt = ethernet_bytes.clone();
+    println!("6");
+
     let mut pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
+    println!("7");
+
     let mut is_successful = false;
     pkt.append(&mut pkt_info_bytes);
+    println!("8");
 
     while !is_successful {
         send_perf(sock, &mut pkt, size as usize);
@@ -419,6 +431,8 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
             size as usize,
         );
     }
+    println!("9");
+
     // eprintln!("Fire");
     // pkt.clear();
     // pkt_info_bytes.clear();
