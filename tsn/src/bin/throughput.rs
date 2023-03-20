@@ -149,7 +149,6 @@ fn do_server(sock: &mut i32, size: i32) {
                 let mut pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
                 send_pkt.append(&mut pkt_info_bytes);
 
-                println!("send pkt = {:0x?}", send_pkt);
                 send_perf(sock, &mut send_pkt, recv_bytes as usize);
             }
             PerfOpcode::PerfData => unsafe {
@@ -177,7 +176,6 @@ fn do_server(sock: &mut i32, size: i32) {
                     bincode::serialize(&pkt_info).expect("pkt_info serialization error");
 
                 send_pkt.append(&mut pkt_info_bytes);
-                println!("send pkt = {:0x?}", send_pkt);
                 send_perf(sock, &mut send_pkt, recv_bytes as usize);
             }
             PerfOpcode::PerfReqResult => {
@@ -200,7 +198,6 @@ fn do_server(sock: &mut i32, size: i32) {
                 let mut pkt_result_bytes = bincode::serialize(&pkt_result).unwrap();
                 send_pkt.append(&mut pkt_info_bytes);
                 send_pkt.append(&mut pkt_result_bytes);
-                println!("send pkt = {:0x?}", send_pkt);
                 send_perf(sock, &mut send_pkt, size as usize);
             }
             _ => {
@@ -421,7 +418,7 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
         println!("initial message");
         send_perf(sock, &mut pkt, size as usize);
         is_successful = recv_perf(
-            &sock,
+            sock,
             &custom_id,
             &PerfOpcode::PerfResStart,
             &mut pkt,
@@ -440,11 +437,14 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     while RUNNING.load(Ordering::Relaxed) && tdiff.tv_sec() < time as i64 {
         pkt.clear();
         pkt = ethernet_bytes.clone();
+
         pkt_info_bytes.clear();
         pkt_info.id = socket::htonl(sent_id);
         pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
+
         pkt.append(&mut pkt_info_bytes);
         send_perf(sock, &mut pkt, size as usize);
+
         sent_id += 1;
         tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
         tsn::tsn_timespecff_diff(&mut tstart, &mut tend, &mut tdiff);
@@ -458,25 +458,25 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
     pkt = ethernet_bytes.clone();
     pkt.append(&mut pkt_info_bytes);
-    send_perf(sock, &mut pkt, size as usize);
-    recv_perf(
-        sock,
-        &custom_id,
-        &PerfOpcode::PerfResEnd,
-        &mut pkt,
-        size as usize,
-    );
+    // send_perf(sock, &mut pkt, size as usize);
+    // recv_perf(
+    //     sock,
+    //     &custom_id,
+    //     &PerfOpcode::PerfResEnd,
+    //     &mut pkt,
+    //     size as usize,
+    // );
 
-    // while !is_successful {
-    //     send_perf(sock, &mut pkt, size as usize);
-    //     is_successful = recv_perf(
-    //         &sock,
-    //         &custom_id,
-    //         &PerfOpcode::PerfResEnd,
-    //         &mut pkt,
-    //         size as usize,
-    //     );
-    // }
+    while !is_successful {
+        send_perf(sock, &mut pkt, size as usize);
+        is_successful = recv_perf(
+            sock,
+            &custom_id,
+            &PerfOpcode::PerfResEnd,
+            &mut pkt,
+            size as usize,
+        );
+    }
 
     pkt.clear();
     pkt_info_bytes.clear();
