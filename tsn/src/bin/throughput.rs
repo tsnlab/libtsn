@@ -421,63 +421,63 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     }
     println!("Fire");
 
-    // let mut sent_id = 1;
-    // pkt_info.op = PerfOpcode::PerfData as u8;
-    // tstart = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
-    // tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
-    // tsn::tsn_timespecff_diff(&mut tstart, &mut tend, &mut tdiff);
-    // while RUNNING.load(Ordering::Relaxed) && tdiff.tv_sec() < time as i64 {
-    //     pkt_info.id = socket::htonl(sent_id);
-    //     pkt = make_ethernet_pkt(&ethernet_pkt, &pkt_info);
+    let mut sent_id = 1;
+    pkt_info.op = PerfOpcode::PerfData as u8;
+    tstart = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
+    tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
+    tsn::tsn_timespecff_diff(&mut tstart, &mut tend, &mut tdiff);
+    while RUNNING.load(Ordering::Relaxed) && tdiff.tv_sec() < time as i64 {
+        pkt_info.id = socket::htonl(sent_id);
+        pkt = make_ethernet_pkt(&ethernet_pkt, &pkt_info);
 
-    //     send_perf(sock, &mut pkt, size as usize);
+        send_perf(sock, &mut pkt, size as usize);
 
-    //     sent_id += 1;
-    //     tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
-    //     tsn::tsn_timespecff_diff(&mut tstart, &mut tend, &mut tdiff);
-    // }
+        sent_id += 1;
+        tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
+        tsn::tsn_timespecff_diff(&mut tstart, &mut tend, &mut tdiff);
+    }
 
-    // eprintln!("Done");
+    eprintln!("Done");
 
-    // pkt_info.id = socket::htonl(custom_id);
-    // pkt_info.op = PerfOpcode::PerfReqEnd as u8;
-    // pkt = make_ethernet_pkt(&ethernet_pkt, &pkt_info);
-    // // send_perf(sock, &mut pkt, size as usize);
-    // // recv_perf(
-    // //     sock,
-    // //     &custom_id,
-    // //     PerfOpcode::PerfResEnd,
-    // //     &mut pkt,
-    // //     size as usize,
-    // // );
-
-    // while !is_successful {
-    //     send_perf(sock, &mut pkt, size as usize);
-    //     is_successful = recv_perf(
-    //         sock,
-    //         &custom_id,
-    //         PerfOpcode::PerfResEnd,
-    //         &mut pkt,
-    //         size as usize,
-    //     );
-    // }
-
-    // pkt_info.id = socket::htonl(custom_id);
-    // pkt_info.op = PerfOpcode::PerfReqResult as u8;
-    // pkt = make_ethernet_pkt(&ethernet_pkt, &pkt_info);
-
+    pkt_info.id = socket::htonl(custom_id);
+    pkt_info.op = PerfOpcode::PerfReqEnd as u8;
+    pkt = make_ethernet_pkt(&ethernet_pkt, &pkt_info);
     // send_perf(sock, &mut pkt, size as usize);
     // recv_perf(
     //     sock,
     //     &custom_id,
-    //     PerfOpcode::PerfResResult,
+    //     PerfOpcode::PerfResEnd,
     //     &mut pkt,
     //     size as usize,
     // );
-    // println!("ethernet size = {}", mem::size_of::<Ethernet>());
-    // println!("pktinfo size = {}", mem::size_of::<PktInfo>());
-    // println!("pkt len = {}", pkt.len());
-    // println!("result pkt array =  {:0x?}", pkt);
+
+    while !is_successful {
+        send_perf(sock, &mut pkt, size as usize);
+        is_successful = recv_perf(
+            sock,
+            &custom_id,
+            PerfOpcode::PerfResEnd,
+            &mut pkt,
+            size as usize,
+        );
+    }
+
+    pkt_info.id = socket::htonl(custom_id);
+    pkt_info.op = PerfOpcode::PerfReqResult as u8;
+    pkt = make_ethernet_pkt(&ethernet_pkt, &pkt_info);
+
+    send_perf(sock, &mut pkt, size as usize);
+    recv_perf(
+        sock,
+        &custom_id,
+        PerfOpcode::PerfResResult,
+        &mut pkt,
+        size as usize,
+    );
+    println!("ethernet size = {}", mem::size_of::<Ethernet>());
+    println!("pktinfo size = {}", mem::size_of::<PktInfo>());
+    println!("pkt len = {}", pkt.len());
+    println!("result pkt array =  {:0x?}", pkt);
 
     // // let result_idx = mem::size_of::<Ethernet>() + mem::size_of::<PktInfo>();
     // // println!("result_idx = {}", result_idx);
