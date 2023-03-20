@@ -109,23 +109,23 @@ fn do_server(sock: &mut i32, size: i32) {
 
         recv_bytes = tsn::tsn_recv(*sock, pkt.as_mut_ptr(), size);
 
-        // ethernet = bincode::deserialize(pkt[0..ethernet_size].try_into().unwrap()).unwrap();
-        ethernet = Ethernet {
-            dest: pkt[0..6].try_into().unwrap(),
-            src: pkt[6..12].try_into().unwrap(),
-            ether_type: u16::from_be_bytes([pkt[12], pkt[13]]),
-        };
-        // pkt_info = bincode::deserialize(
-        //     pkt[ethernet_size..ethernet_size + pkt_info_size]
-        //         .try_into()
-        //         .unwrap(),
-        // )
-        // .unwrap();
+        ethernet = bincode::deserialize(pkt[0..ethernet_size].try_into().unwrap()).unwrap();
+        // ethernet = Ethernet {
+        //     dest: pkt[0..6].try_into().unwrap(),
+        //     src: pkt[6..12].try_into().unwrap(),
+        //     ether_type: u16::from_be_bytes([pkt[12], pkt[13]]),
+        // };
+        pkt_info = bincode::deserialize(
+            pkt[ethernet_size..ethernet_size + pkt_info_size]
+                .try_into()
+                .unwrap(),
+        )
+        .unwrap();
 
-        pkt_info = PktInfo {
-            id: u32::from_be_bytes([pkt[14], pkt[15], pkt[16], pkt[17]]),
-            op: pkt[18],
-        };
+        // pkt_info = PktInfo {
+        //     id: u32::from_be_bytes([pkt[14], pkt[15], pkt[16], pkt[17]]),
+        //     op: pkt[18],
+        // };
         let id = socket::ntohl(pkt_info.id);
         println!("id = {:08x}", id);
         println!("op = {:0x}", pkt_info.op);
