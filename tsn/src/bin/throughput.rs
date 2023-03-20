@@ -402,7 +402,7 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     let ethernet_pkt = bincode::serialize(&ethernet).unwrap();
 
     let mut pkt_info: PktInfo = PktInfo {
-        id: socket::htonl(custom_id),
+        id: custom_id.to_be(),
         op: PerfOpcode::PerfReqStart as u8,
     };
 
@@ -411,7 +411,6 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     let mut is_successful = false;
 
     while !is_successful {
-        println!("init");
         send_perf(sock, &mut pkt, size as usize);
         is_successful = recv_perf(
             sock,
@@ -546,9 +545,10 @@ fn make_ethernet_pkt(ethernet_pkt: &Vec<u8>, pkt_info: &PktInfo) -> Vec<u8> {
     let mut pkt_info_bytes = bincode::serialize(pkt_info).unwrap();
 
     println!("ethernet {:0x?}", ethernet_pkt);
-    println!("pkt_info_bytes {:0x?}", pkt_info_bytes);
+    println!("pkt_info {:0x?}", pkt_info_bytes);
 
     pkt.append(&mut pkt_info_bytes);
+    println!("pkt {:0x?}", pkt);
     pkt
 }
 fn main() -> Result<(), std::io::Error> {
