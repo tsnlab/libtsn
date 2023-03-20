@@ -402,7 +402,7 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     let ethernet_pkt = bincode::serialize(&ethernet).unwrap();
 
     let mut pkt_info: PktInfo = PktInfo {
-        id: socket::htonl(custom_id),
+        id: custom_id.to_be(),
         op: PerfOpcode::PerfReqStart as u8,
     };
 
@@ -522,6 +522,12 @@ fn recv_perf(sock: &i32, id: &u32, op: PerfOpcode, pkt: &mut Vec<u8>, size: usiz
             id: u32::from_be_bytes(pkt[ethernet_size..ethernet_size + 4].try_into().unwrap()),
             op: pkt[ethernet_size + 4],
         };
+        let pktid = pkt_info.id;
+        println!("recv id = {:0x}", pktid);
+        println!("recv op = {:0x}", pkt_info.op);
+        println!("Expected id = {:0x}", *id);
+        println!("Expected op = {:0x}", op as u8);
+
         if len < 0 && tdiff.tv_nsec() >= TIMEOUT_SEC as i64 {
             break;
         } else if pkt_info.id == *id && pkt_info.op == op as u8 {
