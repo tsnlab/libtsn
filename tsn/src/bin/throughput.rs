@@ -410,16 +410,16 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
 
     let mut is_successful = false;
 
-    // while !is_successful {
-    //     send_perf(sock, &mut pkt, size as usize);
-    //     is_successful = recv_perf(
-    //         sock,
-    //         &custom_id,
-    //         PerfOpcode::PerfResStart,
-    //         &mut pkt,
-    //         size as usize,
-    //     );
-    // }
+    while !is_successful {
+        send_perf(sock, &mut pkt, size as usize);
+        // is_successful = recv_perf(
+        //     sock,
+        //     &custom_id,
+        //     PerfOpcode::PerfResStart,
+        //     &mut pkt,
+        //     size as usize,
+        // );
+    }
     // eprintln!("Fire");
 
     // let mut sent_id = 1;
