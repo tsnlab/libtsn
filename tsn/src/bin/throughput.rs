@@ -419,7 +419,7 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
             size as usize,
         );
     }
-    pkt.clear();
+    drop(pkt);
     println!("Fire");
 
     let mut sent_id = 1;
@@ -436,7 +436,7 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
         sent_id += 1;
         tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
         tsn::tsn_timespecff_diff(&mut tstart, &mut tend, &mut tdiff);
-        pkt.clear();
+        drop(pkt);
     }
 
     eprintln!("Done");
@@ -452,8 +452,7 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
         &mut pkt,
         size as usize,
     );
-    pkt.clear();
-
+    drop(pkt);
     // while !is_successful {
     //     send_perf(sock, &mut pkt, size as usize);
     //     is_successful = recv_perf(
@@ -477,7 +476,6 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
         &mut pkt,
         size as usize,
     );
-    pkt.clear();
     // println!("ethernet size = {}", mem::size_of::<Ethernet>());
     // println!("pktinfo size = {}", mem::size_of::<PktInfo>());
     // println!("pkt len = {}", pkt.len());
