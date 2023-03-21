@@ -325,8 +325,6 @@ fn statistics_thread(stat: &Statistics) {
 }
 
 fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32) {
-    let mut pkt: Vec<u8>;
-
     let timeout: libc::timeval = libc::timeval {
         tv_sec: TIMEOUT_SEC as i64,
         tv_usec: 0,
@@ -405,17 +403,17 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
         op: PerfOpcode::PerfReqStart as u8,
     };
 
-    pkt = make_ethernet_pkt(&ethernet_pkt, &pkt_info);
+    let mut start_pkt = make_ethernet_pkt(&ethernet_pkt, &pkt_info);
 
     let mut is_successful = false;
 
     while !is_successful {
-        send_perf(sock, &mut pkt, size as usize);
+        send_perf(sock, &mut start_pkt, size as usize);
         is_successful = recv_perf(
             sock,
             &custom_id,
             PerfOpcode::PerfResStart,
-            &mut pkt,
+            &mut start_pkt,
             size as usize,
         );
     }
@@ -428,9 +426,9 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     tsn::tsn_timespecff_diff(&mut tstart, &mut tend, &mut tdiff);
     while RUNNING.load(Ordering::Relaxed) && tdiff.tv_sec() < time as i64 {
         pkt_info.id = socket::htonl(sent_id);
-        pkt = make_ethernet_pkt(&ethernet_pkt, &pkt_info);
+        let mut data_pkt = make_ethernet_pkt(&ethernet_pkt, &pkt_info);
 
-        send_perf(sock, &mut pkt, size as usize);
+        send_perf(sock, &mut data_pkt, size as usize);
 
         sent_id += 1;
         tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
@@ -441,13 +439,13 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
 
     pkt_info.id = socket::htonl(custom_id);
     pkt_info.op = PerfOpcode::PerfReqEnd as u8;
-    pkt = make_ethernet_pkt(&ethernet_pkt, &pkt_info);
-    send_perf(sock, &mut pkt, size as usize);
+    let mut end_pkt = make_ethernet_pkt(&ethernet_pkt, &pkt_info);
+    send_perf(sock, &mut end_pkt, size as usize);
     recv_perf(
         sock,
         &custom_id,
         PerfOpcode::PerfResEnd,
-        &mut pkt,
+        &mut end_pkt,
         size as usize,
     );
     // while !is_successful {
@@ -463,14 +461,14 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
 
     pkt_info.id = socket::htonl(custom_id);
     pkt_info.op = PerfOpcode::PerfReqResult as u8;
-    pkt = make_ethernet_pkt(&ethernet_pkt, &pkt_info);
+    let mut result_pkt = make_ethernet_pkt(&ethernet_pkt, &pkt_info);
 
-    send_perf(sock, &mut pkt, size as usize);
+    send_perf(sock, &mut result_pkt, size as usize);
     recv_perf(
         sock,
         &custom_id,
         PerfOpcode::PerfResResult,
-        &mut pkt,
+        &mut result_pkt,
         size as usize,
     );
     // println!("ethernet size = {}", mem::size_of::<Ethernet>());
