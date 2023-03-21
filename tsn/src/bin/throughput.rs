@@ -424,6 +424,7 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     tstart = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
     tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
     tsn::tsn_timespecff_diff(&mut tstart, &mut tend, &mut tdiff);
+
     while RUNNING.load(Ordering::Relaxed) && tdiff.tv_sec() < time as i64 {
         pkt_info.id = socket::htonl(sent_id);
         let mut data_pkt = make_ethernet_pkt(&ethernet_pkt, &pkt_info);
@@ -432,7 +433,7 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
 
         sent_id += 1;
         tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
-        tsn::tsn_timespecff_diff(&mut tstart, &mut tend, &mut tdiff);
+        tdiff = tend - tstart;
     }
 
     eprintln!("Done");
