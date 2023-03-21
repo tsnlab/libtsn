@@ -204,65 +204,27 @@ fn statistics_thread(stat: &Statistics) {
     let mut last_pkt_count: u64 = 0;
     let mut last_total_bytes: u64 = 0;
 
-    //TODO:let format_str = "Stat {} {} pps {} bps loss {:.3}%";
-
     while stat.running {
-        // println!("---------Check statistic data---------");
-        // let mut tnow = Instant::now();
-        // println!("tlast = {}.{}", tlast.tv_sec(), tlast.tv_nsec());
-        // println!("tnow = {}.{}", tnow.tv_sec(), tnow.tv_nsec());
-        //tsn::tsn_timespecff_diff(&mut tlast, &mut tnow, &mut tdiff);
         tdiff = tlast.elapsed();
-        // println!("tdiff after calc = {}.{}", tdiff.tv_sec(), tdiff.tv_nsec());
 
         if tdiff.as_secs() >= 1 {
             tlast = Instant::now();
             tdiff = start.elapsed();
-            //tsn::tsn_timespecff_diff(&mut start, &mut tnow, &mut tdiff);
             let time_elapsed: u16 = tdiff.as_secs() as u16;
 
             let current_pkt_count: u64 = stat.pkt_count;
             let current_total_bytes: u64 = stat.total_bytes;
             let current_id: u32 = stat.last_id;
 
-            // println!("current_pkt_count = {}", current_pkt_count);
-            // println!("last_pkt_count = {}", last_pkt_count);
-
-            //TODO: this code might need to be fixed
-            // if last_pkt_count > current_pkt_count {
-            //     continue;
-            // }
-
-            // if last_total_bytes > current_total_bytes {
-            //     continue;
-            // }
-
-            // if last_id > current_id {
-            //     continue;
-            // }
-            //
-
             let diff_pkt_count: u64 = current_pkt_count - last_pkt_count;
             let diff_total_bytes: u64 = current_total_bytes - last_total_bytes;
             let loss_rate;
 
-            // println!("current_pkt_count = {}", current_pkt_count);
-            // println!("last_pkt_count = {}", last_pkt_count);
-            // println!("diff_pkt_count = {}", diff_pkt_count);
-            // println!("current_id = {}", current_id);
-            // println!("last_id = {}", last_id);
-            // println!("diff_id = {}", current_id - last_id);
-
-            // if current_id as u64 - last_id as u64 == 0 {
-            //     //TODO: panic!
-            //     continue;
-            // } else {
             loss_rate = 1.0 - ((diff_pkt_count) as f64 / ((current_id - last_id) as f64));
 
             last_pkt_count = current_pkt_count;
             last_total_bytes = current_total_bytes;
             last_id = current_id;
-            // }
 
             println!(
                 "Stat {} {} pps {} bps loss {:.3}%",
@@ -273,7 +235,6 @@ fn statistics_thread(stat: &Statistics) {
             );
             io::stdout().flush().unwrap();
         } else {
-            //println!("---------Sleep---------");
             let remaining_ns: u64 = ((1000000000) - tdiff.as_nanos())
                 .try_into()
                 .expect("Conversion Fail u128->u64");
@@ -282,8 +243,6 @@ fn statistics_thread(stat: &Statistics) {
         }
     }
 
-    //final result
-    println!("---------Start processing final result---------");
     tdiff = tlast.elapsed();
     if tdiff.as_secs() >= 1 {
         tdiff = start.elapsed();
@@ -300,15 +259,6 @@ fn statistics_thread(stat: &Statistics) {
         let diff_total_bytes: u64 = current_total_bytes - last_total_bytes;
         let loss_rate: f64 = 1.0 - ((diff_pkt_count) as f64 / ((current_id - last_id) as f64));
 
-        // println!("current_pkt_count = {}", current_pkt_count);
-        // println!("last_pkt_count = {}", last_pkt_count);
-        // println!("diff_pkt_count = {}", diff_pkt_count);
-        // println!("current_id = {}", current_id);
-        // println!("last_id = {}", last_id);
-
-        // last_pkt_count = current_pkt_count;
-        // last_total_bytes = current_total_bytes;
-
         println!(
             "Stat {} {} pps {} bps loss {:.3}%",
             time_elapsed,
@@ -318,7 +268,6 @@ fn statistics_thread(stat: &Statistics) {
         );
         io::stdout().flush().unwrap();
     }
-    println!("---------finish processing final result---------");
 }
 
 fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32) {
