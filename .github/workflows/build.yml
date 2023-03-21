@@ -12,14 +12,30 @@ jobs:
         uses: actions/checkout@master
       - name: Install clang-format
         run: sudo apt install -qqy --no-install-recommends clang-format
-      - name: Run clang-format
-        run: bin/check-clang-format
       - name: Setup python
         uses: actions/setup-python@v1
         with:
           python-version: "3.7"
-      - name: Flake8
-        uses: py-actions/flake8@v1
+      - name: Install Flake8
+        run: pip install flake8 flake8-import-order
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          components: clippy
+          override: true
+      - name: Linters
+        uses: wearerequired/lint-action@v2
+        with:
+          clang_format: true
+          # clippy: true
+          # clippy_dir: tsn
+          flake8: true
+      - name: Rust lint
+        uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --manifest-path tsn/Cargo.toml
       - name: shellcheck
         uses: ludeeus/action-shellcheck@master
 
@@ -33,8 +49,13 @@ jobs:
         run: sudo apt install -qqy --no-install-recommends gcc cmake ninja-build
       - name: Checkout
         uses: actions/checkout@master
-      - name: build
+      - name: build C
         run: |
           mkdir build && cd build
           /usr/bin/cmake -G Ninja -DBUILD_EXAMPLES=ON ..
           /usr/bin/cmake --build .
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Build rust
+        run: cargo build --release
+        working-directory: tsn
