@@ -129,13 +129,7 @@ fn do_server(sock: &mut i32, size: i32) {
                     STATS.running = true;
                 }
 
-                thread_handle = Some(
-                    my_thread
-                        .spawn(move || unsafe {
-                            statistics_thread(&STATS);
-                        })
-                        .unwrap(),
-                );
+                thread_handle = Some(my_thread.spawn(move || statistics_thread()).unwrap());
                 let mut send_pkt = bincode::serialize(&ethernet).unwrap();
 
                 pkt_info.op = PerfOpcode::PerfResStart as u8;
@@ -195,7 +189,7 @@ fn do_server(sock: &mut i32, size: i32) {
     }
 }
 
-fn statistics_thread(stat: &Statistics) {
+fn statistics_thread() {
     let mut tdiff: Duration;
     let start = Instant::now();
     let mut tlast = start;
@@ -204,7 +198,7 @@ fn statistics_thread(stat: &Statistics) {
     let mut last_pkt_count: u64 = 0;
     let mut last_total_bytes: u64 = 0;
 
-    while stat.running {
+    while unsafe { STATS.running } {
         tdiff = tlast.elapsed();
 
         if tdiff.as_secs() >= 1 {
@@ -212,10 +206,9 @@ fn statistics_thread(stat: &Statistics) {
             tdiff = start.elapsed();
             let time_elapsed: u16 = tdiff.as_secs() as u16;
 
-            let current_pkt_count: u64 = stat.pkt_count;
-            let current_total_bytes: u64 = stat.total_bytes;
-            let current_id: u32 = stat.last_id;
-
+            let current_pkt_count: u64 = unsafe { STATS.pkt_count };
+            let current_total_bytes: u64 = unsafe { STATS.total_bytes };
+            let current_id: u32 = unsafe { STATS.last_id };
             let diff_pkt_count: u64 = current_pkt_count - last_pkt_count;
             let diff_total_bytes: u64 = current_total_bytes - last_total_bytes;
             let loss_rate;
@@ -251,9 +244,9 @@ fn statistics_thread(stat: &Statistics) {
             .try_into()
             .expect("Conversion Fail u64->u16");
 
-        let current_pkt_count: u64 = stat.pkt_count;
-        let current_total_bytes: u64 = stat.total_bytes;
-        let current_id: u32 = stat.last_id;
+        let current_pkt_count: u64 = unsafe { STATS.pkt_count };
+        let current_total_bytes: u64 = unsafe { STATS.total_bytes };
+        let current_id: u32 = unsafe { STATS.last_id };
 
         let diff_pkt_count: u64 = current_pkt_count - last_pkt_count;
         let diff_total_bytes: u64 = current_total_bytes - last_total_bytes;
