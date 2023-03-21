@@ -371,6 +371,7 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     }
     eprintln!("Done");
 
+    is_successful = false;
     pkt_info.id = socket::htonl(custom_id);
     pkt_info.op = PerfOpcode::PerfReqEnd as u8;
     let mut end_pkt = make_send_pkt(&ethernet_bytes, &pkt_info);
