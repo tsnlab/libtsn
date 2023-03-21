@@ -53,7 +53,7 @@ struct Ethernet {
     ether_type: u16,
 }
 
-#[repr(packed)]
+// #[repr(packed)]
 #[derive(Serialize, Deserialize)]
 struct PktInfo {
     id: u32,
@@ -419,7 +419,6 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
             size as usize,
         );
     }
-    drop(pkt);
     println!("Fire");
 
     let mut sent_id = 1;
@@ -436,7 +435,6 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
         sent_id += 1;
         tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
         tsn::tsn_timespecff_diff(&mut tstart, &mut tend, &mut tdiff);
-        drop(pkt);
     }
 
     eprintln!("Done");
@@ -452,7 +450,6 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
         &mut pkt,
         size as usize,
     );
-    drop(pkt);
     // while !is_successful {
     //     send_perf(sock, &mut pkt, size as usize);
     //     is_successful = recv_perf(
