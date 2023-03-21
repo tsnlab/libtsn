@@ -266,7 +266,7 @@ fn statistics_thread() {
 fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32) {
     let mut pkt: Vec<u8> = vec![0; size as usize];
     println!("size = {}", size);
-
+    println!("pkt bytes {:0x?}", pkt);
     let ethernet_size = mem::size_of::<Ethernet>();
     let pkt_info_size = mem::size_of::<PktInfo>();
     let recv_packet_size = ethernet_size + pkt_info_size;
