@@ -284,11 +284,8 @@ fn statistics_thread(stat: &Statistics) {
 
     //final result
     println!("---------Start processing final result---------");
-    // let mut tnow = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
-    // tsn::tsn_timespecff_diff(&mut tlast, &mut tnow, &mut tdiff);
     tdiff = tlast.elapsed();
     if tdiff.as_secs() >= 1 {
-        // tsn::tsn_timespecff_diff(&mut start, &mut tnow, &mut tdiff);
         tdiff = start.elapsed();
         let time_elapsed: u16 = tdiff
             .as_secs()
@@ -428,6 +425,7 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
         // let mut data_pkt: Vec<u8> = make_ethernet_pkt(&ethernet_pkt, &pkt_info);
         let mut data_pkt: Vec<u8> = ethernet_pkt.clone();
         let mut pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
+        println!("ready to append");
         data_pkt.append(&mut pkt_info_bytes);
         println!("send data");
         send_perf(sock, &mut data_pkt, size as usize);
