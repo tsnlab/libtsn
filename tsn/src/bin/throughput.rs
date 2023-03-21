@@ -264,6 +264,12 @@ fn statistics_thread() {
 }
 
 fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32) {
+    let mut pkt: Vec<u8> = vec![0; size as usize];
+
+    let ethernet_size = mem::size_of::<Ethernet>();
+    let pkt_info_size = mem::size_of::<PktInfo>();
+    let recv_packet_size = ethernet_size + pkt_info_size;
+
     let timeout: libc::timeval = libc::timeval {
         tv_sec: TIMEOUT_SEC as i64,
         tv_usec: 0,
@@ -337,19 +343,20 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
         op: PerfOpcode::PerfReqStart as u8,
     };
 
-    let mut start_pkt: Vec<u8> = ethernet_bytes.clone();
+    pkt = ethernet_bytes.clone();
     let mut pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
-    start_pkt.append(&mut pkt_info_bytes);
+    pkt.append(&mut pkt_info_bytes);
+    println!("pkt len = {}", pkt.len());
 
     let mut is_successful: bool = false;
 
     while !is_successful {
-        send_perf(sock, &mut start_pkt, size as usize);
+        send_perf(sock, &mut pkt, recv_packet_size as usize);
         is_successful = recv_perf(
             sock,
             &custom_id,
             PerfOpcode::PerfResStart,
-            &mut start_pkt,
+            &mut pkt,
             size as usize,
         );
     }
@@ -395,6 +402,9 @@ fn recv_perf(sock: &i32, id: &u32, op: PerfOpcode, pkt: &mut Vec<u8>, size: usiz
     let mut received = false;
     let ethernet_size = mem::size_of::<Ethernet>();
     let pkt_info_size = mem::size_of::<PktInfo>();
+    println!("ethernet size = {}", ethernet_size);
+    println!("pkt_info_size size = {}", pkt_info_size);
+
     while !received && RUNNING.load(Ordering::Relaxed) {
         let len = tsn::tsn_recv(*sock, pkt.as_mut_ptr(), size as i32);
         tdiff = tstart.elapsed();
