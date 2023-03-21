@@ -155,8 +155,6 @@ fn do_server(sock: &mut i32, size: i32) {
                 STATS.last_id = socket::ntohl(pkt_info.id);
             },
             PerfOpcode::PerfReqEnd => {
-                //TODO: Need to figure out why PerfReqEnd is not properly received when the packet's size is large
-                // tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
                 eprintln!("Received end '{:08x}'", id);
 
                 unsafe {
@@ -388,10 +386,6 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
         hex::decode(dstmac[5]).unwrap()[0],
     ];
 
-    let mut tstart: TimeSpec;
-    let mut tend: TimeSpec;
-    let mut tdiff: TimeSpec = TimeSpec::zero();
-
     println!("Starting client");
 
     let custom_id: u32 = 0xdeadbeef;
@@ -427,10 +421,9 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
 
     let mut sent_id = 1;
     pkt_info.op = PerfOpcode::PerfData as u8;
-    tstart = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
-    tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
-    tdiff = tend - tstart;
-    while RUNNING.load(Ordering::Relaxed) && tdiff.tv_sec() < time as i64 {
+    let tstart = Instant::now();
+    let mut tdiff = tstart.elapsed();
+    while RUNNING.load(Ordering::Relaxed) && tdiff.as_secs() < time as u64 {
         pkt_info.id = socket::htonl(sent_id);
         println!("make data packet");
         let mut data_pkt: Vec<u8> = make_ethernet_pkt(&ethernet_pkt, &pkt_info);
@@ -438,8 +431,7 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
         send_perf(sock, &mut data_pkt, size as usize);
 
         sent_id += 1;
-        tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
-        tdiff = tend - tstart;
+        tdiff = tstart.elapsed();
     }
     println!("After sending data");
 
@@ -559,8 +551,8 @@ fn make_ethernet_pkt(ethernet_pkt: &Vec<u8>, pkt_info: &PktInfo) -> Vec<u8> {
     let mut pkt_info_bytes = bincode::serialize(pkt_info).unwrap();
     println!("pkt_info_bytes = {:0x?}", pkt_info_bytes);
     println!("3");
-    // pkt.append(&mut pkt_info_bytes);
-    // println!("pkt = {:0x?}", pkt);
+    pkt.append(&mut pkt_info_bytes);
+    println!("pkt = {:0x?}", pkt);
 
     println!("4");
 
