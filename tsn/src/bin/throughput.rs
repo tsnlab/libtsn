@@ -544,7 +544,7 @@ fn send_perf(sock: &mut i32, pkt: &mut Vec<u8>, size: usize) {
 }
 
 fn make_ethernet_pkt(ethernet_pkt: &Vec<u8>, pkt_info: &PktInfo) -> Vec<u8> {
-    let mut pkt: Vec<u8> = ethernet_pkt.clone();
+    let mut pkt: Vec<u8> = (*ethernet_pkt).clone();
     let mut pkt_info_bytes = bincode::serialize(pkt_info).unwrap();
 
     // println!("ethernet {:0x?}", ethernet_pkt);
