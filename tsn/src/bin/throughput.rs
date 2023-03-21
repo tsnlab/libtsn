@@ -345,13 +345,13 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
 
     while !is_successful {
         send_perf(sock, &mut start_pkt, size as usize);
-        // is_successful = recv_perf(
-        //     sock,
-        //     &custom_id,
-        //     PerfOpcode::PerfResStart,
-        //     &mut start_pkt,
-        //     size as usize,
-        // );
+        is_successful = recv_perf(
+            sock,
+            &custom_id,
+            PerfOpcode::PerfResStart,
+            &mut start_pkt,
+            size as usize,
+        );
     }
     println!("Fire");
 
@@ -395,7 +395,6 @@ fn recv_perf(sock: &i32, id: &u32, op: PerfOpcode, pkt: &mut Vec<u8>, size: usiz
     let mut received = false;
     let ethernet_size = mem::size_of::<Ethernet>();
     let pkt_info_size = mem::size_of::<PktInfo>();
-
     while !received && RUNNING.load(Ordering::Relaxed) {
         let len = tsn::tsn_recv(*sock, pkt.as_mut_ptr(), size as i32);
         tdiff = tstart.elapsed();
