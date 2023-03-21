@@ -168,13 +168,12 @@ fn do_server(sock: &mut i32, size: i32) {
                 elapsed_time = tstart.elapsed();
 
                 pkt_info.op = PerfOpcode::PerfResResult as u8;
-                unsafe {
-                    pkt_result = PktPerfResult {
-                        pkt_count: STATS.pkt_count.to_be(),
-                        pkt_size: STATS.total_bytes.to_be(),
-                        elapsed_time: elapsed_time,
-                    };
-                }
+                pkt_result = PktPerfResult {
+                    pkt_count: unsafe { STATS.pkt_count.to_be() },
+                    pkt_size: unsafe { STATS.total_bytes.to_be() },
+                    elapsed_time: elapsed_time,
+                };
+
                 let mut send_pkt = bincode::serialize(&ethernet).unwrap();
                 let mut pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
                 let mut pkt_result_bytes = bincode::serialize(&pkt_result).unwrap();
@@ -269,15 +268,15 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
         tv_usec: 0,
     };
     let res;
-    unsafe {
-        res = libc::setsockopt(
+    res = unsafe {
+        libc::setsockopt(
             *sock,
             libc::SOL_SOCKET,
             libc::SO_RCVTIMEO,
             &timeout as *const _ as *const libc::c_void,
             mem::size_of_val(&timeout) as u32,
-        );
-    }
+        )
+    };
 
     if res < 0 {
         panic!("last OS error: {:?}", Error::last_os_error());
@@ -538,34 +537,32 @@ fn main() -> Result<(), std::io::Error> {
         for _ in signals.forever() {
             println!("Interrrupted");
             RUNNING.store(false, Ordering::Relaxed);
-            unsafe {
-                tsn::tsn_sock_close(&mut SOCK);
-            }
+            tsn::tsn_sock_close(unsafe { &mut SOCK });
             std::process::exit(1);
         }
     });
 
     match mode {
-        "s" => unsafe {
-            do_server(&mut SOCK.fd, FromStr::from_str(size).unwrap());
-        },
-        "c" => unsafe {
+        "s" => {
+            let mut fd = unsafe { SOCK.fd };
+            do_server(&mut fd, FromStr::from_str(size).unwrap())
+        }
+        "c" => {
+            let mut fd = unsafe { SOCK.fd };
             do_client(
-                &mut SOCK.fd,
+                &mut fd,
                 iface.to_string(),
                 FromStr::from_str(size).unwrap(),
                 target.to_string(),
                 FromStr::from_str(time).unwrap(),
-            );
-        },
+            )
+        }
         _ => {
             println!("Unknown mode");
         }
     }
 
-    unsafe {
-        tsn::tsn_sock_close(&mut SOCK);
-    }
+    tsn::tsn_sock_close(unsafe { &mut SOCK });
     println!("sock closed");
     Ok(())
 }
