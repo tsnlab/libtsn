@@ -285,7 +285,6 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
 
     let mut srcmac: [u8; 6] = [0; 6];
 
-    // Get Mac addr from device
     let mut ifr: ifstructs::ifreq = ifstructs::ifreq {
         ifr_name: [0; 16],
         ifr_ifru: ifstructs::ifr_ifru {
@@ -341,7 +340,6 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     let mut start_pkt: Vec<u8> = ethernet_bytes.clone();
     let mut pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
     start_pkt.append(&mut pkt_info_bytes);
-    // let mut start_pkt: Vec<u8> = make_send_pkt(&ethernet_bytes, &pkt_info);
 
     let mut is_successful: bool = false;
 
@@ -363,13 +361,9 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     let mut tdiff = tstart.elapsed();
     while RUNNING.load(Ordering::Relaxed) && tdiff.as_secs() < time as u64 {
         pkt_info.id = socket::htonl(sent_id);
-        println!("make data packet");
-        // let mut data_pkt: Vec<u8> = make_send_pkt(&ethernet_bytes, &pkt_info);
         let mut data_pkt: Vec<u8> = ethernet_bytes.clone();
         let mut pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
-        println!("ready to append");
         data_pkt.append(&mut pkt_info_bytes);
-        println!("send data");
         send_perf(sock, &mut data_pkt, size as usize);
 
         sent_id += 1;
@@ -380,14 +374,6 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     pkt_info.id = socket::htonl(custom_id);
     pkt_info.op = PerfOpcode::PerfReqEnd as u8;
     let mut end_pkt = make_send_pkt(&ethernet_bytes, &pkt_info);
-    // send_perf(sock, &mut end_pkt, size as usize);
-    // recv_perf(
-    //     sock,
-    //     &custom_id,
-    //     PerfOpcode::PerfResEnd,
-    //     &mut end_pkt,
-    //     size as usize,
-    // );
     while !is_successful {
         send_perf(sock, &mut end_pkt, size as usize);
         is_successful = recv_perf(
@@ -415,12 +401,6 @@ fn recv_perf(sock: &i32, id: &u32, op: PerfOpcode, pkt: &mut Vec<u8>, size: usiz
             bincode::deserialize(&pkt[ethernet_size..ethernet_size + pkt_info_size])
                 .expect("Packet deserializing fail(pkt_info)");
         pkt_info.id = socket::ntohl(pkt_info.id);
-        // let pktid = pkt_info.id;
-
-        // println!("recv id = {:0x}", pktid);
-        // println!("recv op = {:0x}", pkt_info.op);
-        // println!("Expected id = {:0x}", *id);
-        // println!("Expected op = {:0x}", op as u8);
 
         if len < 0 && tdiff.as_nanos() >= TIMEOUT_SEC as u128 {
             break;
