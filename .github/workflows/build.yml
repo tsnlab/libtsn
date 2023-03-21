@@ -19,7 +19,11 @@ jobs:
       - name: Install Flake8
         run: pip install flake8 flake8-import-order
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          components: clippy
+          override: true
       - name: Linters
         uses: wearerequired/lint-action@v2
         with:
@@ -27,6 +31,11 @@ jobs:
           # clippy: true
           # clippy_dir: tsn
           flake8: true
+      - name: Rust lint
+        uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --manifest-path tsn/Cargo.toml
       - name: shellcheck
         uses: ludeeus/action-shellcheck@master
 
