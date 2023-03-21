@@ -1,9 +1,5 @@
 use bincode;
 use clap::{Arg, Command as ClapCommand};
-use nix::sys::time::TimeSpec;
-use nix::sys::time::TimeValLike;
-use nix::time::clock_gettime;
-use nix::time::ClockId;
 use serde::{Deserialize, Serialize};
 use signal_hook::{consts::SIGINT, iterator::Signals};
 use socket;
@@ -403,7 +399,10 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
         op: PerfOpcode::PerfReqStart as u8,
     };
 
-    let mut start_pkt: Vec<u8> = make_ethernet_pkt(&ethernet_pkt, &pkt_info);
+    let mut start_pkt: Vec<u8> = ethernet_pkt.clone();
+    let mut pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
+    start_pkt.append(&mut pkt_info_bytes);
+    // let mut start_pkt: Vec<u8> = make_ethernet_pkt(&ethernet_pkt, &pkt_info);
 
     let mut is_successful: bool = false;
 
@@ -426,7 +425,10 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     while RUNNING.load(Ordering::Relaxed) && tdiff.as_secs() < time as u64 {
         pkt_info.id = socket::htonl(sent_id);
         println!("make data packet");
-        let mut data_pkt: Vec<u8> = make_ethernet_pkt(&ethernet_pkt, &pkt_info);
+        // let mut data_pkt: Vec<u8> = make_ethernet_pkt(&ethernet_pkt, &pkt_info);
+        let mut data_pkt: Vec<u8> = ethernet_pkt.clone();
+        let mut pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
+        data_pkt.append(&mut pkt_info_bytes);
         println!("send data");
         send_perf(sock, &mut data_pkt, size as usize);
 
@@ -502,17 +504,16 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
 }
 
 fn recv_perf(sock: &i32, id: &u32, op: PerfOpcode, pkt: &mut Vec<u8>, size: usize) -> bool {
-    let tstart = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
-    let mut tend: TimeSpec;
-    let mut tdiff: TimeSpec;
+    let tstart: Instant = Instant::now();
+    let mut tdiff: Duration;
     let mut received = false;
     let ethernet_size = mem::size_of::<Ethernet>();
     let pkt_info_size = mem::size_of::<PktInfo>();
 
     while !received && RUNNING.load(Ordering::Relaxed) {
         let len = tsn::tsn_recv(*sock, pkt.as_mut_ptr(), size as i32);
-        tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
-        tdiff = tend - tstart;
+        tdiff = tstart.elapsed();
+
         let mut pkt_info: PktInfo =
             bincode::deserialize(&pkt[ethernet_size..ethernet_size + pkt_info_size])
                 .expect("Packet deserializing fail(pkt_info)");
@@ -524,7 +525,7 @@ fn recv_perf(sock: &i32, id: &u32, op: PerfOpcode, pkt: &mut Vec<u8>, size: usiz
         // println!("Expected id = {:0x}", *id);
         // println!("Expected op = {:0x}", op as u8);
 
-        if len < 0 && tdiff.tv_nsec() >= TIMEOUT_SEC as i64 {
+        if len < 0 && tdiff.as_nanos() >= TIMEOUT_SEC as u128 {
             break;
         } else if pkt_info.id == *id && pkt_info.op == op as u8 {
             received = true;
