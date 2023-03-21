@@ -344,9 +344,13 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
         op: PerfOpcode::PerfReqStart as u8,
     };
 
-    pkt = ethernet_bytes.clone();
     let mut pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
-    pkt.append(&mut pkt_info_bytes);
+
+    let new_len = ethernet_bytes.len() + pkt_info_bytes.len();
+    pkt.splice(..new_len, pkt_info_bytes);
+    pkt.splice(..ethernet_bytes.len(), ethernet_bytes);
+    pkt.truncate(256);
+
     println!("pkt len = {}", pkt.len());
     println!("pkt bytes = {:0x?}", pkt);
 
