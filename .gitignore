@@ -2,3 +2,5 @@ build/
 
 # rust
 target
+
+Cargo.lock

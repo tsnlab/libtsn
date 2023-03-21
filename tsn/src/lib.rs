@@ -1,5 +1,6 @@
 use nix::net::if_::if_nametoindex;
 use nix::sys::socket::msghdr;
+use nix::sys::time::{TimeSpec, TimeValLike};
 use nix::unistd::close;
 use std::io::prelude::*;
 use std::io::Error;
@@ -150,4 +151,29 @@ pub fn tsn_recv(sock: i32, buf: *mut u8, n: i32) -> isize {
 
 pub fn tsn_recv_msg(sock: i32, mut msg: msghdr) -> isize {
     unsafe { libc::recvmsg(sock, &mut msg as *mut msghdr, 0) }
+}
+
+pub fn tsn_timespecff_diff(start: &mut TimeSpec, stop: &mut TimeSpec, result: &mut TimeSpec) {
+    if start.tv_sec() > stop.tv_sec()
+        || (start.tv_sec() == stop.tv_sec() && start.tv_nsec() > stop.tv_nsec())
+    {
+        tsn_timespecff_diff(start, stop, result);
+        let result_sec: TimeSpec = TimeValLike::seconds(result.tv_sec());
+        let result_nsec: TimeSpec = TimeValLike::nanoseconds(result.tv_nsec());
+        *result = (result_sec * -1) + result_nsec;
+        return;
+    }
+
+    if (stop.tv_nsec() - start.tv_nsec()) < 0 {
+        let result_sec: TimeSpec = TimeValLike::seconds(stop.tv_sec() - start.tv_sec() - 1);
+        let result_nsec: TimeSpec =
+            TimeValLike::nanoseconds(stop.tv_nsec() - start.tv_nsec() + 1000000000);
+
+        *result = result_sec + result_nsec;
+    } else {
+        let result_sec: TimeSpec = TimeValLike::seconds(stop.tv_sec() - start.tv_sec());
+        let result_nsec: TimeSpec = TimeValLike::nanoseconds(stop.tv_nsec() - start.tv_nsec());
+
+        *result = result_sec + result_nsec;
+    }
 }
