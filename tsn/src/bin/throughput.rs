@@ -19,6 +19,7 @@ const VLAN_PRI_PERF: u32 = 3;
 const ETHERTYPE_PERF: u16 = 0x1337;
 static RUNNING: AtomicBool = AtomicBool::new(true);
 const TIMEOUT_SEC: u32 = 1;
+use std::time::Instant;
 
 #[derive(Clone, Copy, Serialize, Deserialize, Debug)]
 enum PerfOpcode {
@@ -64,8 +65,7 @@ struct PktInfo {
 struct PktPerfResult {
     pkt_count: u64,
     pkt_size: u64,
-    elapsed_sec: i64,
-    elapsed_nsec: i64,
+    elapsed_time: Duration,
 }
 
 struct Statistics {
@@ -95,9 +95,8 @@ fn do_server(sock: &mut i32, size: i32) {
     let mut pkt_info: PktInfo;
     let pkt_info_size = std::mem::size_of::<PktInfo>();
     let mut recv_bytes;
-    let mut tstart = TimeSpec::zero();
-    let mut tend: TimeSpec;
-    let mut tdiff: TimeSpec;
+    let mut tstart = Instant::now();
+    let mut elapsed_time: Duration;
 
     let mut thread_handle: Option<thread::JoinHandle<()>> = None;
 
@@ -126,7 +125,7 @@ fn do_server(sock: &mut i32, size: i32) {
                 eprintln!("Received start '{:08x}'", id);
                 let my_thread = thread::Builder::new().name("PrintStatsThread".to_string());
 
-                tstart = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
+                tstart = Instant::now();
 
                 unsafe {
                     STATS.pkt_count = 0;
@@ -177,17 +176,15 @@ fn do_server(sock: &mut i32, size: i32) {
             }
             PerfOpcode::PerfReqResult => {
                 eprintln!("Received result '{:08x}'", id);
-                tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
                 let pkt_result: PktPerfResult;
-                tdiff = tend - tstart;
+                elapsed_time = tstart.elapsed();
 
                 pkt_info.op = PerfOpcode::PerfResResult as u8;
                 unsafe {
                     pkt_result = PktPerfResult {
                         pkt_count: STATS.pkt_count.to_be(),
                         pkt_size: STATS.total_bytes.to_be(),
-                        elapsed_sec: tdiff.tv_sec(),
-                        elapsed_nsec: tdiff.tv_nsec(),
+                        elapsed_time: elapsed_time,
                     };
                 }
                 let mut send_pkt = bincode::serialize(&ethernet).unwrap();
@@ -205,8 +202,8 @@ fn do_server(sock: &mut i32, size: i32) {
 }
 
 fn statistics_thread(stat: &Statistics) {
-    let mut tdiff = TimeSpec::zero();
-    let mut start = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
+    let mut tdiff: Duration;
+    let start = Instant::now();
     let mut tlast = start;
 
     let mut last_id: u32 = 0;
@@ -217,16 +214,18 @@ fn statistics_thread(stat: &Statistics) {
 
     while stat.running {
         // println!("---------Check statistic data---------");
-        let mut tnow = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
+        // let mut tnow = Instant::now();
         // println!("tlast = {}.{}", tlast.tv_sec(), tlast.tv_nsec());
         // println!("tnow = {}.{}", tnow.tv_sec(), tnow.tv_nsec());
-        tsn::tsn_timespecff_diff(&mut tlast, &mut tnow, &mut tdiff);
+        //tsn::tsn_timespecff_diff(&mut tlast, &mut tnow, &mut tdiff);
+        tdiff = tlast.elapsed();
         // println!("tdiff after calc = {}.{}", tdiff.tv_sec(), tdiff.tv_nsec());
 
-        if tdiff.tv_sec() >= 1 {
-            tlast = tnow.clone();
-            tsn::tsn_timespecff_diff(&mut start, &mut tnow, &mut tdiff);
-            let time_elapsed: u16 = tdiff.tv_sec() as u16;
+        if tdiff.as_secs() >= 1 {
+            tlast = Instant::now();
+            tdiff = start.elapsed();
+            //tsn::tsn_timespecff_diff(&mut start, &mut tnow, &mut tdiff);
+            let time_elapsed: u16 = tdiff.as_secs() as u16;
 
             let current_pkt_count: u64 = stat.pkt_count;
             let current_total_bytes: u64 = stat.total_bytes;
@@ -281,7 +280,9 @@ fn statistics_thread(stat: &Statistics) {
             io::stdout().flush().unwrap();
         } else {
             //println!("---------Sleep---------");
-            let remaining_ns: u64 = (1000000000) - tdiff.tv_nsec() as u64;
+            let remaining_ns: u64 = ((1000000000) - tdiff.as_nanos())
+                .try_into()
+                .expect("Conversion Fail u128->u64");
             let duration = Duration::from_nanos(remaining_ns);
             thread::sleep(duration);
         }
@@ -289,11 +290,16 @@ fn statistics_thread(stat: &Statistics) {
 
     //final result
     println!("---------Start processing final result---------");
-    let mut tnow = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
-    tsn::tsn_timespecff_diff(&mut tlast, &mut tnow, &mut tdiff);
-    if tdiff.tv_sec() >= 1 {
-        tsn::tsn_timespecff_diff(&mut start, &mut tnow, &mut tdiff);
-        let time_elapsed: u16 = tdiff.tv_sec() as u16;
+    // let mut tnow = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
+    // tsn::tsn_timespecff_diff(&mut tlast, &mut tnow, &mut tdiff);
+    tdiff = tlast.elapsed();
+    if tdiff.as_secs() >= 1 {
+        // tsn::tsn_timespecff_diff(&mut start, &mut tnow, &mut tdiff);
+        tdiff = start.elapsed();
+        let time_elapsed: u16 = tdiff
+            .as_secs()
+            .try_into()
+            .expect("Conversion Fail u64->u16");
 
         let current_pkt_count: u64 = stat.pkt_count;
         let current_total_bytes: u64 = stat.total_bytes;
@@ -403,9 +409,9 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
         op: PerfOpcode::PerfReqStart as u8,
     };
 
-    let mut start_pkt = make_ethernet_pkt(&ethernet_pkt, &pkt_info);
+    let mut start_pkt: Vec<u8> = make_ethernet_pkt(&ethernet_pkt, &pkt_info);
 
-    let mut is_successful = false;
+    let mut is_successful: bool = false;
 
     while !is_successful {
         send_perf(sock, &mut start_pkt, size as usize);
@@ -423,12 +429,11 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     pkt_info.op = PerfOpcode::PerfData as u8;
     tstart = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
     tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
-    tsn::tsn_timespecff_diff(&mut tstart, &mut tend, &mut tdiff);
-    println!("Before sending data");
+    tdiff = tend - tstart;
     while RUNNING.load(Ordering::Relaxed) && tdiff.tv_sec() < time as i64 {
         pkt_info.id = socket::htonl(sent_id);
         println!("make data packet");
-        let mut data_pkt = make_ethernet_pkt(&ethernet_pkt, &pkt_info);
+        let mut data_pkt: Vec<u8> = make_ethernet_pkt(&ethernet_pkt, &pkt_info);
         println!("send data");
         send_perf(sock, &mut data_pkt, size as usize);
 
@@ -551,10 +556,10 @@ fn make_ethernet_pkt(ethernet_pkt: &Vec<u8>, pkt_info: &PktInfo) -> Vec<u8> {
     println!("pkt = {:0x?}", pkt);
 
     println!("2");
-    let pkt_info_bytes = bincode::serialize(pkt_info).unwrap();
+    let mut pkt_info_bytes = bincode::serialize(pkt_info).unwrap();
     println!("pkt_info_bytes = {:0x?}", pkt_info_bytes);
     println!("3");
-    pkt.extend(pkt_info_bytes);
+    pkt.append(&mut pkt_info_bytes);
     println!("pkt = {:0x?}", pkt);
 
     println!("4");
