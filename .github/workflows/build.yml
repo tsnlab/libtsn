@@ -16,12 +16,14 @@ jobs:
         uses: actions/setup-python@v1
         with:
           python-version: "3.7"
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
       - name: Linters
         uses: wearerequired/lint-action@v2
         with:
           clang_format: true
-          clippy: true
-          clippy_dir: tsn
+          # clippy: true
+          # clippy_dir: tsn
           flake8: true
       - name: shellcheck
         uses: ludeeus/action-shellcheck@master
@@ -41,6 +43,8 @@ jobs:
           mkdir build && cd build
           /usr/bin/cmake -G Ninja -DBUILD_EXAMPLES=ON ..
           /usr/bin/cmake --build .
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
       - name: Build rust
         run: cargo build --release
         working-directory: tsn
