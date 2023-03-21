@@ -347,8 +347,8 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     let mut pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
 
     let new_len = ethernet_bytes.len() + pkt_info_bytes.len();
-    pkt.splice(..new_len, pkt_info_bytes);
-    pkt.splice(..ethernet_bytes.len(), ethernet_bytes);
+    pkt.splice(..ethernet_size, ethernet_bytes);
+    pkt.splice(ethernet_size..new_len, pkt_info_bytes);
     pkt.truncate(256);
 
     println!("pkt len = {}", pkt.len());
@@ -408,9 +408,6 @@ fn recv_perf(sock: &i32, id: &u32, op: PerfOpcode, pkt: &mut Vec<u8>, size: usiz
     let mut received = false;
     let ethernet_size = mem::size_of::<Ethernet>();
     let pkt_info_size = mem::size_of::<PktInfo>();
-    println!("ethernet size = {}", ethernet_size);
-    println!("pkt_info_size size = {}", pkt_info_size);
-
     while !received && RUNNING.load(Ordering::Relaxed) {
         let len = tsn::tsn_recv(*sock, pkt.as_mut_ptr(), size as i32);
         tdiff = tstart.elapsed();
