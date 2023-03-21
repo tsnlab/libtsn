@@ -229,17 +229,17 @@ fn statistics_thread(stat: &Statistics) {
             // println!("last_pkt_count = {}", last_pkt_count);
 
             //TODO: this code might need to be fixed
-            if last_pkt_count > current_pkt_count {
-                continue;
-            }
+            // if last_pkt_count > current_pkt_count {
+            //     continue;
+            // }
 
-            if last_total_bytes > current_total_bytes {
-                continue;
-            }
+            // if last_total_bytes > current_total_bytes {
+            //     continue;
+            // }
 
-            if last_id > current_id {
-                continue;
-            }
+            // if last_id > current_id {
+            //     continue;
+            // }
             //
 
             let diff_pkt_count: u64 = current_pkt_count - last_pkt_count;
@@ -253,16 +253,16 @@ fn statistics_thread(stat: &Statistics) {
             // println!("last_id = {}", last_id);
             // println!("diff_id = {}", current_id - last_id);
 
-            if current_id as u64 - last_id as u64 == 0 {
-                //TODO: panic!
-                continue;
-            } else {
-                loss_rate = 1.0 - ((diff_pkt_count) as f64 / ((current_id - last_id) as f64));
+            // if current_id as u64 - last_id as u64 == 0 {
+            //     //TODO: panic!
+            //     continue;
+            // } else {
+            loss_rate = 1.0 - ((diff_pkt_count) as f64 / ((current_id - last_id) as f64));
 
-                last_pkt_count = current_pkt_count;
-                last_total_bytes = current_total_bytes;
-                last_id = current_id;
-            }
+            last_pkt_count = current_pkt_count;
+            last_total_bytes = current_total_bytes;
+            last_id = current_id;
+            // }
 
             println!(
                 "Stat {} {} pps {} bps loss {:.3}%",
@@ -389,17 +389,17 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
         ether_type: socket::htons(ETHERTYPE_PERF),
     };
 
-    let ethernet_pkt = bincode::serialize(&ethernet).unwrap();
+    let ethernet_bytes = bincode::serialize(&ethernet).unwrap();
 
     let mut pkt_info: PktInfo = PktInfo {
         id: socket::htonl(custom_id),
         op: PerfOpcode::PerfReqStart as u8,
     };
 
-    let mut start_pkt: Vec<u8> = ethernet_pkt.clone();
+    let mut start_pkt: Vec<u8> = ethernet_bytes.clone();
     let mut pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
     start_pkt.append(&mut pkt_info_bytes);
-    // let mut start_pkt: Vec<u8> = make_ethernet_pkt(&ethernet_pkt, &pkt_info);
+    // let mut start_pkt: Vec<u8> = make_send_pkt(&ethernet_bytes, &pkt_info);
 
     let mut is_successful: bool = false;
 
@@ -422,8 +422,8 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     while RUNNING.load(Ordering::Relaxed) && tdiff.as_secs() < time as u64 {
         pkt_info.id = socket::htonl(sent_id);
         println!("make data packet");
-        // let mut data_pkt: Vec<u8> = make_ethernet_pkt(&ethernet_pkt, &pkt_info);
-        let mut data_pkt: Vec<u8> = ethernet_pkt.clone();
+        // let mut data_pkt: Vec<u8> = make_send_pkt(&ethernet_bytes, &pkt_info);
+        let mut data_pkt: Vec<u8> = ethernet_bytes.clone();
         let mut pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
         println!("ready to append");
         data_pkt.append(&mut pkt_info_bytes);
@@ -433,13 +433,11 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
         sent_id += 1;
         tdiff = tstart.elapsed();
     }
-    println!("After sending data");
-
     eprintln!("Done");
 
     pkt_info.id = socket::htonl(custom_id);
     pkt_info.op = PerfOpcode::PerfReqEnd as u8;
-    let mut end_pkt = make_ethernet_pkt(&ethernet_pkt, &pkt_info);
+    let mut end_pkt = make_send_pkt(&ethernet_bytes, &pkt_info);
     // send_perf(sock, &mut end_pkt, size as usize);
     // recv_perf(
     //     sock,
@@ -458,47 +456,6 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
             size as usize,
         );
     }
-
-    // pkt_info.id = socket::htonl(custom_id);
-    // pkt_info.op = PerfOpcode::PerfReqResult as u8;
-    // let mut result_pkt = make_ethernet_pkt(&ethernet_pkt, &pkt_info);
-
-    // send_perf(sock, &mut result_pkt, size as usize);
-    // recv_perf(
-    //     sock,
-    //     &custom_id,
-    //     PerfOpcode::PerfResResult,
-    //     &mut result_pkt,
-    //     size as usize,
-    // );
-    // println!("ethernet size = {}", mem::size_of::<Ethernet>());
-    // println!("pktinfo size = {}", mem::size_of::<PktInfo>());
-    // println!("pkt len = {}", pkt.len());
-    // println!("result pkt array =  {:0x?}", pkt);
-
-    // // let result_idx = mem::size_of::<Ethernet>() + mem::size_of::<PktInfo>();
-    // // println!("result_idx = {}", result_idx);
-    // // let pkt_perf_result: PktPerfResult = bincode::deserialize(&pkt[19..]).unwrap();
-    // let pkt_perf_result: PktPerfResult = PktPerfResult {
-    //     pkt_count: u64::from_be_bytes(pkt[19..27].try_into().unwrap()),
-    //     pkt_size: u64::from_be_bytes(pkt[27..35].try_into().unwrap()),
-    //     elapsed_sec: i64::from_be_bytes(pkt[35..43].try_into().unwrap()),
-    //     elapsed_nsec: i64::from_be_bytes(pkt[43..51].try_into().unwrap()),
-    // };
-    // let pkt_count: u64 = pkt_perf_result.pkt_count;
-    // let pkt_size: u64 = pkt_perf_result.pkt_size;
-    // let pps: u64 = pkt_count / pkt_perf_result.elapsed_sec as u64;
-    // let bps: u64 = pkt_size / pkt_perf_result.elapsed_sec as u64 * 8;
-    // let loss_rate: f64 = (sent_id as u64 - pkt_count) as f64 / sent_id as f64;
-
-    // println!(
-    //     "Elapsed {}.{}",
-    //     pkt_perf_result.elapsed_sec, pkt_perf_result.elapsed_nsec
-    // );
-    // println!("Recieved {} pkts, {} bytes", pkt_count, pkt_size);
-    // println!("Sent {} pkts, Loss {}", sent_id, loss_rate * 100 as f64);
-    // println!("Result {} pps, {} bps", pps, bps);
-    // eprint!("client done");
 }
 
 fn recv_perf(sock: &i32, id: &u32, op: PerfOpcode, pkt: &mut Vec<u8>, size: usize) -> bool {
@@ -533,7 +490,7 @@ fn recv_perf(sock: &i32, id: &u32, op: PerfOpcode, pkt: &mut Vec<u8>, size: usiz
     return received;
 }
 
-fn send_perf(sock: &mut i32, pkt: &mut Vec<u8>, size: usize) {
+fn send_perf(sock: &i32, pkt: &mut Vec<u8>, size: usize) {
     let sent = tsn::tsn_send(*sock, pkt.as_mut_ptr(), size as i32);
 
     if sent < 0 {
@@ -541,19 +498,13 @@ fn send_perf(sock: &mut i32, pkt: &mut Vec<u8>, size: usize) {
     }
 }
 
-fn make_ethernet_pkt(ethernet_pkt: &Vec<u8>, pkt_info: &PktInfo) -> Vec<u8> {
-    println!("1");
-    let mut pkt: Vec<u8> = ethernet_pkt.clone();
+fn make_send_pkt(ethernet_bytes: &Vec<u8>, pkt_info: &PktInfo) -> Vec<u8> {
+    let mut pkt: Vec<u8> = ethernet_bytes.clone();
     println!("pkt = {:0x?}", pkt);
-
-    println!("2");
     let mut pkt_info_bytes = bincode::serialize(pkt_info).unwrap();
     println!("pkt_info_bytes = {:0x?}", pkt_info_bytes);
-    println!("3");
     pkt.append(&mut pkt_info_bytes);
     println!("pkt = {:0x?}", pkt);
-
-    println!("4");
 
     pkt
 }
