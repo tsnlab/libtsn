@@ -430,7 +430,7 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     tstart = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
     tend = clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap();
     tdiff = tend - tstart;
-    while RUNNING.load(Ordering::Relaxed) && tdiff.tv_sec() < time as i64 {
+    while tdiff.tv_sec() < time as i64 {
         pkt_info.id = socket::htonl(sent_id);
         println!("make data packet");
         let mut data_pkt: Vec<u8> = make_ethernet_pkt(&ethernet_pkt, &pkt_info);
