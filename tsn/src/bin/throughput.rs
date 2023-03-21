@@ -551,10 +551,10 @@ fn make_ethernet_pkt(ethernet_pkt: &Vec<u8>, pkt_info: &PktInfo) -> Vec<u8> {
     println!("pkt = {:0x?}", pkt);
 
     println!("2");
-    let mut pkt_info_bytes = bincode::serialize(pkt_info).unwrap();
+    let pkt_info_bytes = bincode::serialize(pkt_info).unwrap();
     println!("pkt_info_bytes = {:0x?}", pkt_info_bytes);
     println!("3");
-    pkt.append(&mut pkt_info_bytes);
+    pkt.extend(pkt_info_bytes);
     println!("pkt = {:0x?}", pkt);
 
     println!("4");
