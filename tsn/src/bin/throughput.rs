@@ -227,7 +227,8 @@ fn statistics_thread() {
             );
             io::stdout().flush().unwrap();
         } else {
-            let remaining_ns: u64 = ((1000000000) - tdiff.as_nanos())
+            let remaining_ns: u64 = (Duration::from_secs(1) - tdiff)
+                .as_nanos()
                 .try_into()
                 .expect("Conversion Fail u128->u64");
             let duration = Duration::from_nanos(remaining_ns);
@@ -516,7 +517,9 @@ fn main() -> Result<(), std::io::Error> {
             iface = sub_matches.value_of("interface").expect("interface to use");
             size = sub_matches.value_of("size").expect("packet size");
             target = sub_matches.value_of("target").expect("target MAC address");
-            time = sub_matches.value_of("time").expect("how many send packets");
+            time = sub_matches
+                .value_of("time")
+                .expect("how many seconds to run test");
         }
         _ => unreachable!(),
     }
