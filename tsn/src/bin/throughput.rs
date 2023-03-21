@@ -355,10 +355,10 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     }
     println!("Fire");
 
-    let mut sent_id = 1;
-    pkt_info.op = PerfOpcode::PerfData as u8;
-    let tstart = Instant::now();
-    let mut tdiff = tstart.elapsed();
+    // let mut sent_id = 1;
+    // pkt_info.op = PerfOpcode::PerfData as u8;
+    // let tstart = Instant::now();
+    // let mut tdiff = tstart.elapsed();
 
     // while RUNNING.load(Ordering::Relaxed) && tdiff.as_secs() < time as u64 {
     //     pkt_info.id = socket::htonl(sent_id);
