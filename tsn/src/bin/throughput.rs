@@ -359,32 +359,34 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     pkt_info.op = PerfOpcode::PerfData as u8;
     let tstart = Instant::now();
     let mut tdiff = tstart.elapsed();
-    while RUNNING.load(Ordering::Relaxed) && tdiff.as_secs() < time as u64 {
-        pkt_info.id = socket::htonl(sent_id);
-        let mut data_pkt: Vec<u8> = ethernet_bytes.clone();
-        let mut pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
-        data_pkt.append(&mut pkt_info_bytes);
-        send_perf(sock, &mut data_pkt, size as usize);
 
-        sent_id += 1;
-        tdiff = tstart.elapsed();
-    }
-    eprintln!("Done");
+    // while RUNNING.load(Ordering::Relaxed) && tdiff.as_secs() < time as u64 {
+    //     pkt_info.id = socket::htonl(sent_id);
+    //     let mut data_pkt: Vec<u8> = ethernet_bytes.clone();
+    //     let mut pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
+    //     data_pkt.append(&mut pkt_info_bytes);
+    //     send_perf(sock, &mut data_pkt, size as usize);
 
-    is_successful = false;
-    pkt_info.id = socket::htonl(custom_id);
-    pkt_info.op = PerfOpcode::PerfReqEnd as u8;
-    let mut end_pkt = make_send_pkt(&ethernet_bytes, &pkt_info);
-    while !is_successful {
-        send_perf(sock, &mut end_pkt, size as usize);
-        is_successful = recv_perf(
-            sock,
-            &custom_id,
-            PerfOpcode::PerfResEnd,
-            &mut end_pkt,
-            size as usize,
-        );
-    }
+    //     sent_id += 1;
+    //     tdiff = tstart.elapsed();
+    // }
+
+    // eprintln!("Done");
+
+    // is_successful = false;
+    // pkt_info.id = socket::htonl(custom_id);
+    // pkt_info.op = PerfOpcode::PerfReqEnd as u8;
+    // let mut end_pkt = make_send_pkt(&ethernet_bytes, &pkt_info);
+    // while !is_successful {
+    //     send_perf(sock, &mut end_pkt, size as usize);
+    //     is_successful = recv_perf(
+    //         sock,
+    //         &custom_id,
+    //         PerfOpcode::PerfResEnd,
+    //         &mut end_pkt,
+    //         size as usize,
+    //     );
+    // }
 }
 
 fn recv_perf(sock: &i32, id: &u32, op: PerfOpcode, pkt: &mut Vec<u8>, size: usize) -> bool {
@@ -423,11 +425,8 @@ fn send_perf(sock: &i32, pkt: &mut Vec<u8>, size: usize) {
 
 fn make_send_pkt(ethernet_bytes: &Vec<u8>, pkt_info: &PktInfo) -> Vec<u8> {
     let mut pkt: Vec<u8> = ethernet_bytes.clone();
-    println!("pkt = {:0x?}", pkt);
     let mut pkt_info_bytes = bincode::serialize(pkt_info).unwrap();
-    println!("pkt_info_bytes = {:0x?}", pkt_info_bytes);
     pkt.append(&mut pkt_info_bytes);
-    println!("pkt = {:0x?}", pkt);
 
     pkt
 }
