@@ -1,8 +1,7 @@
 use clap::{Arg, Command as ClapCommand};
 use serde::{Deserialize, Serialize};
 use signal_hook::{consts::SIGINT, iterator::Signals};
-use std::io::Error;
-use std::io::{self, Write};
+use std::io::{self, Error, Write};
 use std::mem;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -14,6 +13,11 @@ const ETHERTYPE_PERF: u16 = 0x1337;
 static RUNNING: AtomicBool = AtomicBool::new(true);
 const TIMEOUT_SEC: u32 = 1;
 use std::time::Instant;
+
+enum Mode {
+    Server = 0x00,
+    Client = 0x01,
+}
 
 #[derive(Clone, Copy, Serialize, Deserialize, Debug)]
 enum PerfOpcode {
@@ -431,7 +435,7 @@ fn main() -> Result<(), std::io::Error> {
     let size: &str;
     let mut target: &str = "";
     let mut time: &str = "";
-    let mode: &str;
+    let mode: Mode;
 
     let server_command = ClapCommand::new("server")
         .about("Server mode")
@@ -501,13 +505,13 @@ fn main() -> Result<(), std::io::Error> {
 
     match matched_command.subcommand() {
         Some(("server", sub_matches)) => {
-            mode = "s";
+            mode = Mode::Server;
             _verbose = sub_matches.is_present("_verbose");
             iface = sub_matches.value_of("interface").expect("interface to use");
             size = sub_matches.value_of("size").expect("packet size");
         }
         Some(("client", sub_matches)) => {
-            mode = "c";
+            mode = Mode::Client;
             _verbose = sub_matches.is_present("_verbose");
             iface = sub_matches.value_of("interface").expect("interface to use");
             size = sub_matches.value_of("size").expect("packet size");
@@ -541,11 +545,11 @@ fn main() -> Result<(), std::io::Error> {
     });
 
     match mode {
-        "s" => {
+        Mode::Server => {
             let mut fd = unsafe { SOCK.fd };
             do_server(&mut fd, FromStr::from_str(size).unwrap())
         }
-        "c" => {
+        Mode::Client => {
             let mut fd = unsafe { SOCK.fd };
             do_client(
                 &mut fd,
@@ -554,9 +558,6 @@ fn main() -> Result<(), std::io::Error> {
                 target.to_string(),
                 FromStr::from_str(time).unwrap(),
             )
-        }
-        _ => {
-            println!("Unknown mode");
         }
     }
 
