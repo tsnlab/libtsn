@@ -426,7 +426,7 @@ fn make_send_pkt(pkt: &mut Vec<u8>, ethernet: &Ethernet, pkt_info: &PktInfo) {
     let ethernet_size = ethernet_bytes.len();
     let pkt_info_size = pkt_info_bytes.len();
 
-    println!("pkt = {:0x?}", pkt);
+    println!("pkt len = {}", pkt.len());
     let new_len = ethernet_size + pkt_info_size;
     pkt.splice(..ethernet_size, ethernet_bytes);
     pkt.splice(ethernet_size..new_len, pkt_info_bytes);
