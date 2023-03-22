@@ -414,7 +414,7 @@ fn recv_perf(
             break;
         }
     }
-    return Ok(true);
+    Ok(true)
 }
 
 fn send_perf(sock: &i32, pkt: &mut Vec<u8>, size: usize) {
