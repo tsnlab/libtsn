@@ -338,17 +338,19 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     };
 
     make_send_pkt(&mut pkt, &ethernet, &pkt_info);
-    let mut is_successful: bool = false;
 
-    while !is_successful {
-        send_perf(sock, &mut pkt, recv_packet_size);
-        is_successful = recv_perf(
+    loop {
+        send_perf(sock, &mut pkt, size as usize);
+        match recv_perf(
             sock,
             &custom_id,
             PerfOpcode::ResStart,
             &mut pkt,
-            size as usize,
-        );
+            recv_packet_size,
+        ) {
+            Ok(_status) => break,
+            Err(err) => println!("Error: {}", err),
+        }
     }
     println!("Fire");
 
@@ -368,29 +370,36 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
 
     eprintln!("Done");
 
-    is_successful = false;
     pkt_info.id = socket::htonl(custom_id);
     pkt_info.op = PerfOpcode::ReqEnd as u8;
     make_send_pkt(&mut pkt, &ethernet, &pkt_info);
-    while !is_successful {
+    loop {
         send_perf(sock, &mut pkt, size as usize);
-        is_successful = recv_perf(
+        match recv_perf(
             sock,
             &custom_id,
             PerfOpcode::ResEnd,
             &mut pkt,
             recv_packet_size,
-        );
+        ) {
+            Ok(_status) => break,
+            Err(err) => println!("Error: {}", err),
+        }
     }
 }
 
-fn recv_perf(sock: &i32, id: &u32, op: PerfOpcode, pkt: &mut Vec<u8>, size: usize) -> bool {
+fn recv_perf(
+    sock: &i32,
+    id: &u32,
+    op: PerfOpcode,
+    pkt: &mut Vec<u8>,
+    size: usize,
+) -> Result<bool, String> {
     let tstart: Instant = Instant::now();
     let mut tdiff: Duration;
-    let mut received = false;
     let ethernet_size = mem::size_of::<Ethernet>();
     let pkt_info_size = mem::size_of::<PktInfo>();
-    while !received && RUNNING.load(Ordering::Relaxed) {
+    while RUNNING.load(Ordering::Relaxed) {
         let len = tsn::tsn_recv(*sock, pkt.as_mut_ptr(), size as i32);
         tdiff = tstart.elapsed();
 
@@ -400,13 +409,12 @@ fn recv_perf(sock: &i32, id: &u32, op: PerfOpcode, pkt: &mut Vec<u8>, size: usiz
         pkt_info.id = socket::ntohl(pkt_info.id);
 
         if len < 0 && tdiff.as_nanos() >= TIMEOUT_SEC as u128 {
-            break;
+            return Err("Receive Timeout".to_string());
         } else if pkt_info.id == *id && pkt_info.op == op as u8 {
-            received = true;
+            break;
         }
     }
-
-    received
+    return Ok(true);
 }
 
 fn send_perf(sock: &i32, pkt: &mut Vec<u8>, size: usize) {
