@@ -344,7 +344,7 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     let mut is_successful: bool = false;
 
     while !is_successful {
-        send_perf(sock, &mut pkt, recv_packet_size as usize);
+        send_perf(sock, &mut pkt, recv_packet_size);
         is_successful = recv_perf(
             sock,
             &custom_id,
