@@ -265,8 +265,6 @@ fn statistics_thread() {
 
 fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32) {
     let mut pkt: Vec<u8> = vec![0; size as usize];
-    println!("size = {}", size);
-    println!("pkt bytes {:0x?}", pkt);
     let ethernet_size = mem::size_of::<Ethernet>();
     let pkt_info_size = mem::size_of::<PktInfo>();
     let recv_packet_size = ethernet_size + pkt_info_size;
@@ -343,7 +341,6 @@ fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32
     };
 
     make_send_pkt(&mut pkt, &ethernet, &pkt_info);
-    println!("pkt len = {}", pkt.len());
     let mut is_successful: bool = false;
 
     while !is_successful {
@@ -430,6 +427,7 @@ fn make_send_pkt(pkt: &mut Vec<u8>, ethernet: &Ethernet, pkt_info: &PktInfo) {
     let pkt_info_size = pkt_info_bytes.len();
 
     pkt.clear();
+    println!("pkt = {:0x?}", pkt);
     let new_len = ethernet_size + pkt_info_size;
     pkt.splice(..ethernet_size, ethernet_bytes);
     pkt.splice(ethernet_size..new_len, pkt_info_bytes);
