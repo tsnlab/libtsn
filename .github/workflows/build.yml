@@ -32,10 +32,10 @@ jobs:
           # clippy_dir: tsn
           flake8: true
       - name: Rust lint
-        uses: actions-rs/clippy-check@v1
+        uses: giraffate/clippy-action@v1
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          args: --manifest-path tsn/Cargo.toml
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          workdir: tsn
       - name: shellcheck
         uses: ludeeus/action-shellcheck@master
 
