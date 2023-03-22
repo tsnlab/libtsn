@@ -425,7 +425,7 @@ fn send_perf(sock: &i32, pkt: &mut Vec<u8>, size: usize) {
     }
 }
 
-fn make_send_pkt(pkt: &mut Vec<u8>, ethernet: &Ethernet, pkt_info: &PktInfo) {
+fn Prep_pkt(pkt: &mut Vec<u8>, ethernet: &Ethernet, pkt_info: &PktInfo) {
     let ethernet_bytes = bincode::serialize(&ethernet).unwrap();
     let pkt_info_bytes = bincode::serialize(pkt_info).unwrap();
     let ethernet_size = ethernet_bytes.len();
