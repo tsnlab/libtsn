@@ -111,14 +111,18 @@ fn do_server(sock: &mut i32, size: i32) {
         )
         .expect("Packet deserializing fail(pkt_info)");
 
-        let id = socket::ntohl(pkt_info.id);
         std::mem::swap(&mut ethernet.dest, &mut ethernet.src);
 
         let opcode = PerfOpcode::from(pkt_info.op);
 
         match opcode {
+            PerfOpcode::Data => unsafe {
+                STATS.pkt_count += 1;
+                STATS.total_bytes += (recv_bytes + 4) as u64;
+                STATS.last_id = socket::ntohl(pkt_info.id);
+            },
             PerfOpcode::ReqStart => {
-                eprintln!("Received start '{:08x}'", id);
+                eprintln!("Received start '{:08x}'", socket::ntohl(pkt_info.id));
                 let my_thread = thread::Builder::new().name("PrintStatsThread".to_string());
 
                 tstart = Instant::now();
@@ -139,13 +143,8 @@ fn do_server(sock: &mut i32, size: i32) {
 
                 send_perf(sock, &mut send_pkt, recv_bytes as usize);
             }
-            PerfOpcode::Data => unsafe {
-                STATS.pkt_count += 1;
-                STATS.total_bytes += (recv_bytes + 4) as u64;
-                STATS.last_id = socket::ntohl(pkt_info.id);
-            },
             PerfOpcode::ReqEnd => {
-                eprintln!("Received end '{:08x}'", id);
+                eprintln!("Received end '{:08x}'", socket::ntohl(pkt_info.id));
 
                 unsafe {
                     STATS.running = false;
@@ -163,7 +162,7 @@ fn do_server(sock: &mut i32, size: i32) {
                 send_perf(sock, &mut send_pkt, recv_bytes as usize);
             }
             PerfOpcode::ReqResult => {
-                eprintln!("Received result '{:08x}'", id);
+                eprintln!("Received result '{:08x}'", socket::ntohl(pkt_info.id));
                 elapsed_time = tstart.elapsed();
 
                 pkt_info.op = PerfOpcode::ResResult as u8;
