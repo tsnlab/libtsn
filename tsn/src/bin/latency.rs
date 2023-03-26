@@ -106,7 +106,7 @@ fn do_server(sock: &mut i32, size: i32, oneway: bool, _verbose: bool) {
                 }
             }
         } else {
-            recv_bytes = tsn::tsn_recv(*sock, pkt.as_mut_ptr(), size);
+            recv_bytes = tsn::tsn_recv(*sock, &mut pkt, size);
         }
         let mut dstmac: [u8; 6] = [0; 6];
         let mut srcmac: [u8; 6] = [0; 6];
@@ -115,7 +115,7 @@ fn do_server(sock: &mut i32, size: i32, oneway: bool, _verbose: bool) {
         pkt[0..6].copy_from_slice(&srcmac);
         pkt[6..12].copy_from_slice(&dstmac);
 
-        tsn::tsn_send(*sock, pkt.as_mut_ptr(), recv_bytes as i32);
+        tsn::tsn_send(*sock, &pkt, recv_bytes as i32);
 
         if oneway {
             let id = u32::from_be_bytes([pkt[14], pkt[15], pkt[16], pkt[17]]);
@@ -243,7 +243,7 @@ fn do_client(
         pkt[18..22].copy_from_slice(&soc::htonl(tstart.tv_sec() as u32).to_le_bytes());
         pkt[22..26].copy_from_slice(&soc::htonl(tstart.tv_nsec() as u32).to_le_bytes());
 
-        let sent = tsn::tsn_send(*sock, pkt.as_mut_ptr(), size);
+        let sent = tsn::tsn_send(*sock, &pkt, size);
         if sent < 0 {
             println!("last OS error: {:?}", Error::last_os_error());
         }
@@ -252,7 +252,7 @@ fn do_client(
             let mut received = false;
 
             loop {
-                let len = tsn::tsn_recv(*sock, pkt.as_mut_ptr(), size);
+                let len = tsn::tsn_recv(*sock, &mut pkt, size);
                 tend = clock_gettime(ClockId::CLOCK_REALTIME).unwrap();
 
                 tdiff = tend - tstart;
