@@ -108,6 +108,8 @@ fn do_server(sock: &mut i32, size: i32) {
 
         let opcode = PerfOpcode::from(pkt_info.op);
 
+        println!("recv bytes array = {:0x?}", ethernet);
+
         match opcode {
             PerfOpcode::Data => unsafe {
                 STATS.pkt_count += 1;
