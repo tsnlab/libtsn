@@ -136,8 +136,6 @@ fn do_server(sock: &mut i32, size: i32) {
                 let pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
                 ethernet.set_payload(&pkt_info_bytes);
 
-                println!("ethernet packet = {:0x?} ", ethernet.packet_mut());
-
                 send_perf(sock, ethernet.packet_mut(), recv_bytes as usize);
             }
             PerfOpcode::ReqEnd => {
@@ -154,7 +152,6 @@ fn do_server(sock: &mut i32, size: i32) {
                 ethernet.set_source(ethernet.get_destination());
                 ethernet.set_destination(temp_mac);
 
-                pkt_info.id = socket::ntohl(pkt_info.id);
                 pkt_info.op = PerfOpcode::ResEnd as u8;
                 let pkt_info_bytes: Vec<u8> = bincode::serialize(&pkt_info).unwrap();
                 ethernet.set_payload(&pkt_info_bytes);
@@ -175,7 +172,6 @@ fn do_server(sock: &mut i32, size: i32) {
                 ethernet.set_source(ethernet.get_destination());
                 ethernet.set_destination(temp_mac);
 
-                pkt_info.id = socket::ntohl(pkt_info.id);
                 pkt_info.op = PerfOpcode::ResEnd as u8;
                 let pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
 
