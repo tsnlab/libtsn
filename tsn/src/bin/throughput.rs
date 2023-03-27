@@ -108,8 +108,6 @@ fn do_server(sock: &mut i32, size: i32) {
 
         let opcode = PerfOpcode::from(pkt_info.op);
 
-        println!("recv bytes array = {:0x?}", ethernet);
-
         match opcode {
             PerfOpcode::Data => unsafe {
                 STATS.pkt_count += 1;
@@ -134,7 +132,6 @@ fn do_server(sock: &mut i32, size: i32) {
                 ethernet.set_source(ethernet.get_destination());
                 ethernet.set_destination(temp_mac);
 
-                pkt_info.id = socket::ntohl(pkt_info.id);
                 pkt_info.op = PerfOpcode::ResStart as u8;
                 let pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
                 ethernet.set_payload(&pkt_info_bytes);
