@@ -81,56 +81,56 @@ def setup_cbs(ifname: str, cbs: dict):
         # )
 
 
-def create_vlan(config: dict, ifname: str, vlanid: int) -> int:
-    name = vlan_name(ifname, vlanid)
+# def create_vlan(config: dict, ifname: str, vlanid: int) -> int:
+#     name = vlan_name(ifname, vlanid)
 
-    try:
-        ifconf = config['nics'][ifname]
+#     try:
+#         ifconf = config['nics'][ifname]
 
-        # Not support tas+cbs yet
-        if all(x in ifconf for x in ('tas', 'cbs')):
-            raise ValueError('Does not support tas + cbs yet')
+#         # Not support tas+cbs yet
+#         if all(x in ifconf for x in ('tas', 'cbs')):
+#             raise ValueError('Does not support tas + cbs yet')
 
-        qos_map = ' '.join(
-            f'{skb_pri}:{vlan_pri}'
-            for skb_pri, vlan_pri
-            in ifconf['egress-qos-map'][vlanid].items())
+#         qos_map = ' '.join(
+#             f'{skb_pri}:{vlan_pri}'
+#             for skb_pri, vlan_pri
+#             in ifconf['egress-qos-map'][vlanid].items())
 
-        run_cmd(
-            f'ip link add link {ifname} name {name} type vlan id {vlanid} '
-            f'egress-qos-map {qos_map}'
-        )
+#         run_cmd(
+#             f'ip link add link {ifname} name {name} type vlan id {vlanid} '
+#             f'egress-qos-map {qos_map}'
+#         )
 
-        run_cmd(
-            f'ip link set up {name}'
-        )
+#         run_cmd(
+#             f'ip link set up {name}'
+#         )
 
-        if 'tas' in ifconf:
-            setup_tas(ifname, ifconf['tas'])
+#         if 'tas' in ifconf:
+#             setup_tas(ifname, ifconf['tas'])
 
-        if 'cbs' in ifconf:
-            setup_cbs(ifname, ifconf['cbs'])
-    except subprocess.CalledProcessError as e:
-        return e.returncode
-    except KeyError as e:
-        print(e)
-        print('Config is not properly configuered', file=sys.stderr)
-        return 1
-    else:
-        return 0
+#         if 'cbs' in ifconf:
+#             setup_cbs(ifname, ifconf['cbs'])
+#     except subprocess.CalledProcessError as e:
+#         return e.returncode
+#     except KeyError as e:
+#         print(e)
+#         print('Config is not properly configuered', file=sys.stderr)
+#         return 1
+#     else:
+#         return 0
 
 
-def delete_vlan(config: dict, ifname: str, vlanid: int) -> int:
-    name = vlan_name(ifname, vlanid)
-    try:
-        run_cmd(
-            f'ip link del {name}'
-        )
+# def delete_vlan(config: dict, ifname: str, vlanid: int) -> int:
+#     name = vlan_name(ifname, vlanid)
+#     try:
+#         run_cmd(
+#             f'ip link del {name}'
+#         )
 
-        run_cmd(
-            f'tc qdisc delete dev {ifname} root'
-        )
-    except subprocess.CalledProcessError as e:
-        return e.returncode
-    else:
-        return 0
+#         run_cmd(
+#             f'tc qdisc delete dev {ifname} root'
+#         )
+#     except subprocess.CalledProcessError as e:
+#         return e.returncode
+#     else:
+#         return 0
