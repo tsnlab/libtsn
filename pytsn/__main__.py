@@ -112,9 +112,9 @@ def main():
         es.callback(cleanup)
 
         while True:
-            # conn, addr = server.accept()
-            # line = conn.makefile().readline()
-            # print(f'line={line}')
+            conn, addr = server.accept()
+            line = conn.makefile().readline()
+            print(f'line={line}')
 
             # matched1 = pattern_socket.match(line)
             # matched2 = pattern_info.match(line)
