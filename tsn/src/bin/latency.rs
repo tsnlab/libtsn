@@ -30,7 +30,7 @@ static mut SOCK: tsn::TsnSocket = tsn::TsnSocket {
     vlanid: 0,
 };
 
-fn do_server(sock: &mut i32, size: i32, oneway: bool, _verbose: bool) {
+fn do_server(sock: &mut i32, size: u32, oneway: bool, _verbose: bool) {
     let mut pkt: Vec<u8> = vec![0; size as usize];
     let mut recv_bytes;
     let mut tstart: TimeSpec;
@@ -115,7 +115,7 @@ fn do_server(sock: &mut i32, size: i32, oneway: bool, _verbose: bool) {
         pkt[0..6].copy_from_slice(&srcmac);
         pkt[6..12].copy_from_slice(&dstmac);
 
-        tsn::tsn_send(*sock, &pkt, recv_bytes as i32);
+        tsn::tsn_send(*sock, &pkt, recv_bytes as u32);
 
         if oneway {
             let id = u32::from_be_bytes([pkt[14], pkt[15], pkt[16], pkt[17]]);
@@ -157,7 +157,7 @@ fn do_server(sock: &mut i32, size: i32, oneway: bool, _verbose: bool) {
 fn do_client(
     sock: &i32,
     iface: String,
-    size: i32,
+    size: u32,
     target: String,
     count: i32,
     precise: bool,
@@ -243,7 +243,7 @@ fn do_client(
         pkt[18..22].copy_from_slice(&soc::htonl(tstart.tv_sec() as u32).to_le_bytes());
         pkt[22..26].copy_from_slice(&soc::htonl(tstart.tv_nsec() as u32).to_le_bytes());
 
-        let sent = tsn::tsn_send(*sock, &pkt, size);
+        let sent = tsn::tsn_send(*sock, &pkt, size as u32);
         if sent < 0 {
             println!("last OS error: {:?}", Error::last_os_error());
         }

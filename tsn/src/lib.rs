@@ -123,7 +123,7 @@ pub fn tsn_sock_close(sock: &mut TsnSocket) {
     };
 }
 
-pub fn tsn_send(sock: i32, buf: &[u8], n: i32) -> isize {
+pub fn tsn_send(sock: i32, buf: &[u8], n: u32) -> isize {
     unsafe {
         libc::sendto(
             sock,
@@ -136,7 +136,7 @@ pub fn tsn_send(sock: i32, buf: &[u8], n: i32) -> isize {
     }
 }
 
-pub fn tsn_recv(sock: i32, buf: &mut [u8], n: i32) -> isize {
+pub fn tsn_recv(sock: i32, buf: &mut [u8], n: u32) -> isize {
     unsafe {
         libc::recvfrom(
             sock,
