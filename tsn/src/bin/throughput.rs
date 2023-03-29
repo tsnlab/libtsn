@@ -305,12 +305,12 @@ fn do_client(sock: &mut i32, interface_name: String, size: i32, target: String, 
         id: socket::htonl(custom_id),
         op: PerfOpcode::ReqStart as u8,
     };
-    let pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
+    // let pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
 
     ethernet.set_destination(destination_mac);
     ethernet.set_source(source_mac);
     ethernet.set_ethertype(EtherType(0x1337));
-    let eth_payload = ethernet.payload_mut();
+    // let eth_payload = ethernet.payload_mut();
     // for i in 0..pkt_info_size {
     //     eth_payload[i] = pkt_info_bytes[i];
     // }
