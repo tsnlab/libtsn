@@ -341,9 +341,7 @@ fn do_client(sock: &mut i32, interface_name: String, size: i32, target: String, 
 
     while RUNNING.load(Ordering::Relaxed) && tdiff.as_secs() < time as u64 {
         pkt_info.id = socket::htonl(sent_id);
-        let pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
-        // *(ethernet.payload()).splice(..pkt_info_size, pkt_info_bytes.iter().cloned());
-        // ethernet.set_payload();
+        ethernet.set_payload(&bincode::serialize(&pkt_info).unwrap());
         send_perf(sock, ethernet.packet_mut(), size as usize);
 
         sent_id += 1;
