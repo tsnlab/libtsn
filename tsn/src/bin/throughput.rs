@@ -258,10 +258,9 @@ fn statistics_thread() {
 }
 
 fn do_client(sock: &mut i32, interface_name: String, size: i32, target: String, time: i32) {
+    const RECV_BUFFER_SIZE: u32 = 19; //size of src + dest + ethertype + id + op
     let mut ethernet_buffer = vec![0u8; size as usize];
     let mut ethernet = MutableEthernetPacket::new(&mut ethernet_buffer).unwrap();
-    // let pkt_info_size = mem::size_of::<PktInfo>();
-    const RECV_BUFFER_SIZE: u32 = 19;
     let mut recv_buffer = [0u8; RECV_BUFFER_SIZE as usize];
 
     let timeout: libc::timeval = libc::timeval {
@@ -296,7 +295,7 @@ fn do_client(sock: &mut i32, interface_name: String, size: i32, target: String, 
         hex::decode(dstmac[4]).unwrap()[0],
         hex::decode(dstmac[5]).unwrap()[0],
     ];
-    let destination_mac = MacAddr(
+    let destination_mac = MacAddr::new(
         dstmac[0], dstmac[1], dstmac[2], dstmac[3], dstmac[4], dstmac[5],
     );
     let custom_id: u32 = 0xdeadbeef;
@@ -305,7 +304,6 @@ fn do_client(sock: &mut i32, interface_name: String, size: i32, target: String, 
         id: socket::htonl(custom_id),
         op: PerfOpcode::ReqStart as u8,
     };
-    // let pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
 
     ethernet.set_destination(destination_mac);
     ethernet.set_source(source_mac);
@@ -337,7 +335,7 @@ fn do_client(sock: &mut i32, interface_name: String, size: i32, target: String, 
     while RUNNING.load(Ordering::Relaxed) && tdiff.as_secs() < time as u64 {
         // pkt_info.id = socket::htonl(sent_id);
         ethernet.set_payload(&(sent_id.to_be_bytes()));
-        println!("ethernet bytes = {:0x?}", ethernet.packet());
+        // println!("ethernet bytes = {:0x?}", ethernet.packet());
 
         send_perf(sock, ethernet.packet_mut(), size as usize);
 
