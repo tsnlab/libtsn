@@ -316,7 +316,7 @@ fn do_client(sock: &mut i32, interface_name: String, size: i32, target: String, 
     // }
     ethernet.set_payload(&bincode::serialize(&pkt_info).unwrap());
 
-    println!("ethernet bytes = {:0x?}", ethernet);
+    println!("ethernet bytes = {:0x?}", ethernet.packet());
     println!("Starting client");
 
     loop {
