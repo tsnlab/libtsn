@@ -342,7 +342,7 @@ fn do_client(sock: &mut i32, interface_name: String, size: i32, target: String, 
     while RUNNING.load(Ordering::Relaxed) && tdiff.as_secs() < time as u64 {
         pkt_info.id = socket::htonl(sent_id);
         ethernet.set_payload(&bincode::serialize(&pkt_info).unwrap());
-        println!("ethernet bytes = {:0x?}", ethernet.packet());
+        // println!("ethernet bytes = {:0x?}", ethernet.packet());
 
         send_perf(sock, ethernet.packet_mut(), size as usize);
 
