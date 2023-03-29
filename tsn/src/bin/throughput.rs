@@ -337,7 +337,7 @@ fn do_client(sock: &mut i32, interface_name: String, size: i32, target: String, 
     while RUNNING.load(Ordering::Relaxed) && tdiff.as_secs() < time as u64 {
         // pkt_info.id = socket::htonl(sent_id);
         ethernet.set_payload(&(sent_id.to_be_bytes()));
-        // println!("ethernet bytes = {:0x?}", ethernet.packet());
+        println!("ethernet bytes = {:0x?}", ethernet.packet());
 
         send_perf(sock, ethernet.packet_mut(), size as usize);
 
@@ -403,18 +403,6 @@ fn send_perf(sock: &i32, pkt: &[u8], size: usize) {
     }
 }
 
-// fn prep_pkt(pkt: &mut Vec<u8>, ethernet: &Ethernet, pkt_info: &PktInfo) {
-//     let ethernet_bytes = bincode::serialize(&ethernet).unwrap();
-//     let pkt_info_bytes = bincode::serialize(pkt_info).unwrap();
-//     let ethernet_size = ethernet_bytes.len();
-//     let pkt_info_size = pkt_info_bytes.len();
-
-//     let (ethernet_place, rest) = pkt.split_at_mut(ethernet_size);
-//     let (pktinfo_place, _) = rest.split_at_mut(pkt_info_size);
-
-//     ethernet_place.copy_from_slice(&ethernet_bytes);
-//     pktinfo_place.copy_from_slice(&pkt_info_bytes);
-// }
 fn main() -> Result<(), std::io::Error> {
     let _verbose: bool;
     let iface: &str;
