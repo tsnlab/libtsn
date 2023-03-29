@@ -310,13 +310,7 @@ fn do_client(sock: &mut i32, interface_name: String, size: i32, target: String, 
     ethernet.set_destination(destination_mac);
     ethernet.set_source(source_mac);
     ethernet.set_ethertype(EtherType(0x1337));
-    // let eth_payload = ethernet.payload_mut();
-    // for i in 0..pkt_info_size {
-    //     eth_payload[i] = pkt_info_bytes[i];
-    // }
     ethernet.set_payload(&bincode::serialize(&pkt_info).unwrap());
-
-    println!("ethernet bytes = {:0x?}", ethernet.packet());
     println!("Starting client");
 
     loop {
@@ -334,14 +328,14 @@ fn do_client(sock: &mut i32, interface_name: String, size: i32, target: String, 
     }
     println!("Fire");
 
-    let mut sent_id = 1;
+    let mut sent_id: u32 = 1;
     pkt_info.op = PerfOpcode::Data as u8;
     let tstart = Instant::now();
     let mut tdiff = tstart.elapsed();
 
     while RUNNING.load(Ordering::Relaxed) && tdiff.as_secs() < time as u64 {
-        pkt_info.id = socket::htonl(sent_id);
-        ethernet.set_payload(&bincode::serialize(&pkt_info).unwrap());
+        // pkt_info.id = socket::htonl(sent_id);
+        ethernet.set_payload(&(sent_id.to_be_bytes()));
         // println!("ethernet bytes = {:0x?}", ethernet.packet());
 
         send_perf(sock, ethernet.packet_mut(), size as usize);
