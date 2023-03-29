@@ -260,7 +260,7 @@ fn statistics_thread() {
 fn do_client(sock: &mut i32, interface_name: String, size: i32, target: String, time: i32) {
     let mut ethernet_buffer = vec![0u8; size as usize];
     let mut ethernet = MutableEthernetPacket::new(&mut ethernet_buffer).unwrap();
-    let pkt_info_size = mem::size_of::<PktInfo>();
+    // let pkt_info_size = mem::size_of::<PktInfo>();
     const RECV_BUFFER_SIZE: u32 = 19;
     let mut recv_buffer = [0u8; RECV_BUFFER_SIZE as usize];
 
@@ -330,6 +330,7 @@ fn do_client(sock: &mut i32, interface_name: String, size: i32, target: String, 
 
     let mut sent_id: u32 = 1;
     pkt_info.op = PerfOpcode::Data as u8;
+    ethernet.set_payload(&bincode::serialize(&pkt_info).unwrap());
     let tstart = Instant::now();
     let mut tdiff = tstart.elapsed();
 
