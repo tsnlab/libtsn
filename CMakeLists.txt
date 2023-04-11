@@ -6,9 +6,9 @@ project(tsn)
 option(BUILD_EXAMPLES "Build examples" OFF)
 
 set(PUBLIC_INCLUDE_DIRECTORIES include/)
-set(PRIVATE_INCLUDE_DIRECTORIES src/)
+set(PRIVATE_INCLUDE_DIRECTORIES libtsn/)
 
-file(GLOB_RECURSE SOURCE_FILES "src/*.c" "src/*.h")
+file(GLOB_RECURSE SOURCE_FILES "libtsn/*.c" "libtsn/*.h")
 file(GLOB_RECURSE INCLUDE_FILES "include/*.h")
 
 add_library(${PROJECT_NAME} STATIC ${INCLUDE_FILES} ${SOURCE_FILES})
