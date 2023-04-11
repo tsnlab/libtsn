@@ -2,6 +2,7 @@ use std::time::Duration;
 use std::thread;
 use std::time::Instant;
 
+use num_format::{Locale, ToFormattedString};
 use clap::{Command, arg, crate_authors, crate_version};
 use signal_hook::{consts::SIGINT, iterator::Signals};
 
@@ -59,11 +60,28 @@ pub struct Perf {
     payload: Vec<u8>,
 }
 
+#[packet]
+pub struct PerfStartReq {
+    duration: u32be,
+    #[payload]
+    payload: Vec<u8>,
+}
+
 struct Statistics {
     pkt_count: usize,
     total_bytes: usize,
     last_id: u32,
+    duration: usize,
 }
+
+static mut STATS: Statistics = Statistics {
+    pkt_count: 0,
+    total_bytes: 0,
+    last_id: 0,
+    duration: 0,
+};
+
+unsafe impl Send for Statistics {}
 
 fn main() {
 
@@ -124,12 +142,6 @@ fn do_server(iface_name: String) {
         Err(e) => panic!("Failed to create channel: {}", e),
     };
 
-    let mut stats = Statistics {
-        pkt_count: 0,
-        total_bytes: 0,
-        last_id: 0,
-    };
-
     loop {
         let packet = rx.next();
         if packet.is_err() {
@@ -147,9 +159,20 @@ fn do_server(iface_name: String) {
         match perf_pkt.get_op() {
             PerfOpFieldValues::ReqStart => {
                 println!("Received ReqStart");
-                stats.pkt_count = 0;
-                stats.total_bytes = 0;
-                stats.last_id = 0;
+
+                let req_start: PerfStartReqPacket = PerfStartReqPacket::new(perf_pkt.payload()).unwrap();
+                let duration: Duration = Duration::from_secs(req_start.get_duration().into());
+
+                unsafe {
+                    STATS.duration = duration.as_secs() as usize;
+                    STATS.pkt_count = 0;
+                    STATS.total_bytes = 0;
+                    STATS.last_id = 0;
+                    RUNNING = true;
+                }
+
+                // Make thread for statistics
+                thread::spawn(stats_worker);
 
                 let mut perf_buffer = vec![0; 8];
                 let mut eth_buffer = vec![0; 14 + 8];
@@ -170,11 +193,17 @@ fn do_server(iface_name: String) {
                 }
 
             },
+            PerfOpFieldValues::Data => {
+                unsafe {
+                    STATS.last_id = perf_pkt.get_id();
+                    STATS.pkt_count += 1;
+                    STATS.total_bytes += packet.len();
+                }
+            },
             PerfOpFieldValues::ReqEnd => {
                 println!("Received ReqEnd");
-                if stats.last_id == perf_pkt.get_id() {
-                    println!("{} packets, {} bytes", stats.pkt_count, stats.total_bytes);
-                }
+
+                unsafe { RUNNING = false; }
 
                 let mut perf_buffer = vec![0; 8];
                 let mut eth_buffer = vec![0; 14 + 8];
@@ -193,15 +222,16 @@ fn do_server(iface_name: String) {
                     Ok(_) => {},
                     Err(e) => println!("Failed to send packet: {}", e),
                 }
-            },
-            PerfOpFieldValues::Data => {
-                stats.last_id = perf_pkt.get_id();
-                stats.pkt_count += 1;
-                stats.total_bytes += packet.len();
+
+                // Print statistics
+                unsafe {
+                    println!("{} packets, {} bytes {} bps",
+                        STATS.pkt_count, STATS.total_bytes,
+                        STATS.total_bytes * 8 / STATS.duration);
+                }
             },
             _ => {},
         }
-
     };
 }
 
@@ -235,12 +265,17 @@ fn do_client(iface_name: String, target: String, size: usize, duration: usize) {
 
     // Request start
     println!("Requesting start");
-    let mut perf_buffer = vec![0; 8];
-    let mut eth_buffer = vec![0; 14 + 8];
+    let mut req_start_buffer = vec![0; 4];
+    let mut perf_buffer = vec![0; 8 + 4];
+    let mut eth_buffer = vec![0; 14 + 8 + 4];
+
+    let mut perf_req_start_pkt = MutablePerfStartReqPacket::new(&mut req_start_buffer).unwrap();
+    perf_req_start_pkt.set_duration(duration.try_into().unwrap());
 
     let mut perf_pkt = MutablePerfPacket::new(&mut perf_buffer).unwrap();
     perf_pkt.set_id(0xdeadbeef);  // TODO: Randomize
     perf_pkt.set_op(PerfOpFieldValues::ReqStart);
+    perf_pkt.set_payload(perf_req_start_pkt.packet());
 
     let mut eth_pkt = MutableEthernetPacket::new(&mut eth_buffer).unwrap();
     eth_pkt.set_destination(target);
@@ -277,14 +312,11 @@ fn do_client(iface_name: String, target: String, size: usize, duration: usize) {
         perf_pkt.set_op(PerfOpFieldValues::Data);
 
         eth_pkt.set_payload(perf_pkt.packet());
-        match tx.send_to(eth_pkt.packet(), None).unwrap() {
-            Ok(_) => {},
-            Err(_) => {},
-        }
+        if tx.send_to(eth_pkt.packet(), None).unwrap().is_ok() {}
 
         last_id += 1;
 
-        if now.elapsed().as_secs() > duration as u64 {
+        if now.elapsed().as_secs() > duration as u64 || !unsafe { RUNNING } {
             break;
         }
     }
@@ -341,5 +373,52 @@ fn wait_for_response(
         if perf_pkt.get_op() == op {
             return Ok(());
         }
+    }
+}
+
+fn stats_worker() {
+    let stats = unsafe { &mut STATS };
+    let mut last_id = 0;
+    let mut last_bytes = 0;
+    let mut last_packets = 0;
+    let start_time = Instant::now();
+    let mut last_time = start_time;
+
+    const SECOND: Duration = Duration::from_secs(1);
+
+    while unsafe { RUNNING } {
+        let elapsed = last_time.elapsed();
+        if elapsed < SECOND {
+            thread::sleep(SECOND - elapsed);
+        }
+
+        last_time = Instant::now();
+
+        let id = stats.last_id;
+        let bytes = stats.total_bytes;
+        let bits = (bytes - last_bytes) * 8;
+        let total_packets = stats.pkt_count;
+        let packets = total_packets - last_packets;
+        let loss_rate = 1.0 - packets as f64 / (id - last_id) as f64;
+
+        let lap = start_time.elapsed().as_secs();
+
+        if lap > stats.duration as u64 {
+            unsafe { RUNNING = false; }
+            break;
+        }
+        println!(
+            "{0}s: \
+            {1} pps {2} bps, \
+            loss: {3:.2}%",
+            lap,
+            packets.to_formatted_string(&Locale::en),
+            bits.to_formatted_string(&Locale::en),
+            loss_rate * 100.0,
+            );
+
+        last_id = id;
+        last_bytes = bytes;
+        last_packets = total_packets;
     }
 }
