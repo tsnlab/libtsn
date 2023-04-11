@@ -28,14 +28,12 @@ jobs:
         uses: wearerequired/lint-action@v2
         with:
           clang_format: true
-          # clippy: true
-          # clippy_dir: tsn
+          clippy: true
           flake8: true
       - name: Rust lint
         uses: giraffate/clippy-action@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          workdir: tsn
       - name: shellcheck
         uses: ludeeus/action-shellcheck@master
 
