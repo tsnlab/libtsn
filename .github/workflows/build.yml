@@ -56,4 +56,3 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: Build rust
         run: cargo build --release
-        working-directory: tsn
