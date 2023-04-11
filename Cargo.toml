@@ -13,7 +13,7 @@ rand = "0.8.5"
 hex = "0.4.3"
 nix = "0.24.1"
 signal-hook = "0.3.14"
-clap = { version = "3.2.8", features = ["derive"] }
+clap = { version = "3.2.8", features = ["derive", "cargo"] }
 pnet = "0.33.0"
 serde = { version = "1.0", features = ["derive"] }
 bincode = "1.3.3"
@@ -22,5 +22,9 @@ regex = "1"
 serde_yaml = "0.8"
 
 [[bin]]
-name="latency"
-path="src/bin/latency.rs"
+name = "latency"
+path = "src/bin/latency.rs"
+
+[[bin]]
+name = "throughput"
+path = "src/bin/throughput.rs"
