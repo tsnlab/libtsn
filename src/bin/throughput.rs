@@ -11,12 +11,13 @@ use pnet_macros_support::types::u32be;
 use pnet_packet::PrimitiveValues;
 use pnet_packet::Packet;
 use pnet::util::MacAddr;
-use pnet::datalink::{self, Channel, NetworkInterface};
+use pnet::datalink::{self, NetworkInterface};
 use pnet::packet::ethernet::{EtherType, EthernetPacket, MutableEthernetPacket};
 
 const VLAN_ID_PERF: u16 = 10;
-const VLAN_PRI_PERF: u16 = 3;
+const VLAN_PRI_PERF: u32 = 3;
 const ETHERTYPE_PERF: u16 = 0x1337;
+const ETH_P_PERF: u16 = 0x0003; // ETH_P_ALL
 
 static mut RUNNING: bool = false;
 
@@ -130,26 +131,23 @@ fn do_server(iface_name: String) {
     let interface = interfaces.into_iter().find(interface_name_match).unwrap();
     let my_mac = interface.mac.unwrap();
 
-    let timeout = Duration::from_millis(1000);
-    let config = datalink::Config {
-        read_timeout: Some(timeout),
-        ..Default::default()
+    let mut sock = match tsn::sock_open(&iface_name, VLAN_ID_PERF, VLAN_PRI_PERF, ETH_P_PERF) {
+        Ok(sock) => sock,
+        Err(e) => panic!("Failed to open TSN socket: {}", e),
     };
 
-    let (mut tx, mut rx) = match datalink::channel(&interface, config) {
-        Ok(Channel::Ethernet(tx, rx)) => (tx, rx),
-        Ok(_) => panic!("Unhandled channel type"),
-        Err(e) => panic!("Failed to create channel: {}", e),
-    };
+    let err = sock.set_timeout(Duration::from_secs(1));
+    if err < 0 {
+        panic!("Failed to set timeout {}", err);
+    }
 
     loop {
-        let packet = rx.next();
-        if packet.is_err() {
+        let mut packet = [0u8; 1514];
+        if sock.recv(&mut packet) < 0 {
             continue;
         }
-        let packet = packet.unwrap();
 
-        let eth_pkt: EthernetPacket = EthernetPacket::new(packet).unwrap();
+        let eth_pkt: EthernetPacket = EthernetPacket::new(&packet).unwrap();
         if eth_pkt.get_ethertype() != EtherType(ETHERTYPE_PERF) {
             continue;
         }
@@ -159,6 +157,11 @@ fn do_server(iface_name: String) {
         match perf_pkt.get_op() {
             PerfOpFieldValues::ReqStart => {
                 println!("Received ReqStart");
+
+                if unsafe { RUNNING } {
+                    println!("Already running");
+                    continue;
+                }
 
                 let req_start: PerfStartReqPacket = PerfStartReqPacket::new(perf_pkt.payload()).unwrap();
                 let duration: Duration = Duration::from_secs(req_start.get_duration().into());
@@ -187,9 +190,8 @@ fn do_server(iface_name: String) {
                 eth_pkt.set_ethertype(EtherType(ETHERTYPE_PERF));
 
                 eth_pkt.set_payload(perf_pkt.packet());
-                match tx.send_to(eth_pkt.packet(), None).unwrap() {
-                    Ok(_) => {},
-                    Err(e) => println!("Failed to send packet: {}", e),
+                if sock.send(eth_pkt.packet()) < 0 {
+                    println!("Failed to send packet");
                 }
 
             },
@@ -197,7 +199,7 @@ fn do_server(iface_name: String) {
                 unsafe {
                     STATS.last_id = perf_pkt.get_id();
                     STATS.pkt_count += 1;
-                    STATS.total_bytes += packet.len();
+                    STATS.total_bytes += packet.len() + 4/* hidden VLAN tag */;
                 }
             },
             PerfOpFieldValues::ReqEnd => {
@@ -218,9 +220,8 @@ fn do_server(iface_name: String) {
                 eth_pkt.set_ethertype(EtherType(ETHERTYPE_PERF));
 
                 eth_pkt.set_payload(perf_pkt.packet());
-                match tx.send_to(eth_pkt.packet(), None).unwrap() {
-                    Ok(_) => {},
-                    Err(e) => println!("Failed to send packet: {}", e),
+                if sock.send(eth_pkt.packet()) < 0 {
+                    println!("Failed to send packet");
                 }
 
                 // Print statistics
@@ -243,25 +244,15 @@ fn do_client(iface_name: String, target: String, size: usize, duration: usize) {
 
     let target: MacAddr = target.parse().expect("Invalid MAC address");
 
-    let timeout = Duration::from_millis(1000);
-    let config = datalink::Config {
-        read_timeout: Some(timeout),
-        ..Default::default()
-    };
-    let (mut tx, mut rx) = match datalink::channel(&interface, config) {
-        Ok(Channel::Ethernet(tx, rx)) => (tx, rx),
-        Ok(_) => panic!("Unhandled channel type"),
-        Err(e) => panic!("Failed to create channel: {}", e),
+    let mut sock = match tsn::sock_open(&iface_name, VLAN_ID_PERF, VLAN_PRI_PERF, ETH_P_PERF) {
+        Ok(sock) => sock,
+        Err(e) => panic!("Failed to open TSN socket: {}", e),
     };
 
-    unsafe { RUNNING = true; }
-    // Handle signal handler
-    let mut signals = Signals::new([SIGINT]).unwrap();
-    thread::spawn(move || {
-        for _ in signals.forever() {
-            unsafe { RUNNING = false; }
-        }
-    });
+    let err = sock.set_timeout(Duration::from_secs(1));
+    if err < 0 {
+        panic!("Failed to set timeout {}", err);
+    }
 
     // Request start
     println!("Requesting start");
@@ -284,16 +275,24 @@ fn do_client(iface_name: String, target: String, size: usize, duration: usize) {
     eth_pkt.set_payload(perf_pkt.packet());
 
     for _ in 0..3 {
-        match tx.send_to(eth_pkt.packet(), None).unwrap() {
-            Ok(_) => {},
-            Err(e) => eprintln!("Failed to send packet: {}", e),
+        if sock.send(eth_pkt.packet()) < 0 {
+            println!("Failed to send packet");
         }
 
-        match wait_for_response(&mut rx, PerfOpFieldValues::ResStart) {
+        match wait_for_response(&mut sock, PerfOpFieldValues::ResStart) {
             Ok(_) => { break },
             Err(_) => eprintln!("No response, retrying..."),
         }
     }
+
+    unsafe { RUNNING = true; }
+    // Handle signal handler
+    let mut signals = Signals::new([SIGINT]).unwrap();
+    thread::spawn(move || {
+        for _ in signals.forever() {
+            unsafe { RUNNING = false; }
+        }
+    });
 
     // Send data
     println!("Sending data");
@@ -312,7 +311,7 @@ fn do_client(iface_name: String, target: String, size: usize, duration: usize) {
         perf_pkt.set_op(PerfOpFieldValues::Data);
 
         eth_pkt.set_payload(perf_pkt.packet());
-        if tx.send_to(eth_pkt.packet(), None).unwrap().is_ok() {}
+        if sock.send(eth_pkt.packet()) < 0 {}
 
         last_id += 1;
 
@@ -337,20 +336,22 @@ fn do_client(iface_name: String, target: String, size: usize, duration: usize) {
     eth_pkt.set_payload(perf_pkt.packet());
 
     for _ in 0..3 {
-        match tx.send_to(eth_pkt.packet(), None).unwrap() {
-            Ok(_) => {},
-            Err(e) => eprintln!("Failed to send packet: {}", e),
+        if sock.send(eth_pkt.packet()) < 0 {
+            println!("Failed to send packet");
         }
 
-        match wait_for_response(&mut rx, PerfOpFieldValues::ResEnd) {
+        match wait_for_response(&mut sock, PerfOpFieldValues::ResEnd) {
             Ok(_) => {break},
             Err(_) => eprintln!("No response, retrying..."),
         }
     }
+
+    println!("Closing socket...");
+    tsn::sock_close(&mut sock);
 }
 
 fn wait_for_response(
-    rx: &mut Box<dyn datalink::DataLinkReceiver>,
+    sock: &mut tsn::TsnSocket,
     op: PerfOpField) -> Result<(), ()> {
     let timeout = Duration::from_millis(1000);
     let now = Instant::now();
@@ -358,13 +359,14 @@ fn wait_for_response(
         if now.elapsed() > timeout {
             return Err(());
         }
-        let packet = rx.next();
-        if packet.is_err() {
+        let mut packet = [0; 1514];
+        let recv_bytes = sock.recv(&mut packet);
+        if recv_bytes < 0 {
+            println!("Failed to receive packet {}", recv_bytes);
             continue;
         }
-        let packet = packet.unwrap();
 
-        let eth_pkt: EthernetPacket = EthernetPacket::new(packet).unwrap();
+        let eth_pkt: EthernetPacket = EthernetPacket::new(&packet).unwrap();
         if eth_pkt.get_ethertype() != EtherType(ETHERTYPE_PERF) {
             continue;
         }
