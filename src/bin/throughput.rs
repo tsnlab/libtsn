@@ -245,6 +245,9 @@ fn do_server(iface_name: String) {
             _ => {},
         }
     };
+
+    println!("Closing socket...");
+    sock.close();
 }
 
 fn do_client(iface_name: String, target: String, size: usize, duration: usize) {
@@ -358,7 +361,7 @@ fn do_client(iface_name: String, target: String, size: usize, duration: usize) {
     }
 
     println!("Closing socket...");
-    tsn::sock_close(&mut sock);
+    sock.close();
 }
 
 fn wait_for_response(

@@ -34,6 +34,10 @@ impl TsnSocket {
     pub fn recv_msg(&self, msg: msghdr) -> isize {
         recv_msg(self, msg)
     }
+
+    pub fn close(&mut self) {
+        sock_close(self)
+    }
 }
 
 const CONTROL_SOCK_PATH: &str = "/var/run/tsn.sock";
