@@ -19,23 +19,23 @@ pub struct TsnSocket {
 
 // Make imple for TsnSocket
 impl TsnSocket {
-    pub fn set_timeout(&mut self, timeout: Duration) -> i32 {
+    pub fn set_timeout(&mut self, timeout: Duration) -> Result<(), String> {
         sock_set_timeout(self, timeout)
     }
 
-    pub fn send(&self, buf: &[u8]) -> isize {
+    pub fn send(&self, buf: &[u8]) -> Result<isize, String> {
         send(self, buf)
     }
 
-    pub fn recv(&self, buf: &mut [u8]) -> isize {
+    pub fn recv(&self, buf: &mut [u8]) -> Result<isize, String> {
         recv(self, buf)
     }
 
-    pub fn recv_msg(&self, msg: msghdr) -> isize {
+    pub fn recv_msg(&self, msg: msghdr) -> Result<isize, String> {
         recv_msg(self, msg)
     }
 
-    pub fn close(&mut self) {
+    pub fn close(&mut self) -> Result<(), String> {
         sock_close(self)
     }
 }
@@ -65,12 +65,11 @@ pub fn sock_open(
     vlanid: u16,
     priority: u32,
     proto: u16,
-) -> Result<TsnSocket, i32> {
+) -> Result<TsnSocket, String> {
     match create_vlan(ifname, vlanid) {
         Ok(v) => println!("{}", v),
         Err(_) => {
-            println!("Create vlan fails");
-            panic!("last OS error: {:?}", Error::last_os_error());
+            return Err(format!("Create vlan fails {}", Error::last_os_error()));
         }
     }
 
@@ -86,8 +85,7 @@ pub fn sock_open(
         );
     }
     if sock < 0 {
-        println!("last OS error: {:?}", Error::last_os_error());
-        return Err(sock);
+        return Err(Error::last_os_error().to_string());
     }
     let prio: *const u32 = &priority;
     unsafe {
@@ -101,9 +99,7 @@ pub fn sock_open(
     }
 
     if res < 0 {
-        println!("socket option error");
-        println!("last OS error: {:?}", Error::last_os_error());
-        return Err(res);
+        return Err(format!("Socket option error: {}", Error::last_os_error()));
     }
 
     let sock_ll = libc::sockaddr_ll {
@@ -124,8 +120,7 @@ pub fn sock_open(
         );
     }
     if res < 0 {
-        println!("last OS error: {:?}", Error::last_os_error());
-        return Err(res);
+        return Err(format!("Bind error: {}", Error::last_os_error()));
     }
 
     Ok(TsnSocket {
@@ -135,26 +130,26 @@ pub fn sock_open(
     })
 }
 
-pub fn sock_close(sock: &mut TsnSocket) {
+pub fn sock_close(sock: &mut TsnSocket) -> Result<(), String> {
     match delete_vlan(&sock.ifname, sock.vlanid) {
         Ok(v) => {
             println!("{}", v);
             close(sock.fd).unwrap();
+            Ok(())
         }
         Err(_) => {
-            println!("Delete vlan fails");
-            panic!("last OS error: {:?}", Error::last_os_error());
+            Err(format!("Delete vlan fails: {}", Error::last_os_error()))
         }
-    };
+    }
 }
 
-pub fn sock_set_timeout(sock: &mut TsnSocket, timeout: Duration) -> i32 {
+pub fn sock_set_timeout(sock: &mut TsnSocket, timeout: Duration) -> Result<(), String> {
     let sock_timeout = libc::timeval {
         tv_sec: timeout.as_secs() as i64,
         tv_usec: timeout.subsec_micros() as i64,
     };
 
-    unsafe {
+    let res = unsafe {
         libc::setsockopt(
             sock.fd,
             libc::SOL_SOCKET,
@@ -162,11 +157,17 @@ pub fn sock_set_timeout(sock: &mut TsnSocket, timeout: Duration) -> i32 {
             &sock_timeout as *const libc::timeval as *const libc::c_void,
             mem::size_of::<libc::timeval>() as u32,
         )
+    };
+
+    if res < 0 {
+        Err(format!("Set timeout error: {}", Error::last_os_error()))
+    } else {
+        Ok(())
     }
 }
 
-pub fn send(sock: &TsnSocket, buf: &[u8]) -> isize {
-    unsafe {
+pub fn send(sock: &TsnSocket, buf: &[u8]) -> Result<isize, String> {
+    let res = unsafe {
         libc::sendto(
             sock.fd,
             buf.as_ptr() as *const libc::c_void,
@@ -175,11 +176,17 @@ pub fn send(sock: &TsnSocket, buf: &[u8]) -> isize {
             std::ptr::null_mut::<libc::sockaddr>(),
             0_u32,
         )
+    };
+
+    if res < 0 {
+        Err(format!("Send error: {}", Error::last_os_error()))
+    } else {
+        Ok(res)
     }
 }
 
-pub fn recv(sock: &TsnSocket, buf: &mut [u8]) -> isize {
-    unsafe {
+pub fn recv(sock: &TsnSocket, buf: &mut [u8]) -> Result<isize, String> {
+    let res = unsafe {
         libc::recvfrom(
             sock.fd,
             buf.as_ptr() as *mut libc::c_void,
@@ -188,11 +195,25 @@ pub fn recv(sock: &TsnSocket, buf: &mut [u8]) -> isize {
             std::ptr::null_mut::<libc::sockaddr>(),
             std::ptr::null_mut::<u32>(),
         )
+    };
+
+    if res < 0 {
+        Err(format!("Recv error: {}", Error::last_os_error()))
+    } else {
+        Ok(res)
     }
 }
 
-pub fn recv_msg(sock: &TsnSocket, mut msg: msghdr) -> isize {
-    unsafe { libc::recvmsg(sock.fd, &mut msg as *mut msghdr, 0) }
+pub fn recv_msg(sock: &TsnSocket, mut msg: msghdr) -> Result<isize, String> {
+    let res = unsafe {
+        libc::recvmsg(sock.fd, &mut msg as *mut msghdr, 0)
+    };
+
+    if res < 0 {
+        Err(format!("Recv error: {}", Error::last_os_error()))
+    } else {
+        Ok(res)
+    }
 }
 
 pub fn timespecff_diff(start: &mut TimeSpec, stop: &mut TimeSpec, result: &mut TimeSpec) {

@@ -137,9 +137,8 @@ fn do_server(iface_name: String) {
         Err(e) => panic!("Failed to open TSN socket: {}", e),
     };
 
-    let err = sock.set_timeout(Duration::from_secs(1));
-    if err < 0 {
-        panic!("Failed to set timeout {}", err);
+    if let Err(e) = sock.set_timeout(Duration::from_secs(1)) {
+        panic!("Failed to set timeout: {}", e)
     }
 
     unsafe { RUNNING = true; }
@@ -153,7 +152,7 @@ fn do_server(iface_name: String) {
 
     while unsafe { RUNNING } {
         let mut packet = [0u8; 1514];
-        if sock.recv(&mut packet) < 0 {
+        if sock.recv(&mut packet).is_err() {
             continue;
         }
 
@@ -201,8 +200,8 @@ fn do_server(iface_name: String) {
                 eth_pkt.set_ethertype(EtherType(ETHERTYPE_PERF));
 
                 eth_pkt.set_payload(perf_pkt.packet());
-                if sock.send(eth_pkt.packet()) < 0 {
-                    println!("Failed to send packet");
+                if let Err(e) = sock.send(eth_pkt.packet()) {
+                    eprintln!("Failed to send packet: {}", e)
                 }
 
             },
@@ -231,8 +230,8 @@ fn do_server(iface_name: String) {
                 eth_pkt.set_ethertype(EtherType(ETHERTYPE_PERF));
 
                 eth_pkt.set_payload(perf_pkt.packet());
-                if sock.send(eth_pkt.packet()) < 0 {
-                    println!("Failed to send packet");
+                if let Err(e) = sock.send(eth_pkt.packet()) {
+                    eprintln!("Failed to send packet: {}", e)
                 }
 
                 // Print statistics
@@ -244,10 +243,12 @@ fn do_server(iface_name: String) {
             },
             _ => {},
         }
-    };
+    }
 
     println!("Closing socket...");
-    sock.close();
+    if let Err(e) = sock.close() {
+        eprintln!("Failed to close socket: {}", e);
+    }
 }
 
 fn do_client(iface_name: String, target: String, size: usize, duration: usize) {
@@ -263,9 +264,8 @@ fn do_client(iface_name: String, target: String, size: usize, duration: usize) {
         Err(e) => panic!("Failed to open TSN socket: {}", e),
     };
 
-    let err = sock.set_timeout(Duration::from_secs(1));
-    if err < 0 {
-        panic!("Failed to set timeout {}", err);
+    if let Err(e) = sock.set_timeout(Duration::from_secs(1)) {
+        panic!("Failed to set timeout: {}", e)
     }
 
     // Request start
@@ -289,13 +289,13 @@ fn do_client(iface_name: String, target: String, size: usize, duration: usize) {
     eth_pkt.set_payload(perf_pkt.packet());
 
     for _ in 0..3 {
-        if sock.send(eth_pkt.packet()) < 0 {
-            println!("Failed to send packet");
+        if let Err(e) = sock.send(eth_pkt.packet()) {
+            eprintln!("Failed to send packet: {}", e)
         }
 
         match wait_for_response(&mut sock, PerfOpFieldValues::ResStart) {
-            Ok(_) => { break },
             Err(_) => eprintln!("No response, retrying..."),
+            Ok(_) => { break },
         }
     }
 
@@ -325,7 +325,7 @@ fn do_client(iface_name: String, target: String, size: usize, duration: usize) {
         perf_pkt.set_op(PerfOpFieldValues::Data);
 
         eth_pkt.set_payload(perf_pkt.packet());
-        if sock.send(eth_pkt.packet()) < 0 {}
+        if sock.send(eth_pkt.packet()).is_err() {}
 
         last_id += 1;
 
@@ -350,8 +350,8 @@ fn do_client(iface_name: String, target: String, size: usize, duration: usize) {
     eth_pkt.set_payload(perf_pkt.packet());
 
     for _ in 0..3 {
-        if sock.send(eth_pkt.packet()) < 0 {
-            println!("Failed to send packet");
+        if let Err(e) = sock.send(eth_pkt.packet()) {
+             eprintln!("Failed to send packet: {}", e);
         }
 
         match wait_for_response(&mut sock, PerfOpFieldValues::ResEnd) {
@@ -361,7 +361,9 @@ fn do_client(iface_name: String, target: String, size: usize, duration: usize) {
     }
 
     println!("Closing socket...");
-    sock.close();
+    if let Err(e) = sock.close() {
+        eprintln!("Failed to close socket: {}", e)
+    }
 }
 
 fn wait_for_response(
@@ -374,9 +376,8 @@ fn wait_for_response(
             return Err(());
         }
         let mut packet = [0; 1514];
-        let recv_bytes = sock.recv(&mut packet);
-        if recv_bytes < 0 {
-            println!("Failed to receive packet {}", recv_bytes);
+        if let Err(e) = sock.recv(&mut packet) {
+            eprintln!("Failed to receive packet: {}", e);
             continue;
         }
 
