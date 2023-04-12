@@ -28,34 +28,29 @@ jobs:
         uses: wearerequired/lint-action@v2
         with:
           clang_format: true
-          # clippy: true
-          # clippy_dir: tsn
+          clippy: true
           flake8: true
       - name: Rust lint
         uses: giraffate/clippy-action@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          workdir: tsn
       - name: shellcheck
         uses: ludeeus/action-shellcheck@master
+      - name: Final newline
+        uses: Logerfo/newline-action@0.0.4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          config-path: .github/newline.yml
 
   build:
     strategy:
       matrix:
-        os: ['ubuntu-latest', 'ubuntu-18.04']
+        os: ['ubuntu-latest', 'ubuntu-20.04']
     runs-on: ${{ matrix.os }}
     steps:
-      - name: install build tools
-        run: sudo apt install -qqy --no-install-recommends gcc cmake ninja-build
       - name: Checkout
         uses: actions/checkout@master
-      - name: build C
-        run: |
-          mkdir build && cd build
-          /usr/bin/cmake -G Ninja -DBUILD_EXAMPLES=ON ..
-          /usr/bin/cmake --build .
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
       - name: Build rust
         run: cargo build --release
-        working-directory: tsn
