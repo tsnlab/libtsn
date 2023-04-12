@@ -43,15 +43,8 @@ jobs:
         os: ['ubuntu-latest', 'ubuntu-20.04']
     runs-on: ${{ matrix.os }}
     steps:
-      - name: install build tools
-        run: sudo apt install -qqy --no-install-recommends gcc cmake ninja-build
       - name: Checkout
         uses: actions/checkout@master
-      - name: build C
-        run: |
-          mkdir build && cd build
-          /usr/bin/cmake -G Ninja -DBUILD_EXAMPLES=ON ..
-          /usr/bin/cmake --build .
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
       - name: Build rust
