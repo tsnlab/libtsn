@@ -36,6 +36,11 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
       - name: shellcheck
         uses: ludeeus/action-shellcheck@master
+      - name: Final newline
+        uses: Logerfo/newline-action@0.0.4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          config-path: .github/newline.yml
 
   build:
     strategy:
