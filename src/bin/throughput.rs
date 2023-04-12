@@ -20,6 +20,7 @@ const ETHERTYPE_PERF: u16 = 0x1337;
 const ETH_P_PERF: u16 = 0x0003; // ETH_P_ALL
 
 static mut RUNNING: bool = false;
+static mut TEST_RUNNING: bool = false;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Hash)]
 pub struct PerfOpField(pub u8);
@@ -141,7 +142,16 @@ fn do_server(iface_name: String) {
         panic!("Failed to set timeout {}", err);
     }
 
-    loop {
+    unsafe { RUNNING = true; }
+    // Handle signal handler
+    let mut signals = Signals::new([SIGINT]).unwrap();
+    thread::spawn(move || {
+        for _ in signals.forever() {
+            unsafe { RUNNING = false; }
+        }
+    });
+
+    while unsafe { RUNNING } {
         let mut packet = [0u8; 1514];
         if sock.recv(&mut packet) < 0 {
             continue;
@@ -158,7 +168,7 @@ fn do_server(iface_name: String) {
             PerfOpFieldValues::ReqStart => {
                 println!("Received ReqStart");
 
-                if unsafe { RUNNING } {
+                if unsafe { TEST_RUNNING } {
                     println!("Already running");
                     continue;
                 }
@@ -171,8 +181,9 @@ fn do_server(iface_name: String) {
                     STATS.pkt_count = 0;
                     STATS.total_bytes = 0;
                     STATS.last_id = 0;
-                    RUNNING = true;
+                    TEST_RUNNING = true;
                 }
+
 
                 // Make thread for statistics
                 thread::spawn(stats_worker);
@@ -205,7 +216,7 @@ fn do_server(iface_name: String) {
             PerfOpFieldValues::ReqEnd => {
                 println!("Received ReqEnd");
 
-                unsafe { RUNNING = false; }
+                unsafe { TEST_RUNNING = false }
 
                 let mut perf_buffer = vec![0; 8];
                 let mut eth_buffer = vec![0; 14 + 8];
@@ -388,7 +399,7 @@ fn stats_worker() {
 
     const SECOND: Duration = Duration::from_secs(1);
 
-    while unsafe { RUNNING } {
+    while unsafe { TEST_RUNNING } {
         let elapsed = last_time.elapsed();
         if elapsed < SECOND {
             thread::sleep(SECOND - elapsed);
@@ -406,7 +417,7 @@ fn stats_worker() {
         let lap = start_time.elapsed().as_secs();
 
         if lap > stats.duration as u64 {
-            unsafe { RUNNING = false; }
+            unsafe { TEST_RUNNING = false; }
             break;
         }
         println!(
