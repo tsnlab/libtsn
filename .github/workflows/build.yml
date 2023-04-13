@@ -22,15 +22,17 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly
-          components: clippy
+          components: clippy, rustfmt
           override: true
       - name: Linters
         uses: wearerequired/lint-action@v2
         with:
           clang_format: true
-          clippy: true
+          # clippy: true  # Not supported yet
           flake8: true
-      - name: Rust lint
+      - name: Cargo fmt
+        uses: actions-rust-lang/rustfmt@v1
+      - name: Cargo clippy
         uses: giraffate/clippy-action@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
