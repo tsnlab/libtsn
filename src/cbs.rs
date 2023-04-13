@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::process::Command;
 use std::str;
 use serde_yaml::{self, Value};
-
 pub struct CbsChild {
     pub max_frame: i64,
     pub bandwidth: i64,
@@ -116,7 +115,6 @@ pub fn calc_credits(streams: HashMap<&str, Vec<CbsChild>>, linkspeed: i64) -> (C
     (credits_a, credits_b)
 }
 
-
 pub fn normalise_cbs(ifname: &str, config: &Value) -> CbsConfig {
     let mut tc_map = HashMap::new();
     let mut ret_map = HashMap::new();
@@ -135,7 +133,6 @@ pub fn normalise_cbs(ifname: &str, config: &Value) -> CbsConfig {
         }
     };
     for (prio, priomap) in config.as_mapping().unwrap() {
-        // tc_map.entry(prio.as_i64().unwrap()).or_insert_with(|| tc_map.len() as i64);
         if !tc_map.contains_key(&prio.as_i64().unwrap()) {
             tc_map.insert(prio.as_i64().unwrap(), tc_map.len() as i64);
         }
