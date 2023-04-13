@@ -19,11 +19,10 @@ jobs:
       - name: Install Flake8
         run: pip install flake8 flake8-import-order
       - name: Setup Rust
-        uses: actions-rs/toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: nightly
           components: clippy, rustfmt
-          override: true
       - name: Linters
         uses: wearerequired/lint-action@v2
         with:
