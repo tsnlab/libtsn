@@ -1,5 +1,5 @@
 use clap::{Arg, Command as ClapCommand, arg, ArgMatches};
-use crate::{config::config::read_config, vlan::vlan::create_vlan};
+use crate::{config::read_config, vlan::create_vlan};
 const SOCKET_PATH: &str = "/var/run/tsn.sock";
 mod tas;
 mod cbs;
@@ -46,5 +46,5 @@ fn main() {
         }
         _ => unreachable!()
     }
-    
+
 }
