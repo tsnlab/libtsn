@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use serde_yaml::{self, Value};
+#[derive(Debug)]
 pub struct TasConfig {
     pub txtime_delay: i64,
     pub schedule: Vec<TasSchedule>,
@@ -9,33 +10,35 @@ pub struct TasConfig {
     pub base_time: i64,
     pub sched_entries: Vec<String>,
 }
+#[derive(Debug)]
 pub struct TasSchedule {
     pub time: i64,
     pub prio: Vec<i64>,
 }
-pub fn to_ns(input: &Value) -> i64 {
-    if let Some(input) = input.as_str() {
-        let len = input.len();
-        let v = input[..len-2].parse::<i64>().unwrap();
-        let unit = input[len-2..].parse::<String>().unwrap();
+pub fn to_ns(input: &Value) -> Result<i64, String> {
+    if let Some(value) = input.as_str() {
+        let matched = regex::Regex::new(r"^(?P<v>[\d_]+)\s*(?P<unit>|ns|us|µs|ms)$").unwrap().captures(value).unwrap();
+        let v = matched.name("v").unwrap().as_str().parse::<i64>().unwrap();
+        let unit = matched.name("unit").unwrap().as_str();
         return {
-            match unit.as_str() {
-                "ns" => v,
-                "us" => v * 1000,
-                "ms" => v * 1000 * 1000,
-                "s" => v * 1000 * 1000 * 1000,
-                _ => 0,
+            match unit {
+                "" => Ok(v),
+                "ns" => Ok(v),
+                "us" => Ok(v * 1000),
+                "µs" => Ok(v * 1000),
+                "ms" => Ok(v * 1000 * 1000),
+                _ => Err(format!("{} is not valid time", value)),
             }
         }
     }
-    input.as_i64().unwrap()
+    Ok(input.as_i64().unwrap())
 }
-pub fn normalise_tas(config: &Value) -> TasConfig {
+pub fn normalise_tas(config: &Value) -> Result<TasConfig, String> {
     let mut tas_schedule: Vec<TasSchedule> = Vec::new();
     let mut tc_map: HashMap<i64, i64> = HashMap::new();
     let mut ret_map = HashMap::new();
-
-    for schedule in config.get(&Value::String("schedule".to_string())).unwrap().as_sequence().unwrap() {
+    let schedules = config.get(&Value::String("schedule".to_string())).unwrap().as_sequence().unwrap();
+    for schedule in schedules {
         let mut v = Vec::new();
 
         for prio in schedule.get(&Value::String("prio".to_string())).unwrap().as_sequence().unwrap() {
@@ -44,9 +47,10 @@ pub fn normalise_tas(config: &Value) -> TasConfig {
                 tc_map.insert(prio.as_i64().unwrap(), tc_map.len() as i64);
             }
         }
+        let time = to_ns(schedule.get(&Value::String("time".to_string())).unwrap())?;
         tas_schedule.push(
             TasSchedule {
-                time: to_ns(schedule.get(&Value::String("time".to_string())).unwrap()), 
+                time,
                 prio: v.clone()
             }
         );
@@ -77,15 +81,15 @@ pub fn normalise_tas(config: &Value) -> TasConfig {
         }
         sched_entries.push(format!("S {} {}", sum, sch.time));
     }
-
-    TasConfig {
-        txtime_delay: to_ns(config.get(&Value::String("txtime_delay".to_string())).unwrap()),
+    let txtime_delay = to_ns(config.get(&Value::String("txtime_delay".to_string())).unwrap())?;
+    Ok(TasConfig {
+        txtime_delay,
         schedule: tas_schedule,
         tc_map: ret_map,
         num_tc,
         queues,
         base_time: 0,
         sched_entries
-    }
+    })
 }
 

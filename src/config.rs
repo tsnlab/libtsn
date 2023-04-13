@@ -6,6 +6,7 @@ use serde_yaml::{self, Value};
 use crate::tas::{normalise_tas, TasConfig};
 use crate::cbs::{normalise_cbs, CbsConfig};
 
+#[derive(Debug)]
 pub struct Config {
     pub egress_qos_map: HashMap<i64, HashMap<i64, i64>>,
     pub tas: Option<TasConfig>,
@@ -34,7 +35,7 @@ pub fn normalise_vlan (input: &Value) -> HashMap<i64, HashMap<i64, i64>>  {
     ret_map
 }
 
-pub fn read_config(config_path: &str) -> Config {
+pub fn read_config(config_path: &str) -> Result<Config, i64> {
     let file = File::open(config_path).expect("failed to open config.yaml");
     let reader = BufReader::new(file);
     let config: Value = serde_yaml::from_reader(reader).expect("failed to parse YAML");
@@ -48,11 +49,23 @@ pub fn read_config(config_path: &str) -> Config {
             ret = Config::new(normalise_vlan(value.get(&Value::String("egress-qos-map".to_string())).unwrap()));
         }
         if value.contains_key(&Value::String("tas".to_string())) {
-            ret.tas = Some(normalise_tas(value.get(&Value::String("tas".to_string())).unwrap()));
+            match normalise_tas(value.get(&Value::String("tas".to_string())).unwrap()) {
+                Ok(tas) => ret.tas = Some(tas),
+                Err(e) => {
+                    eprintln!("{}", e);
+                    return Err(-1);
+                }
+            }
         }
         if value.contains_key(&Value::String("cbs".to_string())) {
-            ret.cbs = Some(normalise_cbs(ifname, value.get(&Value::String("cbs".to_string())).unwrap()));
+            match normalise_cbs(ifname, value.get(&Value::String("cbs".to_string())).unwrap()) {
+                Ok(cbs) => ret.cbs = Some(cbs),
+                Err(e) => {
+                    eprintln!("{}", e);
+                    return Err(-1);
+                }
+            }
         }
     }
-    ret
+    Ok(ret)
 }

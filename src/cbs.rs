@@ -2,18 +2,19 @@ use std::collections::HashMap;
 use std::process::Command;
 use std::str;
 use serde_yaml::{self, Value};
+#[derive(Debug)]
 pub struct CbsChild {
     pub max_frame: i64,
     pub bandwidth: i64,
 }
-
+#[derive(Debug)]
 pub struct CbsCredit {
     pub sendslope: i64,
     pub idleslope: i64,
     pub hicredit: i64,
     pub locredit: i64,
 }
-
+#[derive(Debug)]
 pub struct CbsConfig {
     pub tc_map: HashMap<i64, i64>,
     pub num_tc: i64,
@@ -22,9 +23,7 @@ pub struct CbsConfig {
 }
 
 pub fn get_linkspeed(ifname: &str) -> Result<String, String> {
-    let output = Command::new("ethtool")
-                                    .arg(ifname)
-                                    .output();
+    let output = Command::new("ethtool").arg(ifname).output();
     match output {
         Ok(output) => {
             let out = str::from_utf8(&output.stdout).unwrap();
@@ -32,21 +31,19 @@ pub fn get_linkspeed(ifname: &str) -> Result<String, String> {
             let matched = pattern.captures(out).unwrap();
             Ok(matched.name("speed").unwrap().as_str().to_string())
         }
-        Err(e) => {
-            Err(format!("{}", e))
-        }
+        Err(e) => Err(e.to_string()),
     }
 }
-pub fn to_bits(value: &Value) -> i64 {
-    if let Some(input) = value.as_str() {
-        let matched = regex::Regex::new(r"^(?P<v>[\d_]+)\s*(?P<modifier>|k|M|G|ki|Mi|Gi)(?P<b>b|B)$").unwrap().captures(input).unwrap();
+pub fn to_bits(input: &Value) -> Result<i64, String> {
+    if let Some(value) = input.as_str() {
+        let matched = regex::Regex::new(r"^(?P<v>[\d_]+)\s*(?P<modifier>|k|M|G|ki|Mi|Gi)(?P<b>b|B)$").unwrap().captures(value).unwrap();
         let v = matched.name("v").unwrap().as_str().parse::<i64>().unwrap();
         let modifier = matched.name("modifier").unwrap().as_str();
         let b = matched.name("b").unwrap().as_str();
         let multiplier_bits = match b {
             "b" => 1,
             "B" => 8,
-            _ => 0,
+            _ => return Err(format!("{} is not valid size", value)),
         };
         let multiplier_modifier = match modifier {
             "" => 1,
@@ -56,26 +53,29 @@ pub fn to_bits(value: &Value) -> i64 {
             "ki" => 1024,
             "Mi" => 1024 * 1024,
             "Gi" => 1024 * 1024 * 1024,
-            _ => 0,
+            _ => return Err(format!("{} is not valid size", value)),
         };
-        return v * multiplier_bits * multiplier_modifier;
+        return Ok(v * multiplier_bits * multiplier_modifier);
     }
-    value.as_i64().unwrap()
+    Ok(input.as_i64().unwrap())
 }
 
-pub fn to_bps(value: &Value) -> i64 {
-    let mut modifier_map = HashMap::new();
-    modifier_map.insert("", 1);
-    modifier_map.insert("k", 1000);
-    modifier_map.insert("M", 1000 * 1000);
-    modifier_map.insert("G", 1000 * 1000 * 1000);
-    if let Some(input) = value.as_str() {
-        let matched = regex::Regex::new(r"^(?P<v>[\d_]+)\s*(?P<modifier>|k|M|G)(?P<b>b|B)[p/]s$").unwrap().captures(input).unwrap();
+pub fn to_bps(input: &Value) -> Result<i64, String> {
+    if let Some(value) = input.as_str() {
+        let matched = regex::Regex::new(r"^(?P<v>[\d_]+)\s*(?P<modifier>|k|M|G)(?P<b>b|B)[p/]s$").unwrap().captures(value).unwrap();
         let v = matched.name("v").unwrap().as_str().parse::<i64>().unwrap();
         let modifier = matched.name("modifier").unwrap().as_str();
-        return v * modifier_map[modifier];
+        return {
+            match modifier {
+                "" => Ok(v),
+                "k" => Ok(v * 1000),
+                "M" => Ok(v * 1000 * 1000),
+                "G" => Ok(v * 1000 * 1000 * 1000),
+                _ => Err(format!("{} is not valid bandwidth", value)),
+            }
+        }
     }
-    value.as_i64().unwrap()
+    Ok(input.as_i64().unwrap())
 }
 
 pub fn calc_credits(streams: HashMap<&str, Vec<CbsChild>>, linkspeed: i64) -> (CbsCredit, CbsCredit) {
@@ -115,7 +115,7 @@ pub fn calc_credits(streams: HashMap<&str, Vec<CbsChild>>, linkspeed: i64) -> (C
     (credits_a, credits_b)
 }
 
-pub fn normalise_cbs(ifname: &str, config: &Value) -> CbsConfig {
+pub fn normalise_cbs(ifname: &str, config: &Value) -> Result<CbsConfig, String> {
     let mut tc_map = HashMap::new();
     let mut ret_map = HashMap::new();
     let link = get_linkspeed(ifname);
@@ -125,20 +125,16 @@ pub fn normalise_cbs(ifname: &str, config: &Value) -> CbsConfig {
     streams.insert("a", Vec::new());
     streams.insert("b", Vec::new());
     let linkspeed: i64 = match link {
-        Ok(speed) => {
-            to_bps(&Value::String(speed))
-        }
-        Err(_) => {
-            1_000_000_000 // 1000Mbps
-        }
+        Ok(speed) => to_bps(&Value::String(speed))?,
+        Err(_) => 1_000_000_000 // 1000Mbps
     };
     for (prio, priomap) in config.as_mapping().unwrap() {
         if !tc_map.contains_key(&prio.as_i64().unwrap()) {
             tc_map.insert(prio.as_i64().unwrap(), tc_map.len() as i64);
         }
         let child = CbsChild {
-            max_frame: to_bits(priomap.get(&Value::String("max_frame".to_string())).unwrap()),
-            bandwidth: to_bps(priomap.get(&Value::String("bandwidth".to_string())).unwrap()),
+            max_frame: to_bits(priomap.get(&Value::String("max_frame".to_string())).unwrap())?,
+            bandwidth: to_bps(priomap.get(&Value::String("bandwidth".to_string())).unwrap())?,
         };
         streams.get_mut(priomap.get(Value::String("class".to_string()).as_str().unwrap()).unwrap().as_str().unwrap()).unwrap().push(child);
     }
@@ -158,10 +154,10 @@ pub fn normalise_cbs(ifname: &str, config: &Value) -> CbsConfig {
     for i in 0..num_tc {
         queues.push(format!("1@{}", i));
     }
-    CbsConfig{
+    Ok(CbsConfig{
         tc_map: ret_map,
         num_tc,
         queues,
         children
-    }
+    })
 }

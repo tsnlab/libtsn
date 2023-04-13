@@ -4,11 +4,11 @@ use itertools::Itertools;
 
 fn run_cmd(input: &str) -> Result<i32, i32> {
     println!("{}", input);
-    let split = input.split(" ");
+    let split = input.split(' ');
     let cmd = split.clone().next().unwrap();
     let cmd = std::process::Command::new(cmd).args(split.skip(1)).spawn().unwrap();
     let output = cmd.wait_with_output().unwrap();
-    if (&output).status.success() {
+    if output.status.success() {
         Ok(output.status.code().unwrap())
     }
     else {
@@ -27,11 +27,11 @@ pub fn setup_tas(ifname: &str, config: TasConfig) -> Result<i32, i32> {
     for key in config.tc_map.keys().sorted() {
         priomap.push_str(&format!(" {}", config.tc_map.get(key).unwrap()));
     }
-    for s in config.queues {
-        queues.push_str(&format!(" {}", s));
+    for queue in config.queues {
+        queues.push_str(&format!(" {}", queue));
     }
-    for s in config.sched_entries {
-        sched_entries.push_str(&format!(" sched-entry {}", s));
+    for entry in config.sched_entries {
+        sched_entries.push_str(&format!(" sched-entry {}", entry));
     }
     let cmd = format!(
         "tc qdisc replace dev {} parent root handle {} taprio num_tc {} map{}
@@ -66,13 +66,13 @@ pub fn setup_cbs(ifname: &str, config: CbsConfig) -> Result<i32, i32> {
         let sendslope = val.sendslope;
         let hicredit = val.hicredit;
         let locredit = val.locredit;
-        let cmd = format!("{}", format!(
+        let cmd = format!(
             "tc qdisc replace dev {} parent {}:{} handle {}
             cbs idleslope {} sendslope {} hicredit {} locredit {} offload 1",
-            ifname, root_handle, qid, handle, idleslope, sendslope, hicredit, locredit));
+            ifname, root_handle, qid, handle, idleslope, sendslope, hicredit, locredit);
         run_cmd(&cmd)?;
     }
-    return Ok(0);
+    Ok(0)
 }
 
 pub fn create_vlan(config: Config, ifname: &str, vlan_id: u16) -> Result<i32, i32> {
@@ -105,11 +105,11 @@ pub fn create_vlan(config: Config, ifname: &str, vlan_id: u16) -> Result<i32, i3
     Ok(0)
 }
 
-pub fn delete_vlan(config: Config, ifname: &str, vlanid: u16) -> Result<i32, i32> {
+pub fn delete_vlan(ifname: &str, vlanid: u16) -> Result<i32, i32> {
     let name = format!("{}.{}", ifname, vlanid);
     let cmd = format!("ip link del {}", name);
     run_cmd(&cmd)?;
     let cmd = format!("tc qdisc delete dev {} root", ifname);
     run_cmd(&cmd)?;
-    return Ok(0);
+    Ok(0)
 }
