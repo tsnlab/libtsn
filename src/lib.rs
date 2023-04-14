@@ -31,7 +31,7 @@ impl TsnSocket {
         recv(self, buf)
     }
 
-    pub fn recv_msg(&self, msg: msghdr) -> Result<isize, String> {
+    pub fn recv_msg(&self, msg: &mut msghdr) -> Result<isize, String> {
         recv_msg(self, msg)
     }
 
@@ -204,9 +204,9 @@ pub fn recv(sock: &TsnSocket, buf: &mut [u8]) -> Result<isize, String> {
     }
 }
 
-pub fn recv_msg(sock: &TsnSocket, mut msg: msghdr) -> Result<isize, String> {
+pub fn recv_msg(sock: &TsnSocket, msg: &mut msghdr) -> Result<isize, String> {
     let res = unsafe {
-        libc::recvmsg(sock.fd, &mut msg as *mut msghdr, 0)
+        libc::recvmsg(sock.fd, msg as *mut msghdr, 0)
     };
 
     if res < 0 {

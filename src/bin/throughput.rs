@@ -17,7 +17,7 @@ use pnet::packet::ethernet::{EtherType, EthernetPacket, MutableEthernetPacket};
 const VLAN_ID_PERF: u16 = 10;
 const VLAN_PRI_PERF: u32 = 3;
 const ETHERTYPE_PERF: u16 = 0x1337;
-const ETH_P_PERF: u16 = 0x0003; // ETH_P_ALL
+const ETH_P_PERF: u16 = libc::ETH_P_ALL as u16; // FIXME: use ETHERTYPE_PERF
 
 static mut RUNNING: bool = false;
 static mut TEST_RUNNING: bool = false;
