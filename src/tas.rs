@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use serde_yaml::{self, Value};
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TasConfig {
     pub txtime_delay: i64,
     pub schedule: Vec<TasSchedule>,
@@ -10,7 +10,7 @@ pub struct TasConfig {
     pub base_time: i64,
     pub sched_entries: Vec<String>,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TasSchedule {
     pub time: i64,
     pub prio: Vec<i64>,
@@ -27,7 +27,7 @@ pub fn to_ns(input: &Value) -> Result<i64, String> {
                 "us" => Ok(v * 1000),
                 "µs" => Ok(v * 1000),
                 "ms" => Ok(v * 1000 * 1000),
-                _ => Err(format!("{} is not valid time", value)),
+                _ => unreachable!()
             }
         }
     }

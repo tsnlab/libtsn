@@ -4,7 +4,7 @@ use itertools::Itertools;
 
 fn run_cmd(input: &str) -> Result<i32, i32> {
     println!("{}", input);
-    let split = input.split(' ');
+    let split = input.split(char::is_whitespace);
     let cmd = split.clone().next().unwrap();
     let cmd = std::process::Command::new(cmd).args(split.skip(1)).spawn().unwrap();
     let output = cmd.wait_with_output().unwrap();
@@ -75,7 +75,7 @@ pub fn setup_cbs(ifname: &str, config: CbsConfig) -> Result<i32, i32> {
     Ok(0)
 }
 
-pub fn create_vlan(config: Config, ifname: &str, vlan_id: u16) -> Result<i32, i32> {
+pub fn create_vlan(config: &Config, ifname: &str, vlan_id: u16) -> Result<i32, i32> {
     let name = format!("{}.{}", ifname, vlan_id);
     let mut qos_map = HashMap::new();
     
@@ -97,10 +97,10 @@ pub fn create_vlan(config: Config, ifname: &str, vlan_id: u16) -> Result<i32, i3
     let cmd = format!("ip link set up {}", name);
     run_cmd(&cmd)?;
     if config.tas.is_some() {
-        setup_tas(ifname, config.tas.unwrap())?;
+        setup_tas(ifname, config.tas.clone().unwrap())?;
     }
     if config.cbs.is_some() {
-        setup_cbs(ifname, config.cbs.unwrap())?;
+        setup_cbs(ifname, config.cbs.clone().unwrap())?;
     }
     Ok(0)
 }

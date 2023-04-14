@@ -20,6 +20,7 @@ fn main() {
         .arg(Arg::new("vlanid").help("VLAN ID to delete").required(true));
     let matched_command: ArgMatches = ClapCommand::new("tsnlib")
         .about("TSN socket manager")
+        .arg_required_else_help(true)
         .subcommand(create_parser.clone())
         .subcommand(delete_parse.clone())
         .get_matches();
@@ -31,7 +32,8 @@ fn main() {
             }
             let interface = create_matches.value_of("interface").unwrap();
             let vlan_id = create_matches.value_of("vlanid").unwrap().parse::<u16>().unwrap();
-            create_vlan(config.unwrap(), interface, vlan_id).unwrap();
+            let config = config.as_ref().unwrap().get(interface).unwrap();
+            create_vlan(config, interface, vlan_id).unwrap();
         }
         Some(("delete", delete_matches)) => {
             let interface = delete_matches.value_of("interface").unwrap();

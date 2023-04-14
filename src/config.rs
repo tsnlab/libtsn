@@ -35,22 +35,24 @@ pub fn normalise_vlan (input: &Value) -> HashMap<i64, HashMap<i64, i64>>  {
     ret_map
 }
 
-pub fn read_config(config_path: &str) -> Result<Config, i64> {
+pub fn read_config(config_path: &str) -> Result<HashMap<String, Config>, i64> {
     let file = File::open(config_path).expect("failed to open config.yaml");
     let reader = BufReader::new(file);
     let config: Value = serde_yaml::from_reader(reader).expect("failed to parse YAML");
     let config = config.as_mapping().unwrap().get(&Value::String("nics".to_string())).unwrap().as_mapping().unwrap();
     let mut ifname;
-    let mut ret = Config::new(HashMap::new());
+    let mut ret = HashMap::new();
     for (key, value) in config {
+        let mut info = Config::new(HashMap::new());
         let value = value.as_mapping().unwrap();
         ifname = key.as_str().unwrap();
         if value.contains_key(&Value::String("egress-qos-map".to_string())) {
-            ret = Config::new(normalise_vlan(value.get(&Value::String("egress-qos-map".to_string())).unwrap()));
+            info.egress_qos_map = normalise_vlan(value.get(&Value::String("egress-qos-map".to_string())).unwrap()).clone();
+            // info = Config::new(normalise_vlan(value.get(&Value::String("egress-qos-map".to_string())).unwrap()));
         }
         if value.contains_key(&Value::String("tas".to_string())) {
             match normalise_tas(value.get(&Value::String("tas".to_string())).unwrap()) {
-                Ok(tas) => ret.tas = Some(tas),
+                Ok(tas) => info.tas = Some(tas),
                 Err(e) => {
                     eprintln!("{}", e);
                     return Err(-1);
@@ -59,13 +61,14 @@ pub fn read_config(config_path: &str) -> Result<Config, i64> {
         }
         if value.contains_key(&Value::String("cbs".to_string())) {
             match normalise_cbs(ifname, value.get(&Value::String("cbs".to_string())).unwrap()) {
-                Ok(cbs) => ret.cbs = Some(cbs),
+                Ok(cbs) => info.cbs = Some(cbs.clone()),
                 Err(e) => {
                     eprintln!("{}", e);
                     return Err(-1);
                 }
             }
         }
+        ret.insert(ifname.to_string(), info);
     }
     Ok(ret)
 }

@@ -7,14 +7,14 @@ pub struct CbsChild {
     pub max_frame: i64,
     pub bandwidth: i64,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CbsCredit {
     pub sendslope: i64,
     pub idleslope: i64,
     pub hicredit: i64,
     pub locredit: i64,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CbsConfig {
     pub tc_map: HashMap<i64, i64>,
     pub num_tc: i64,
@@ -43,7 +43,7 @@ pub fn to_bits(input: &Value) -> Result<i64, String> {
         let multiplier_bits = match b {
             "b" => 1,
             "B" => 8,
-            _ => return Err(format!("{} is not valid size", value)),
+            _ => unreachable!()
         };
         let multiplier_modifier = match modifier {
             "" => 1,
@@ -53,7 +53,7 @@ pub fn to_bits(input: &Value) -> Result<i64, String> {
             "ki" => 1024,
             "Mi" => 1024 * 1024,
             "Gi" => 1024 * 1024 * 1024,
-            _ => return Err(format!("{} is not valid size", value)),
+            _ => unreachable!()
         };
         return Ok(v * multiplier_bits * multiplier_modifier);
     }
