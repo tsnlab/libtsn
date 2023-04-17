@@ -45,14 +45,14 @@ fn main() {
         .about("Server mode")
         .short_flag('s')
         .arg(arg!(-i --interface <interface> "Interface to use").required(true))
-        .arg(arg!(-o --oneway));
+        .arg(arg!(-'1' - -oneway).required(false));
 
     let client_command = Command::new("client")
         .about("Client mode")
         .short_flag('c')
         .arg(arg!(-i --interface <interface> "Interface to use").required(true))
         .arg(arg!(-t --target <target> "Target MAC address").required(true))
-        .arg(arg!(-o --oneway))
+        .arg(arg!(-'1' - -oneway).required(false))
         .arg(arg!(-s --size <size>).default_value("64").required(false))
         .arg(
             arg!(-c --count <count> "How many send packets")
@@ -121,18 +121,16 @@ fn do_server(iface_name: String, oneway: bool) {
 
     let mut packet = [0u8; 1514];
     let msg: Option<msghdr> = match oneway {
-        true => {
-            match enable_rx_timestamp(&sock, &mut packet) {
-                Ok(msg) => {
-                    println!("Set sock timestamp");
-                    Some(msg)
-                }
-                Err(e) => {
-                    eprintln!("Failed to set sock timestamp: {}", e);
-                    None
-                }
+        true => match enable_rx_timestamp(&sock, &mut packet) {
+            Ok(msg) => {
+                println!("Set sock timestamp");
+                Some(msg)
             }
-        }
+            Err(e) => {
+                eprintln!("Failed to set sock timestamp: {}", e);
+                None
+            }
+        },
         false => None,
     };
 
@@ -142,31 +140,29 @@ fn do_server(iface_name: String, oneway: bool) {
         // TODO: Cleanup this code
         let recv_bytes = {
             match (oneway, msg) {
-                (true, Some(mut msg)) => {
-                    match sock.recv_msg(&mut msg) {
-                        Ok(size) => {
-                            rx_timestamp = SystemTime::now();
-                            if size == 0 {
-                                eprintln!("????");
-                                continue;
-                            }
-                            size
-                        },
-                        Err(e) => {
-                            eprintln!("Failed to recv msg: {}", e);
+                (true, Some(mut msg)) => match sock.recv_msg(&mut msg) {
+                    Ok(size) => {
+                        rx_timestamp = SystemTime::now();
+                        if size == 0 {
+                            eprintln!("????");
                             continue;
                         }
+                        size
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to recv msg: {}", e);
+                        continue;
                     }
                 },
-                _ => {
-                    match sock.recv(&mut packet) {
-                        Ok(size) => {
-                            rx_timestamp = SystemTime::now();
-                            size
-                        },
-                        Err(_) => { continue; }
+                _ => match sock.recv(&mut packet) {
+                    Ok(size) => {
+                        rx_timestamp = SystemTime::now();
+                        size
                     }
-                }
+                    Err(_) => {
+                        continue;
+                    }
+                },
             }
         };
 
@@ -216,13 +212,21 @@ fn do_server(iface_name: String, oneway: bool) {
             let elapsed = rx_timestamp.duration_since(tx_timestamp).unwrap();
             let elapsed_ns = elapsed.as_nanos();
 
-            println!("{}: {}.{:09} -> {}.{:09} = {} ns",
+            println!(
+                "{}: {}.{:09} -> {}.{:09} = {} ns",
                 id,
                 tx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_secs(),
-                tx_timestamp.duration_since(UNIX_EPOCH).unwrap().subsec_nanos(),
+                tx_timestamp
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .subsec_nanos(),
                 rx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_secs(),
-                rx_timestamp.duration_since(UNIX_EPOCH).unwrap().subsec_nanos(),
-                elapsed_ns);
+                rx_timestamp
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .subsec_nanos(),
+                elapsed_ns
+            );
         } else {
             eth_pkt.set_destination(eth_pkt.get_source());
             eth_pkt.set_source(my_mac);
@@ -339,7 +343,7 @@ fn do_client(
 }
 
 fn enable_rx_timestamp(sock: &tsn::TsnSocket, pkt: &mut [u8]) -> Result<msghdr, String> {
-    return Err("Not implemented yet");
+    return Err("Not implemented yet".to_string());
 
     const CONTROLSIZE: usize = 1024;
     let mut control: [libc::c_char; CONTROLSIZE] = [0; CONTROLSIZE];
@@ -384,7 +388,7 @@ fn enable_rx_timestamp(sock: &tsn::TsnSocket, pkt: &mut [u8]) -> Result<msghdr, 
 }
 
 fn get_timestamp(msg: &mut msghdr) -> Result<SystemTime, String> {
-    return Err("Not implemented yet");
+    return Err("Not implemented yet".to_string());
 
     let mut tend: libc::timespec = libc::timespec {
         tv_sec: 0,
@@ -404,7 +408,7 @@ fn get_timestamp(msg: &mut msghdr) -> Result<SystemTime, String> {
             cmsg_type = (*cmsg).cmsg_type;
             if cmsg_level != libc::SOL_SOCKET {
                 cmsg = libc::CMSG_NXTHDR(msg, cmsg);
-                continue
+                continue;
             }
         }
         if libc::SO_TIMESTAMPNS == cmsg_type {
@@ -413,7 +417,7 @@ fn get_timestamp(msg: &mut msghdr) -> Result<SystemTime, String> {
                     &mut tend as *mut _ as *mut libc::c_void,
                     libc::CMSG_DATA(cmsg) as *const libc::c_void,
                     mem::size_of_val(&tend),
-                    );
+                );
             }
             let time = UNIX_EPOCH + Duration::new(tend.tv_sec as u64, tend.tv_nsec as u32);
             return Ok(time);

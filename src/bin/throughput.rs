@@ -1,18 +1,18 @@
-use std::time::Duration;
 use std::thread;
+use std::time::Duration;
 use std::time::Instant;
 
+use clap::{arg, crate_authors, crate_version, Command};
 use num_format::{Locale, ToFormattedString};
-use clap::{Command, arg, crate_authors, crate_version};
 use signal_hook::{consts::SIGINT, iterator::Signals};
 
-use pnet_macros::packet;
-use pnet_macros_support::types::u32be;
-use pnet_packet::PrimitiveValues;
-use pnet_packet::Packet;
-use pnet::util::MacAddr;
 use pnet::datalink::{self, NetworkInterface};
 use pnet::packet::ethernet::{EtherType, EthernetPacket, MutableEthernetPacket};
+use pnet::util::MacAddr;
+use pnet_macros::packet;
+use pnet_macros_support::types::u32be;
+use pnet_packet::Packet;
+use pnet_packet::PrimitiveValues;
 
 const VLAN_ID_PERF: u16 = 10;
 const VLAN_PRI_PERF: u32 = 3;
@@ -86,7 +86,6 @@ static mut STATS: Statistics = Statistics {
 unsafe impl Send for Statistics {}
 
 fn main() {
-
     let server_command = Command::new("server")
         .about("Server mode")
         .short_flag('s')
@@ -97,8 +96,16 @@ fn main() {
         .short_flag('c')
         .arg(arg!(interface: -i --interface <interface> "interface to use").required(true))
         .arg(arg!(target: -t --target <target> "Target MAC address").required(true))
-        .arg(arg!(size: -p --size <size> "packet size").required(false).default_value("64"))
-        .arg(arg!(duration: -d --duration <duration>).required(false).default_value("10"));
+        .arg(
+            arg!(size: -p --size <size> "packet size")
+                .required(false)
+                .default_value("64"),
+        )
+        .arg(
+            arg!(duration: -d --duration <duration>)
+                .required(false)
+                .default_value("10"),
+        );
 
     let matched_command = Command::new("throughput")
         .author(crate_authors!())
@@ -113,15 +120,19 @@ fn main() {
         ("server", server_matches) => {
             let iface = server_matches.value_of("interface").unwrap().to_string();
             do_server(iface)
-        },
+        }
         ("client", client_matches) => {
             let iface = client_matches.value_of("interface").unwrap().to_string();
             let target = client_matches.value_of("target").unwrap().to_string();
             let size: usize = client_matches.value_of("size").unwrap().parse().unwrap();
-            let duration: usize = client_matches.value_of("duration").unwrap().parse().unwrap();
+            let duration: usize = client_matches
+                .value_of("duration")
+                .unwrap()
+                .parse()
+                .unwrap();
 
             do_client(iface, target, size, duration)
-        },
+        }
         _ => panic!("Invalid command"),
     }
 }
@@ -141,12 +152,16 @@ fn do_server(iface_name: String) {
         panic!("Failed to set timeout: {}", e)
     }
 
-    unsafe { RUNNING = true; }
+    unsafe {
+        RUNNING = true;
+    }
     // Handle signal handler
     let mut signals = Signals::new([SIGINT]).unwrap();
     thread::spawn(move || {
         for _ in signals.forever() {
-            unsafe { RUNNING = false; }
+            unsafe {
+                RUNNING = false;
+            }
         }
     });
 
@@ -172,7 +187,8 @@ fn do_server(iface_name: String) {
                     continue;
                 }
 
-                let req_start: PerfStartReqPacket = PerfStartReqPacket::new(perf_pkt.payload()).unwrap();
+                let req_start: PerfStartReqPacket =
+                    PerfStartReqPacket::new(perf_pkt.payload()).unwrap();
                 let duration: Duration = Duration::from_secs(req_start.get_duration().into());
 
                 unsafe {
@@ -182,7 +198,6 @@ fn do_server(iface_name: String) {
                     STATS.last_id = 0;
                     TEST_RUNNING = true;
                 }
-
 
                 // Make thread for statistics
                 thread::spawn(stats_worker);
@@ -203,15 +218,14 @@ fn do_server(iface_name: String) {
                 if let Err(e) = sock.send(eth_pkt.packet()) {
                     eprintln!("Failed to send packet: {}", e)
                 }
-
-            },
+            }
             PerfOpFieldValues::Data => {
                 unsafe {
                     STATS.last_id = perf_pkt.get_id();
                     STATS.pkt_count += 1;
                     STATS.total_bytes += packet.len() + 4/* hidden VLAN tag */;
                 }
-            },
+            }
             PerfOpFieldValues::ReqEnd => {
                 println!("Received ReqEnd");
 
@@ -236,12 +250,15 @@ fn do_server(iface_name: String) {
 
                 // Print statistics
                 unsafe {
-                    println!("{} packets, {} bytes {} bps",
-                        STATS.pkt_count, STATS.total_bytes,
-                        STATS.total_bytes * 8 / STATS.duration);
+                    println!(
+                        "{} packets, {} bytes {} bps",
+                        STATS.pkt_count,
+                        STATS.total_bytes,
+                        STATS.total_bytes * 8 / STATS.duration
+                    );
                 }
-            },
-            _ => {},
+            }
+            _ => {}
         }
     }
 
@@ -278,7 +295,7 @@ fn do_client(iface_name: String, target: String, size: usize, duration: usize) {
     perf_req_start_pkt.set_duration(duration.try_into().unwrap());
 
     let mut perf_pkt = MutablePerfPacket::new(&mut perf_buffer).unwrap();
-    perf_pkt.set_id(0xdeadbeef);  // TODO: Randomize
+    perf_pkt.set_id(0xdeadbeef); // TODO: Randomize
     perf_pkt.set_op(PerfOpFieldValues::ReqStart);
     perf_pkt.set_payload(perf_req_start_pkt.packet());
 
@@ -295,16 +312,20 @@ fn do_client(iface_name: String, target: String, size: usize, duration: usize) {
 
         match wait_for_response(&mut sock, PerfOpFieldValues::ResStart) {
             Err(_) => eprintln!("No response, retrying..."),
-            Ok(_) => { break },
+            Ok(_) => break,
         }
     }
 
-    unsafe { RUNNING = true; }
+    unsafe {
+        RUNNING = true;
+    }
     // Handle signal handler
     let mut signals = Signals::new([SIGINT]).unwrap();
     thread::spawn(move || {
         for _ in signals.forever() {
-            unsafe { RUNNING = false; }
+            unsafe {
+                RUNNING = false;
+            }
         }
     });
 
@@ -321,7 +342,7 @@ fn do_client(iface_name: String, target: String, size: usize, duration: usize) {
     let mut last_id = 0;
     loop {
         let mut perf_pkt = MutablePerfPacket::new(&mut perf_buffer).unwrap();
-        perf_pkt.set_id(last_id);  // TODO: Randomize
+        perf_pkt.set_id(last_id); // TODO: Randomize
         perf_pkt.set_op(PerfOpFieldValues::Data);
 
         eth_pkt.set_payload(perf_pkt.packet());
@@ -340,7 +361,7 @@ fn do_client(iface_name: String, target: String, size: usize, duration: usize) {
     let mut eth_buffer = vec![0; 14 + 8];
 
     let mut perf_pkt = MutablePerfPacket::new(&mut perf_buffer).unwrap();
-    perf_pkt.set_id(0xdeadbeef);  // TODO: Randomize
+    perf_pkt.set_id(0xdeadbeef); // TODO: Randomize
     perf_pkt.set_op(PerfOpFieldValues::ReqEnd);
 
     let mut eth_pkt = MutableEthernetPacket::new(&mut eth_buffer).unwrap();
@@ -351,11 +372,11 @@ fn do_client(iface_name: String, target: String, size: usize, duration: usize) {
 
     for _ in 0..3 {
         if let Err(e) = sock.send(eth_pkt.packet()) {
-             eprintln!("Failed to send packet: {}", e);
+            eprintln!("Failed to send packet: {}", e);
         }
 
         match wait_for_response(&mut sock, PerfOpFieldValues::ResEnd) {
-            Ok(_) => {break},
+            Ok(_) => break,
             Err(_) => eprintln!("No response, retrying..."),
         }
     }
@@ -366,9 +387,7 @@ fn do_client(iface_name: String, target: String, size: usize, duration: usize) {
     }
 }
 
-fn wait_for_response(
-    sock: &mut tsn::TsnSocket,
-    op: PerfOpField) -> Result<(), ()> {
+fn wait_for_response(sock: &mut tsn::TsnSocket, op: PerfOpField) -> Result<(), ()> {
     let timeout = Duration::from_millis(1000);
     let now = Instant::now();
     loop {
@@ -421,7 +440,9 @@ fn stats_worker() {
         let lap = start_time.elapsed().as_secs();
 
         if lap > stats.duration as u64 {
-            unsafe { TEST_RUNNING = false; }
+            unsafe {
+                TEST_RUNNING = false;
+            }
             break;
         }
         println!(
@@ -432,7 +453,7 @@ fn stats_worker() {
             packets.to_formatted_string(&Locale::en),
             bits.to_formatted_string(&Locale::en),
             loss_rate * 100.0,
-            );
+        );
 
         last_id = id;
         last_bytes = bytes;

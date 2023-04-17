@@ -137,9 +137,7 @@ pub fn sock_close(sock: &mut TsnSocket) -> Result<(), String> {
             close(sock.fd).unwrap();
             Ok(())
         }
-        Err(_) => {
-            Err(format!("Delete vlan fails: {}", Error::last_os_error()))
-        }
+        Err(_) => Err(format!("Delete vlan fails: {}", Error::last_os_error())),
     }
 }
 
@@ -205,9 +203,7 @@ pub fn recv(sock: &TsnSocket, buf: &mut [u8]) -> Result<isize, String> {
 }
 
 pub fn recv_msg(sock: &TsnSocket, msg: &mut msghdr) -> Result<isize, String> {
-    let res = unsafe {
-        libc::recvmsg(sock.fd, msg, 0)
-    };
+    let res = unsafe { libc::recvmsg(sock.fd, msg, 0) };
 
     if res < 0 {
         Err(format!("Recv error: {}", Error::last_os_error()))
