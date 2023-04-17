@@ -15,7 +15,7 @@ fn main() {
 
     let create_parser = ClapCommand::new("create")
         .about("Create a TSN interface")
-        .arg(arg_config.clone())
+        .arg(&arg_config)
         .arg(
             Arg::new("interface")
                 .help("Interface name to create")
@@ -24,7 +24,7 @@ fn main() {
         .arg(Arg::new("vlanid").help("VLAN ID to create").required(true));
     let delete_parser = ClapCommand::new("delete")
         .about("Delete a TSN interface")
-        .arg(arg_config.clone())
+        .arg(&arg_config)
         .arg(
             Arg::new("interface")
                 .help("Interface name to delete")
@@ -33,7 +33,7 @@ fn main() {
         .arg(Arg::new("vlanid").help("VLAN ID to delete").required(true));
     let info_parser = ClapCommand::new("info")
         .about("Show TSN interface information")
-        .arg(arg_config.clone())
+        .arg(&arg_config)
         .arg(
             Arg::new("interface")
                 .help("Interface name to show")
@@ -43,9 +43,9 @@ fn main() {
     let matched_command: ArgMatches = ClapCommand::new("tsnlib")
         .about("TSN socket manager")
         .arg_required_else_help(true)
-        .subcommand(create_parser.clone())
-        .subcommand(delete_parser.clone())
-        .subcommand(info_parser.clone())
+        .subcommand(create_parser)
+        .subcommand(delete_parser)
+        .subcommand(info_parser)
         .get_matches();
     match matched_command.subcommand() {
         Some(("create", create_matches)) => {

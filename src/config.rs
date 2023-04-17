@@ -6,7 +6,6 @@ use std::fs::File;
 use std::io::BufReader;
 use std::str;
 
-#[derive(Debug)]
 pub struct Config {
     pub egress_qos_map: HashMap<i64, HashMap<i64, i64>>,
     pub tas: Option<TasConfig>,
@@ -57,9 +56,7 @@ pub fn read_config(config_path: &str) -> Result<HashMap<String, Config>, i64> {
                 value
                     .get(&Value::String("egress-qos-map".to_string()))
                     .unwrap(),
-            )
-            .clone();
-            // info = Config::new(normalise_vlan(value.get(&Value::String("egress-qos-map".to_string())).unwrap()));
+            );
         }
         if value.contains_key(&Value::String("tas".to_string())) {
             match normalise_tas(value.get(&Value::String("tas".to_string())).unwrap()) {
@@ -75,7 +72,7 @@ pub fn read_config(config_path: &str) -> Result<HashMap<String, Config>, i64> {
                 ifname,
                 value.get(&Value::String("cbs".to_string())).unwrap(),
             ) {
-                Ok(cbs) => info.cbs = Some(cbs.clone()),
+                Ok(cbs) => info.cbs = Some(cbs),
                 Err(e) => {
                     eprintln!("{}", e);
                     return Err(-1);

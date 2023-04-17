@@ -2,20 +2,17 @@ use serde_yaml::{self, Value};
 use std::collections::HashMap;
 use std::process::Command;
 use std::str;
-#[derive(Debug, Clone)]
 pub struct CbsChild {
     pub prio: i64,
     pub max_frame: i64,
     pub bandwidth: i64,
 }
-#[derive(Debug, Clone)]
 pub struct CbsCredit {
     pub sendslope: i64,
     pub idleslope: i64,
     pub hicredit: i64,
     pub locredit: i64,
 }
-#[derive(Debug, Clone)]
 pub struct CbsConfig {
     pub tc_map: HashMap<i64, i64>,
     pub num_tc: i64,

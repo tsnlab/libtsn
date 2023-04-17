@@ -1,6 +1,6 @@
 use serde_yaml::{self, Value};
 use std::collections::HashMap;
-#[derive(Debug, Clone)]
+
 pub struct TasConfig {
     pub txtime_delay: i64,
     pub schedule: Vec<TasSchedule>,
@@ -60,10 +60,7 @@ pub fn normalise_tas(config: &Value) -> Result<TasConfig, String> {
             }
         }
         let time = to_ns(schedule.get(&Value::String("time".to_string())).unwrap())?;
-        tas_schedule.push(TasSchedule {
-            time,
-            prio: v.clone(),
-        });
+        tas_schedule.push(TasSchedule { time, prio: v });
     }
 
     tc_map.insert(-1, tc_map.len() as i64);

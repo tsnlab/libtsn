@@ -1,11 +1,10 @@
 use crate::config::Config;
 
 pub fn get_info(config: &Config) {
-    if config.cbs.is_some() {
-        let cbs = config.cbs.clone().unwrap();
+    if let Some(cbs) = &config.cbs {
         println!("  cbs:");
         let mut n = 1;
-        for (class, value) in cbs.streams {
+        for (class, value) in &cbs.streams {
             println!("    {}:", class);
             let credit = cbs.children.get(&n).unwrap();
             println!(
@@ -22,12 +21,11 @@ pub fn get_info(config: &Config) {
             }
         }
     }
-    if config.tas.is_some() {
-        let tas = config.tas.clone().unwrap();
+    if let Some(tas) = &config.tas {
         println!("  tas:");
         println!("    base_time: {}", tas.base_time);
         println!("    schedule:");
-        for sch in tas.schedule {
+        for sch in &tas.schedule {
             println!("      - prio: {:?}", sch.prio);
             println!("        time: {}", sch.time);
         }

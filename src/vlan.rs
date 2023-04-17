@@ -18,7 +18,7 @@ fn run_cmd(input: &str) -> Result<i32, i32> {
     }
 }
 
-pub fn setup_tas(ifname: &str, config: TasConfig) -> Result<i32, i32> {
+pub fn setup_tas(ifname: &str, config: &TasConfig) -> Result<i32, i32> {
     let handle = 100;
     let num_tc = config.num_tc;
     let mut priomap = String::new();
@@ -29,10 +29,10 @@ pub fn setup_tas(ifname: &str, config: TasConfig) -> Result<i32, i32> {
     for key in config.tc_map.keys().sorted() {
         priomap.push_str(&format!(" {}", config.tc_map.get(key).unwrap()));
     }
-    for queue in config.queues {
+    for queue in &config.queues {
         queues.push_str(&format!(" {}", queue));
     }
-    for entry in config.sched_entries {
+    for entry in &config.sched_entries {
         sched_entries.push_str(&format!(" sched-entry {}", entry));
     }
     let cmd = format!(
@@ -50,7 +50,7 @@ pub fn setup_tas(ifname: &str, config: TasConfig) -> Result<i32, i32> {
     Ok(0)
 }
 
-pub fn setup_cbs(ifname: &str, config: CbsConfig) -> Result<i32, i32> {
+pub fn setup_cbs(ifname: &str, config: &CbsConfig) -> Result<i32, i32> {
     let root_handle = 100;
     let num_tc = config.num_tc;
     let mut priomap = String::new();
@@ -58,7 +58,7 @@ pub fn setup_cbs(ifname: &str, config: CbsConfig) -> Result<i32, i32> {
     for key in config.tc_map.keys().sorted() {
         priomap.push_str(&format!(" {}", config.tc_map.get(key).unwrap()));
     }
-    for s in config.queues {
+    for s in &config.queues {
         queues.push_str(&format!("{} ", s));
     }
     let cmd = format!(
@@ -67,7 +67,7 @@ pub fn setup_cbs(ifname: &str, config: CbsConfig) -> Result<i32, i32> {
         ifname, root_handle, num_tc, priomap, queues
     );
     run_cmd(&cmd)?;
-    for (qid, val) in config.children {
+    for (qid, val) in &config.children {
         let handle = qid * 1111;
 
         let idleslope = val.idleslope;
@@ -106,11 +106,11 @@ pub fn create_vlan(config: &Config, ifname: &str, vlan_id: u16) -> Result<i32, i
     run_cmd(&cmd)?;
     let cmd = format!("ip link set up {}", name);
     run_cmd(&cmd)?;
-    if config.tas.is_some() {
-        setup_tas(ifname, config.tas.clone().unwrap())?;
+    if let Some(tas) = &config.tas {
+        setup_tas(ifname, tas)?;
     }
-    if config.cbs.is_some() {
-        setup_cbs(ifname, config.cbs.clone().unwrap())?;
+    if let Some(cbs) = &config.cbs {
+        setup_cbs(ifname, cbs)?;
     }
     Ok(0)
 }
