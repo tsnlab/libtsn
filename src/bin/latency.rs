@@ -339,6 +339,8 @@ fn do_client(
 }
 
 fn enable_rx_timestamp(sock: &tsn::TsnSocket, pkt: &mut [u8]) -> Result<msghdr, String> {
+    return Err("Not implemented yet");
+
     const CONTROLSIZE: usize = 1024;
     let mut control: [libc::c_char; CONTROLSIZE] = [0; CONTROLSIZE];
 
@@ -382,6 +384,8 @@ fn enable_rx_timestamp(sock: &tsn::TsnSocket, pkt: &mut [u8]) -> Result<msghdr, 
 }
 
 fn get_timestamp(msg: &mut msghdr) -> Result<SystemTime, String> {
+    return Err("Not implemented yet");
+
     let mut tend: libc::timespec = libc::timespec {
         tv_sec: 0,
         tv_nsec: 0,
