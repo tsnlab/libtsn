@@ -206,7 +206,7 @@ pub fn recv(sock: &TsnSocket, buf: &mut [u8]) -> Result<isize, String> {
 
 pub fn recv_msg(sock: &TsnSocket, msg: &mut msghdr) -> Result<isize, String> {
     let res = unsafe {
-        libc::recvmsg(sock.fd, msg as *mut msghdr, 0)
+        libc::recvmsg(sock.fd, msg, 0)
     };
 
     if res < 0 {

@@ -1,33 +1,34 @@
+use std::io::Error;
+use std::mem;
 use std::option::Option;
+use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::vec::Vec;
 
-use clap::{arg, crate_authors, crate_version, Command};
 use nix::sys::socket::{cmsghdr, msghdr};
 use rand::Rng;
 use signal_hook::{consts::SIGINT, iterator::Signals};
-use std::vec::Vec;
-use std::thread;
+
+use clap::{arg, crate_authors, crate_version, Command};
 
 use pnet_macros::packet;
 use pnet_macros_support::types::u32be;
-use pnet_packet::{Packet};
+use pnet_packet::Packet;
 
 use pnet::datalink::{self, NetworkInterface};
 use pnet::packet::ethernet::{EtherType, EthernetPacket, MutableEthernetPacket};
 use pnet::util::MacAddr;
 
-extern crate hex;
-extern crate ifstructs;
 extern crate socket as soc;
 
 const VLAN_ID_PERF: u16 = 10;
 const VLAN_PRI_PERF: u32 = 3;
 const ETHERTYPE_PERF: u16 = 0x1337;
-const ETH_P_PERF: u16 = libc::ETH_P_ALL as u16; // FIXME: use ETHERTYPE_PERF
+// const ETH_P_PERF: u16 = libc::ETH_P_ALL as u16; // FIXME: use ETHERTYPE_PERF
+const ETH_P_PERF: u16 = ETHERTYPE_PERF;
 const TIMEOUT_SEC: u64 = 1;
 
 static mut RUNNING: bool = false;
-
 
 /// Packet format for Perf tool
 #[packet]
@@ -53,7 +54,11 @@ fn main() {
         .arg(arg!(-t --target <target> "Target MAC address").required(true))
         .arg(arg!(-o --oneway))
         .arg(arg!(-s --size <size>).default_value("64").required(false))
-        .arg(arg!(-c --count <count> "How many send packets").default_value("100").required(false))
+        .arg(
+            arg!(-c --count <count> "How many send packets")
+                .default_value("100")
+                .required(false),
+        )
         .arg(arg!(-p --precise "Precise mode"));
 
     let matched_command = Command::new("latency")
@@ -82,7 +87,7 @@ fn main() {
 
             do_client(iface, target, size, count, oneway, precise)
         }
-        _ => unreachable!()
+        _ => unreachable!(),
     }
 }
 
@@ -101,36 +106,56 @@ fn do_server(iface_name: String, oneway: bool) {
         panic!("Failed to set timeout: {}", e)
     }
 
-    unsafe { RUNNING = true; }
+    unsafe {
+        RUNNING = true;
+    }
     // Handle signal handler
     let mut signals = Signals::new([SIGINT]).unwrap();
     thread::spawn(move || {
         for _ in signals.forever() {
-            unsafe { RUNNING = false; }
+            unsafe {
+                RUNNING = false;
+            }
         }
     });
 
     let mut packet = [0u8; 1514];
-    let msg: Option<msghdr> = None;
-    if oneway {
-        match set_sock_timestamp(&sock, &mut packet) {
-            Ok(msg) => Some(msg),
-            Err(e) => {
-                eprintln!("Failed to set timestamp: {}", e);
-                None
+    let msg: Option<msghdr> = match oneway {
+        true => {
+            match enable_rx_timestamp(&sock, &mut packet) {
+                Ok(msg) => {
+                    println!("Set sock timestamp");
+                    Some(msg)
+                }
+                Err(e) => {
+                    eprintln!("Failed to set sock timestamp: {}", e);
+                    None
+                }
             }
-        };
-    }
+        }
+        false => None,
+    };
 
     while unsafe { RUNNING } {
-        let mut rx_timestamp = SystemTime::now();
+        let mut rx_timestamp;
 
+        // TODO: Cleanup this code
         let recv_bytes = {
             match (oneway, msg) {
                 (true, Some(mut msg)) => {
                     match sock.recv_msg(&mut msg) {
-                        Ok(size) => size,
-                        Err(_) => { continue; }
+                        Ok(size) => {
+                            rx_timestamp = SystemTime::now();
+                            if size == 0 {
+                                eprintln!("????");
+                                continue;
+                            }
+                            size
+                        },
+                        Err(e) => {
+                            eprintln!("Failed to recv msg: {}", e);
+                            continue;
+                        }
                     }
                 },
                 _ => {
@@ -145,10 +170,28 @@ fn do_server(iface_name: String, oneway: bool) {
             }
         };
 
-        // Match packet size
-        let mut packet = packet.split_at(recv_bytes as usize).0.to_owned();
+        println!("Received {} bytes", recv_bytes);
 
-        let mut eth_pkt = MutableEthernetPacket::new(&mut packet).unwrap();
+        // Get rx timestamp
+        if oneway {
+            println!("Received {} bytes", recv_bytes);
+
+            match get_timestamp(&mut msg.unwrap()) {
+                Ok(timestamp) => {
+                    println!("Timestamp: {:?}", timestamp);
+                    rx_timestamp = timestamp;
+                }
+                Err(e) => {
+                    eprintln!("Failed to get timestamp: {}", e);
+                    continue;
+                }
+            }
+        }
+
+        // Match packet size
+        let mut rx_packet = packet.split_at(recv_bytes as usize).0.to_owned();
+
+        let mut eth_pkt = MutableEthernetPacket::new(&mut rx_packet).unwrap();
         if eth_pkt.get_ethertype() != EtherType(ETHERTYPE_PERF) {
             continue;
         }
@@ -156,10 +199,30 @@ fn do_server(iface_name: String, oneway: bool) {
         if oneway {
             let perf_pkt = PerfPacket::new(eth_pkt.payload()).unwrap();
             let id = perf_pkt.get_id();
-            let tx_timestamp = SystemTime::UNIX_EPOCH + Duration::new(perf_pkt.get_tv_sec() as u64, perf_pkt.get_tv_nsec());
-            let elapsed = rx_timestamp.duration_since(tx_timestamp).unwrap();
+            let tv_sec = perf_pkt.get_tv_sec();
+            let tv_nsec = perf_pkt.get_tv_nsec();
 
-            println!("{}: {}.{:09} s", id, elapsed.as_secs(), elapsed.subsec_nanos());
+            // Try to get proper rx timestamp from msg
+            if let Some(mut msg) = msg {
+                match get_timestamp(&mut msg) {
+                    Ok(timestamp) => rx_timestamp = timestamp,
+                    Err(e) => {
+                        eprintln!("Failed to get timestamp: {}", e);
+                    }
+                }
+            }
+
+            let tx_timestamp = UNIX_EPOCH + Duration::new(tv_sec.into(), tv_nsec);
+            let elapsed = rx_timestamp.duration_since(tx_timestamp).unwrap();
+            let elapsed_ns = elapsed.as_nanos();
+
+            println!("{}: {}.{:09} -> {}.{:09} = {} ns",
+                id,
+                tx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_secs(),
+                tx_timestamp.duration_since(UNIX_EPOCH).unwrap().subsec_nanos(),
+                rx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_secs(),
+                rx_timestamp.duration_since(UNIX_EPOCH).unwrap().subsec_nanos(),
+                elapsed_ns);
         } else {
             eth_pkt.set_destination(eth_pkt.get_source());
             eth_pkt.set_source(my_mac);
@@ -174,7 +237,14 @@ fn do_server(iface_name: String, oneway: bool) {
     }
 }
 
-fn do_client(iface_name: String, target: String, size: usize, count: usize, oneway: bool, precise: bool) {
+fn do_client(
+    iface_name: String,
+    target: String,
+    size: usize,
+    count: usize,
+    oneway: bool,
+    precise: bool,
+) {
     let target: MacAddr = target.parse().unwrap();
     let interface_name_match = |iface: &NetworkInterface| iface.name == iface_name;
     let interfaces = datalink::interfaces();
@@ -250,86 +320,101 @@ fn do_client(iface_name: String, target: String, size: usize, count: usize, onew
                 let then = UNIX_EPOCH + Duration::new(tv_sec as u64, tv_nsec);
                 let elapsed = now.duration_since(then).unwrap();
 
-                println!("{}: {}.{:09} s", id, elapsed.as_secs(), elapsed.subsec_nanos());
+                println!(
+                    "{}: {}.{:09} s",
+                    id,
+                    elapsed.as_secs(),
+                    elapsed.subsec_nanos()
+                );
 
                 break;
             }
         }
 
-        let sleep_duration = Duration::from_millis(700) + Duration::from_nanos(rand::thread_rng().gen_range(0..10_000_000));
+        let sleep_duration = Duration::from_millis(700)
+            + Duration::from_nanos(rand::thread_rng().gen_range(0..10_000_000));
 
         thread::sleep(sleep_duration);
     }
 }
 
-fn set_sock_timestamp(sock: &tsn::TsnSocket, pkt: &mut [u8]) -> Result<msghdr, String> {
-    Err("".to_string())
-    // const CONTROLSIZE: usize = 1024;
-    // let mut control: [libc::c_char; CONTROLSIZE] = [0; CONTROLSIZE];
+fn enable_rx_timestamp(sock: &tsn::TsnSocket, pkt: &mut [u8]) -> Result<msghdr, String> {
+    const CONTROLSIZE: usize = 1024;
+    let mut control: [libc::c_char; CONTROLSIZE] = [0; CONTROLSIZE];
 
-    // let mut iov: libc::iovec = libc::iovec {
-    //     iov_base: pkt.as_mut_ptr() as *mut libc::c_void,
-    //     iov_len: pkt.len(),
-    // };
+    let mut iov: libc::iovec = libc::iovec {
+        iov_base: pkt.as_mut_ptr() as *mut libc::c_void,
+        iov_len: pkt.len(),
+    };
 
-    // let msg = msghdr {
-    //     msg_iov: &mut iov as *mut libc::iovec,
-    //     msg_iovlen: 1,
-    //     msg_control: control.as_mut_ptr() as *mut libc::c_void,
-    //     msg_controllen: CONTROLSIZE,
-    //     msg_flags: 0,
-    //     msg_name: std::ptr::null_mut::<libc::c_void>(),
-    //     msg_namelen: 0,
-    // };
+    let msg = msghdr {
+        msg_iov: &mut iov as *mut libc::iovec,
+        msg_iovlen: 1,
+        msg_control: control.as_mut_ptr() as *mut libc::c_void,
+        msg_controllen: CONTROLSIZE,
+        msg_flags: 0,
+        msg_name: std::ptr::null_mut::<libc::c_void>(),
+        msg_namelen: 0,
+    };
 
-    // let mut cmsg: *mut cmsghdr;
+    let sockflags: u32 = libc::SOF_TIMESTAMPING_RX_HARDWARE
+        | libc::SOF_TIMESTAMPING_RAW_HARDWARE
+        | libc::SOF_TIMESTAMPING_SOFTWARE;
 
-    // let sockflags: u32 = libc::SOF_TIMESTAMPING_RX_HARDWARE
-    //     | libc::SOF_TIMESTAMPING_RAW_HARDWARE
-    //     | libc::SOF_TIMESTAMPING_SOFTWARE;
+    let res = unsafe {
+        libc::setsockopt(
+            sock.fd,
+            libc::SOL_SOCKET,
+            libc::SO_TIMESTAMPNS,
+            &sockflags as *const u32 as *const libc::c_void,
+            mem::size_of_val(&sockflags) as u32,
+        )
+    };
 
-    // let res = unsafe {
-    //     libc::setsockopt(
-    //         sock.fd,
-    //         libc::SOL_SOCKET,
-    //         libc::SO_TIMESTAMPNS,
-    //         &sockflags as *const u32 as *const libc::c_void,
-    //         mem::size_of_val(&sockflags) as u32,
-    //     )
-    // };
-
-    // if res < 0 {
-    //     Err(format!("Cannot set socket timestamp: {}", Error::last_os_error()))
-    // } else {
-    //     Ok(msg)
-    // }
+    if res < 0 {
+        Err(format!(
+            "Cannot set socket timestamp: {}",
+            Error::last_os_error()
+        ))
+    } else {
+        Ok(msg)
+    }
 }
 
-fn get_timestamp(msg: &mut msghdr) -> Result<(), String> {
-    return Err("".to_string());
+fn get_timestamp(msg: &mut msghdr) -> Result<SystemTime, String> {
+    let mut tend: libc::timespec = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
 
-    // let mut cmsg_level;
-    // let mut cmsg_type;
-    // unsafe {
-    //     cmsg = libc::CMSG_FIRSTHDR(&msg);
-    // }
-    // while cmsg.is_null() {
-    //     unsafe {
-    //         cmsg_level = (*cmsg).cmsg_level;
-    //         cmsg_type = (*cmsg).cmsg_type;
-    //         if cmsg_level != libc::SOL_SOCKET {
-    //             cmsg = libc::CMSG_NXTHDR(&msg, cmsg);
-    //             continue;
-    //         }
-    //     }
-    //     if libc::SO_TIMESTAMPNS == cmsg_type {
-    //         unsafe {
-    //             libc::memcpy(
-    //                 &mut tend as *mut _ as *mut libc::c_void,
-    //                 libc::CMSG_DATA(cmsg) as *const libc::c_void,
-    //                 mem::size_of_val(&tend),
-    //                 );
-    //         }
-    //     }
-    // }
+    let mut cmsg: *mut cmsghdr;
+
+    let mut cmsg_level;
+    let mut cmsg_type;
+    unsafe {
+        cmsg = libc::CMSG_FIRSTHDR(msg);
+    }
+    while !cmsg.is_null() {
+        unsafe {
+            cmsg_level = (*cmsg).cmsg_level;
+            cmsg_type = (*cmsg).cmsg_type;
+            if cmsg_level != libc::SOL_SOCKET {
+                cmsg = libc::CMSG_NXTHDR(msg, cmsg);
+                continue
+            }
+        }
+        if libc::SO_TIMESTAMPNS == cmsg_type {
+            unsafe {
+                libc::memcpy(
+                    &mut tend as *mut _ as *mut libc::c_void,
+                    libc::CMSG_DATA(cmsg) as *const libc::c_void,
+                    mem::size_of_val(&tend),
+                    );
+            }
+            let time = UNIX_EPOCH + Duration::new(tend.tv_sec as u64, tend.tv_nsec as u32);
+            return Ok(time);
+        }
+    }
+
+    Err("No timestamp found".to_string())
 }
