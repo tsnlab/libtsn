@@ -1,12 +1,12 @@
-use nix::libc::{c_void, fcntl, F_SETLKW, msync, MS_SYNC};
-use nix::fcntl::{OFlag, FlockArg};
+use core::slice;
+use nix::fcntl::{FlockArg, OFlag};
+use nix::libc::{c_void, fcntl, msync, F_SETLKW, MS_SYNC};
 use nix::net::if_::if_nametoindex;
-use nix::sys::mman::{shm_open, mmap, shm_unlink, ProtFlags, MapFlags, munmap};
+use nix::sys::mman::{mmap, munmap, shm_open, shm_unlink, MapFlags, ProtFlags};
 use nix::sys::socket::msghdr;
 use nix::sys::stat::Mode;
 use nix::sys::time::{TimeSpec, TimeValLike};
 use nix::unistd::{close, ftruncate};
-use core::slice;
 use std::io::prelude::*;
 use std::io::Error;
 use std::mem::size_of;
@@ -72,8 +72,6 @@ fn delete_vlan(ifname: &str, vlanid: u32) -> Result<String, std::io::Error> {
             send_cmd(command)
         }
     }
-
-
 }
 
 fn open_shmem(shm_fd: &i32) -> *mut c_void {
@@ -87,7 +85,8 @@ fn open_shmem(shm_fd: &i32) -> *mut c_void {
             MapFlags::MAP_SHARED,
             *shm_fd,
             0,
-        ).unwrap()
+        )
+        .unwrap()
     };
 
     unsafe { msync(shm_ptr, SHM_SIZE, MS_SYNC) };
@@ -96,7 +95,12 @@ fn open_shmem(shm_fd: &i32) -> *mut c_void {
 }
 
 fn read_shmem() -> Vec<u32> {
-    let shm_fd = shm_open(SHM_NAME, OFlag::O_CREAT | OFlag::O_RDWR, Mode::S_IRWXU | Mode::S_IRWXG | Mode::S_IRWXO).unwrap();
+    let shm_fd = shm_open(
+        SHM_NAME,
+        OFlag::O_CREAT | OFlag::O_RDWR,
+        Mode::S_IRWXU | Mode::S_IRWXG | Mode::S_IRWXO,
+    )
+    .unwrap();
     let shm_ptr = open_shmem(&shm_fd);
     let mut vec_data: Vec<u32> = unsafe {
         let data = slice::from_raw_parts(shm_ptr as *const u8, SHM_SIZE);
@@ -108,18 +112,24 @@ fn read_shmem() -> Vec<u32> {
 }
 
 fn write_shmem(input: &Vec<u32>) {
-    let shm_fd = shm_open(SHM_NAME, OFlag::O_CREAT | OFlag::O_RDWR, Mode::S_IRWXU | Mode::S_IRWXG | Mode::S_IRWXO).unwrap();
+    let shm_fd = shm_open(
+        SHM_NAME,
+        OFlag::O_CREAT | OFlag::O_RDWR,
+        Mode::S_IRWXU | Mode::S_IRWXG | Mode::S_IRWXO,
+    )
+    .unwrap();
     let shm_ptr = open_shmem(&shm_fd);
     let shm_byte = unsafe {
         slice::from_raw_parts(input.as_ptr() as *const u8, size_of::<u32>() * input.len())
     };
     let addr = shm_ptr as *mut u8;
-    shm_byte.iter().enumerate().for_each(|(i, &x)| unsafe {
-        *addr.add(i) = x
-    });
+    shm_byte
+        .iter()
+        .enumerate()
+        .for_each(|(i, &x)| unsafe { *addr.add(i) = x });
     unsafe { munmap(shm_ptr, SHM_SIZE).unwrap() };
 }
- 
+
 pub fn tsn_sock_open(
     ifname: &str,
     vlanid: u32,
