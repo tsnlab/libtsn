@@ -1,9 +1,16 @@
+use nix::libc::{c_void, fcntl, F_SETLKW, msync, MS_SYNC};
+use nix::fcntl::{OFlag, FlockArg};
 use nix::net::if_::if_nametoindex;
+use nix::sys::mman::{shm_open, mmap, shm_unlink, ProtFlags, MapFlags, munmap};
 use nix::sys::socket::msghdr;
+use nix::sys::stat::Mode;
 use nix::sys::time::{TimeSpec, TimeValLike};
-use nix::unistd::close;
+use nix::unistd::{close, ftruncate};
+use core::slice;
 use std::io::prelude::*;
 use std::io::Error;
+use std::mem::size_of;
+use std::num::NonZeroUsize;
 use std::os::unix::net::UnixStream;
 use std::{mem, str};
 
@@ -16,6 +23,8 @@ pub struct TsnSocket {
 }
 
 const CONTROL_SOCK_PATH: &str = "/var/run/tsn.sock";
+const SHM_SIZE: usize = 48;
+const SHM_NAME: &str = "/vlanid";
 
 fn send_cmd(command: String) -> Result<String, std::io::Error> {
     let mut stream = UnixStream::connect(CONTROL_SOCK_PATH)?;
@@ -26,21 +35,98 @@ fn send_cmd(command: String) -> Result<String, std::io::Error> {
 }
 
 fn create_vlan(ifname: &str, vlanid: u32) -> Result<String, std::io::Error> {
-    let command = format!("create {} {}\n", ifname, vlanid);
-    send_cmd(command)
+    let mut vlan_vec = read_shmem();
+    if vlan_vec.contains(&vlanid) {
+        vlan_vec.push(vlanid);
+        write_shmem(&vlan_vec);
+        Ok(format!("Vlan {} already exists", vlanid))
+    } else {
+        let command = format!("create {} {}\n", ifname, vlanid);
+        vlan_vec.push(vlanid);
+        write_shmem(&vlan_vec);
+        send_cmd(command)
+    }
 }
 
 fn delete_vlan(ifname: &str, vlanid: u32) -> Result<String, std::io::Error> {
     let command = format!("delete {} {}\n", ifname, vlanid);
-    send_cmd(command)
+    let mut vlan_vec = read_shmem();
+
+    if vlan_vec.len() == 1 {
+        shm_unlink(SHM_NAME).unwrap();
+        send_cmd(command)
+    } else {
+        for i in 0..vlan_vec.len() {
+            if vlan_vec[i] == vlanid {
+                vlan_vec.remove(i);
+                break;
+            }
+        }
+        for _ in 0..SHM_SIZE / 4 - vlan_vec.len() {
+            vlan_vec.push(0);
+        }
+        write_shmem(&vlan_vec);
+        if vlan_vec.contains(&vlanid) {
+            Ok(format!("Vlan {} still exists", vlanid))
+        } else {
+            send_cmd(command)
+        }
+    }
+
+
 }
 
+fn open_shmem(shm_fd: &i32) -> *mut c_void {
+    let shm_ptr = unsafe {
+        fcntl(*shm_fd, F_SETLKW, FlockArg::LockExclusive);
+        ftruncate(*shm_fd, SHM_SIZE as libc::off_t).unwrap();
+        mmap(
+            None,
+            NonZeroUsize::new_unchecked(SHM_SIZE),
+            ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
+            MapFlags::MAP_SHARED,
+            *shm_fd,
+            0,
+        ).unwrap()
+    };
+
+    unsafe { msync(shm_ptr, SHM_SIZE, MS_SYNC) };
+    unsafe { fcntl(*shm_fd, F_SETLKW, FlockArg::Unlock) };
+    shm_ptr
+}
+
+fn read_shmem() -> Vec<u32> {
+    let shm_fd = shm_open(SHM_NAME, OFlag::O_CREAT | OFlag::O_RDWR, Mode::S_IRWXU | Mode::S_IRWXG | Mode::S_IRWXO).unwrap();
+    let shm_ptr = open_shmem(&shm_fd);
+    let mut vec_data: Vec<u32> = unsafe {
+        let data = slice::from_raw_parts(shm_ptr as *const u8, SHM_SIZE);
+        slice::from_raw_parts(data.to_vec().as_ptr() as *const u32, data.len() / 4).to_vec()
+    };
+    vec_data.retain(|&x| x != 0);
+    unsafe { munmap(shm_ptr, SHM_SIZE).unwrap() };
+    vec_data
+}
+
+fn write_shmem(input: &Vec<u32>) {
+    let shm_fd = shm_open(SHM_NAME, OFlag::O_CREAT | OFlag::O_RDWR, Mode::S_IRWXU | Mode::S_IRWXG | Mode::S_IRWXO).unwrap();
+    let shm_ptr = open_shmem(&shm_fd);
+    let shm_byte = unsafe {
+        slice::from_raw_parts(input.as_ptr() as *const u8, size_of::<u32>() * input.len())
+    };
+    let addr = shm_ptr as *mut u8;
+    shm_byte.iter().enumerate().for_each(|(i, &x)| unsafe {
+        *addr.add(i) = x
+    });
+    unsafe { munmap(shm_ptr, SHM_SIZE).unwrap() };
+}
+ 
 pub fn tsn_sock_open(
     ifname: &str,
     vlanid: u32,
     priority: u32,
     proto: u32,
 ) -> Result<TsnSocket, i32> {
+    println!("vlanid: {}", vlanid);
     match create_vlan(ifname, vlanid) {
         Ok(v) => println!("{}", v),
         Err(_) => {
