@@ -62,6 +62,7 @@ fn delete_vlan(ifname: &str, vlanid: u32) -> Result<String, std::io::Error> {
                 break;
             }
         }
+        vlan_vec.resize(SHM_SIZE / 4, 0);
         for _ in 0..SHM_SIZE / 4 - vlan_vec.len() {
             vlan_vec.push(0);
         }
