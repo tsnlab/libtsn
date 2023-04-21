@@ -1,4 +1,5 @@
 use core::slice;
+use nix::errno::Errno;
 use nix::net::if_::if_nametoindex;
 use nix::sys::socket::msghdr;
 use nix::sys::time::{TimeSpec, TimeValLike};
@@ -59,7 +60,7 @@ fn create_vlan(ifname: &str, vlanid: u16) -> Result<i32, i32> {
     let config = get_config(ifname);
     let shm_name = get_shmem_name(ifname, vlanid);
     let shm_fd = get_shmem_fd(&shm_name);
-    lock_shmem(&shm_fd);
+    lock_shmem(&shm_fd).unwrap();
     let mut vlan_vec = read_shmem(&shm_name);
     let mut result = Ok(0);
     // I am the frist creator of this vlan
@@ -68,7 +69,7 @@ fn create_vlan(ifname: &str, vlanid: u16) -> Result<i32, i32> {
     }
     vlan_vec.push(process::id());
     write_shmem(&shm_name, &vlan_vec);
-    unlock_shmem(&shm_fd);
+    unlock_shmem(&shm_fd).unwrap();
     result
 }
 
@@ -76,7 +77,7 @@ fn delete_vlan(ifname: &str, vlanid: u16) -> Result<i32, i32> {
     let shm_name = get_shmem_name(ifname, vlanid);
     let shm_fd = get_shmem_fd(&shm_name);
     let mut result = Ok(0);
-    lock_shmem(&shm_fd);
+    lock_shmem(&shm_fd).unwrap();
     let mut vlan_vec = read_shmem(&shm_name);
     // remove my pid from shmem
     for i in 0..vlan_vec.len() {
@@ -85,6 +86,8 @@ fn delete_vlan(ifname: &str, vlanid: u16) -> Result<i32, i32> {
             break;
         }
     }
+    // delete dead process from vector
+    vlan_vec.retain(|x| kill(Pid::from_raw(*x as i32), None).is_ok());
     let mut exit_flag = false;
     if vlan_vec.is_empty() {
         exit_flag = true;
@@ -95,7 +98,7 @@ fn delete_vlan(ifname: &str, vlanid: u16) -> Result<i32, i32> {
         shm_unlink(&*shm_name).unwrap();
         result = vlan::delete_vlan(ifname, vlanid);
     }
-    unlock_shmem(&shm_fd);
+    unlock_shmem(&shm_fd).unwrap();
     result
 }
 
@@ -312,8 +315,6 @@ fn read_shmem(shm_name: &str) -> Vec<u32> {
         .to_vec()
     };
     vec_data.retain(|&x| x != 0);
-    // delete dead process from vector
-    vec_data.retain(|x| kill(Pid::from_raw(*x as i32), None).is_ok());
     unsafe { munmap(shm_ptr, SHM_SIZE).unwrap() };
 
     vec_data
@@ -331,7 +332,7 @@ fn write_shmem(shm_name: &str, input: &Vec<u32>) {
     unsafe { munmap(shm_ptr, SHM_SIZE).unwrap() };
 }
 
-fn lock_shmem(shm_fd: &i32) {
+fn lock_shmem(shm_fd: &i32) -> Result<i32, Errno> {
     let lock = flock {
         l_type: libc::F_WRLCK as i16,
         l_whence: libc::SEEK_SET as i16,
@@ -339,10 +340,10 @@ fn lock_shmem(shm_fd: &i32) {
         l_len: 0,
         l_pid: 0,
     };
-    fcntl(*shm_fd, F_SETLKW(&lock)).unwrap();
+    fcntl(*shm_fd, F_SETLKW(&lock))
 }
 
-fn unlock_shmem(shm_fd: &i32) {
+fn unlock_shmem(shm_fd: &i32) -> Result<i32, Errno>  {
     let lock = flock {
         l_type: libc::F_UNLCK as i16,
         l_whence: libc::SEEK_SET as i16,
@@ -350,7 +351,7 @@ fn unlock_shmem(shm_fd: &i32) {
         l_len: 0,
         l_pid: 0,
     };
-    fcntl(*shm_fd, F_SETLKW(&lock)).unwrap();
+    fcntl(*shm_fd, F_SETLKW(&lock))
 }
 
 fn get_config(ifname: &str) -> config::Config {
