@@ -62,6 +62,7 @@ fn create_vlan(ifname: &str, vlanid: u16) -> Result<i32, i32> {
     lock_shmem(&shm_fd);
     let mut vlan_vec = read_shmem(&shm_name);
     let mut result = Ok(0);
+    // I am the frist creator of this vlan
     if vlan_vec.is_empty() {
         result = vlan::create_vlan(&config, ifname, vlanid);
     }
@@ -77,7 +78,7 @@ fn delete_vlan(ifname: &str, vlanid: u16) -> Result<i32, i32> {
     let mut result = Ok(0);
     lock_shmem(&shm_fd);
     let mut vlan_vec = read_shmem(&shm_name);
-
+    // remove my pid from shmem
     for i in 0..vlan_vec.len() {
         if vlan_vec[i] == process::id() {
             vlan_vec.remove(i);
@@ -88,7 +89,7 @@ fn delete_vlan(ifname: &str, vlanid: u16) -> Result<i32, i32> {
     if vlan_vec.is_empty() {
         exit_flag = true;
     }
-    vlan_vec.resize(SHM_SIZE / 4, 0);
+    vlan_vec.resize(SHM_SIZE / size_of::<u32>(), 0);
     write_shmem(&shm_name, &vlan_vec);
     if exit_flag {
         shm_unlink(&*shm_name).unwrap();
@@ -104,7 +105,6 @@ pub fn sock_open(
     priority: u32,
     proto: u16,
 ) -> Result<TsnSocket, String> {
-    env::set_var("CONFIG_PATH", "./config.yaml");
     match create_vlan(ifname, vlanid) {
         Ok(v) => println!("{}", v),
         Err(_) => {
@@ -305,9 +305,14 @@ fn read_shmem(shm_name: &str) -> Vec<u32> {
 
     let mut vec_data: Vec<u32> = unsafe {
         let data = slice::from_raw_parts(shm_ptr as *const u8, SHM_SIZE);
-        slice::from_raw_parts(data.to_vec().as_ptr() as *const u32, data.len() / 4).to_vec()
+        slice::from_raw_parts(
+            data.to_vec().as_ptr() as *const u32,
+            data.len() / size_of::<u32>(),
+        )
+        .to_vec()
     };
     vec_data.retain(|&x| x != 0);
+    // delete dead process from vector
     vec_data.retain(|x| kill(Pid::from_raw(*x as i32), None).is_ok());
     unsafe { munmap(shm_ptr, SHM_SIZE).unwrap() };
 
