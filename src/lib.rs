@@ -55,17 +55,11 @@ impl TsnSocket {
     }
 }
 
-#[derive(Eq, PartialEq)]
-enum LockKind {
-    Lock,
-    Unlock,
-}
-
 fn create_vlan(ifname: &str, vlanid: u16) -> Result<i32, i32> {
     let config = get_config(ifname);
     let shm_name = get_shmem_name(ifname, vlanid);
     let shm_fd = get_shmem_fd(&shm_name);
-    lock_shmem(&shm_fd, LockKind::Lock);
+    lock_shmem(&shm_fd);
     let mut vlan_vec = read_shmem(&shm_name);
     let mut result = Ok(0);
     if vlan_vec.is_empty() {
@@ -73,7 +67,7 @@ fn create_vlan(ifname: &str, vlanid: u16) -> Result<i32, i32> {
     }
     vlan_vec.push(process::id());
     write_shmem(&shm_name, &vlan_vec);
-    lock_shmem(&shm_fd, LockKind::Unlock);
+    unlock_shmem(&shm_fd);
     result
 }
 
@@ -81,7 +75,7 @@ fn delete_vlan(ifname: &str, vlanid: u16) -> Result<i32, i32> {
     let shm_name = get_shmem_name(ifname, vlanid);
     let shm_fd = get_shmem_fd(&shm_name);
     let mut result = Ok(0);
-    lock_shmem(&shm_fd, LockKind::Lock);
+    lock_shmem(&shm_fd);
     let mut vlan_vec = read_shmem(&shm_name);
 
     for i in 0..vlan_vec.len() {
@@ -100,6 +94,7 @@ fn delete_vlan(ifname: &str, vlanid: u16) -> Result<i32, i32> {
         shm_unlink(&*shm_name).unwrap();
         result = vlan::delete_vlan(ifname, vlanid);
     }
+    unlock_shmem(&shm_fd);
     result
 }
 
@@ -331,19 +326,25 @@ fn write_shmem(shm_name: &str, input: &Vec<u32>) {
     unsafe { munmap(shm_ptr, SHM_SIZE).unwrap() };
 }
 
-fn lock_shmem(shm_fd: &i32, kind: LockKind) {
-    let mut lock = flock {
+fn lock_shmem(shm_fd: &i32) {
+    let lock = flock {
         l_type: libc::F_WRLCK as i16,
         l_whence: libc::SEEK_SET as i16,
         l_start: 0,
         l_len: 0,
         l_pid: 0,
     };
-    if kind.eq(&LockKind::Lock) {
-        lock.l_type = libc::F_WRLCK as i16;
-    } else {
-        lock.l_type = libc::F_UNLCK as i16;
-    }
+    fcntl(*shm_fd, F_SETLKW(&lock)).unwrap();
+}
+
+fn unlock_shmem(shm_fd: &i32) {
+    let lock = flock {
+        l_type: libc::F_UNLCK as i16,
+        l_whence: libc::SEEK_SET as i16,
+        l_start: 0,
+        l_len: 0,
+        l_pid: 0,
+    };
     fcntl(*shm_fd, F_SETLKW(&lock)).unwrap();
 }
 
