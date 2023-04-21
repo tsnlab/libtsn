@@ -1,575 +1,462 @@
-use clap::{Arg, Command as ClapCommand};
-use serde::{Deserialize, Serialize};
-use signal_hook::{consts::SIGINT, iterator::Signals};
-use std::io::{self, Error, Write};
-use std::mem;
-use std::str::FromStr;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::vec::Vec;
-use std::{thread, time::Duration};
-const VLAN_ID_PERF: u32 = 10;
-const VLAN_PRI_PERF: u32 = 3;
-const ETHERTYPE_PERF: u16 = 0x1337;
-static RUNNING: AtomicBool = AtomicBool::new(true);
-const TIMEOUT_SEC: u32 = 1;
+use std::thread;
+use std::time::Duration;
 use std::time::Instant;
 
-enum Mode {
-    Server = 0x00,
-    Client = 0x01,
-}
+use clap::{arg, crate_authors, crate_version, Command};
+use num_format::{Locale, ToFormattedString};
+use signal_hook::{consts::SIGINT, iterator::Signals};
 
-#[derive(Clone, Copy, Serialize, Deserialize, Debug)]
-enum PerfOpcode {
-    ReqStart = 0x00,
-    ReqEnd = 0x01,
-    ResStart = 0x20,
-    ResEnd = 0x21,
-    Data = 0x30,
-    ReqResult = 0x40,
-    ResResult = 0x41,
-}
+use pnet::datalink::{self, NetworkInterface};
+use pnet::packet::ethernet::{EtherType, EthernetPacket, MutableEthernetPacket};
+use pnet::util::MacAddr;
+use pnet_macros::packet;
+use pnet_macros_support::types::u32be;
+use pnet_packet::Packet;
+use pnet_packet::PrimitiveValues;
 
-impl From<u8> for PerfOpcode {
-    fn from(value: u8) -> Self {
-        match value {
-            0x00 => PerfOpcode::ReqStart,
-            0x01 => PerfOpcode::ReqEnd,
-            0x20 => PerfOpcode::ResStart,
-            0x21 => PerfOpcode::ResEnd,
-            0x30 => PerfOpcode::Data,
-            0x40 => PerfOpcode::ReqResult,
-            0x41 => PerfOpcode::ResResult,
-            _ => panic!("Invalid opcode value"),
-        }
+const VLAN_ID_PERF: u16 = 10;
+const VLAN_PRI_PERF: u32 = 3;
+const ETHERTYPE_PERF: u16 = 0x1337;
+const ETH_P_PERF: u16 = libc::ETH_P_ALL as u16; // FIXME: use ETHERTYPE_PERF
+
+static mut RUNNING: bool = false;
+static mut TEST_RUNNING: bool = false;
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Hash)]
+pub struct PerfOpField(pub u8);
+
+impl PerfOpField {
+    pub fn new(field_val: u8) -> PerfOpField {
+        PerfOpField(field_val)
     }
 }
 
-#[derive(Serialize, Deserialize)]
-struct Ethernet {
-    dest: [u8; 6],
-    src: [u8; 6],
-    ether_type: u16,
+impl PrimitiveValues for PerfOpField {
+    type T = (u8,);
+    fn to_primitive_values(&self) -> (u8,) {
+        (self.0,)
+    }
 }
 
-#[repr(packed)]
-#[derive(Serialize, Deserialize)]
-struct PktInfo {
-    id: u32,
-    op: u8,
+#[allow(non_snake_case)]
+#[allow(non_upper_case_globals)]
+pub mod PerfOpFieldValues {
+    use super::PerfOpField;
+
+    pub const ReqStart: PerfOpField = PerfOpField(0x00);
+    pub const ReqEnd: PerfOpField = PerfOpField(0x01);
+    pub const ResStart: PerfOpField = PerfOpField(0x20);
+    pub const ResEnd: PerfOpField = PerfOpField(0x21);
+    pub const Data: PerfOpField = PerfOpField(0x30);
+    pub const ReqResult: PerfOpField = PerfOpField(0x40);
+    pub const ResResult: PerfOpField = PerfOpField(0x41);
 }
 
-#[derive(Serialize, Deserialize)]
-struct PktPerfResult {
-    pkt_count: u64,
-    pkt_size: u64,
-    elapsed_time: Duration,
+/// Packet format for Perf tool
+#[packet]
+pub struct Perf {
+    id: u32be,
+    #[construct_with(u8)]
+    op: PerfOpField,
+    #[payload]
+    payload: Vec<u8>,
+}
+
+#[packet]
+pub struct PerfStartReq {
+    duration: u32be,
+    #[payload]
+    payload: Vec<u8>,
 }
 
 struct Statistics {
-    pkt_count: u64,
-    total_bytes: u64,
+    pkt_count: usize,
+    total_bytes: usize,
     last_id: u32,
-    running: bool,
+    duration: usize,
 }
 
 static mut STATS: Statistics = Statistics {
     pkt_count: 0,
     total_bytes: 0,
     last_id: 0,
-    running: true,
+    duration: 0,
 };
 
-static mut SOCK: tsn::TsnSocket = tsn::TsnSocket {
-    fd: 0,
-    ifname: String::new(),
-    vlanid: 0,
-};
+unsafe impl Send for Statistics {}
 
-fn do_server(sock: &mut i32, size: i32) {
-    let mut pkt: Vec<u8> = vec![0; size as usize];
-    let mut ethernet: Ethernet;
-    let ethernet_size = std::mem::size_of::<Ethernet>();
-    let mut pkt_info: PktInfo;
-    let pkt_info_size = std::mem::size_of::<PktInfo>();
-    let mut recv_bytes;
-    let mut tstart = Instant::now();
-    let mut elapsed_time: Duration;
-
-    let mut thread_handle: Option<thread::JoinHandle<()>> = None;
-
-    println!("Starting server");
-    while RUNNING.load(Ordering::Relaxed) {
-        recv_bytes = tsn::tsn_recv(*sock, pkt.as_mut_ptr(), size);
-
-        ethernet = bincode::deserialize(pkt[0..ethernet_size].try_into().unwrap())
-            .expect("Packet deserializing fail(ethernet)");
-        pkt_info = bincode::deserialize(
-            pkt[ethernet_size..ethernet_size + pkt_info_size]
-                .try_into()
-                .expect("Converting slice to array fail(pkt_info)"),
-        )
-        .expect("Packet deserializing fail(pkt_info)");
-
-        let id = socket::ntohl(pkt_info.id);
-        std::mem::swap(&mut ethernet.dest, &mut ethernet.src);
-
-        let opcode = PerfOpcode::from(pkt_info.op);
-
-        match opcode {
-            PerfOpcode::ReqStart => {
-                eprintln!("Received start '{:08x}'", id);
-                let my_thread = thread::Builder::new().name("PrintStatsThread".to_string());
-
-                tstart = Instant::now();
-
-                unsafe {
-                    STATS.pkt_count = 0;
-                    STATS.total_bytes = 0;
-                    STATS.running = true;
-                }
-
-                thread_handle = Some(my_thread.spawn(statistics_thread).unwrap());
-                let mut send_pkt = bincode::serialize(&ethernet).unwrap();
-
-                pkt_info.op = PerfOpcode::ResStart as u8;
-
-                let mut pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
-                send_pkt.append(&mut pkt_info_bytes);
-
-                send_perf(sock, &mut send_pkt, recv_bytes as usize);
-            }
-            PerfOpcode::Data => unsafe {
-                STATS.pkt_count += 1;
-                STATS.total_bytes += (recv_bytes + 4) as u64;
-                STATS.last_id = socket::ntohl(pkt_info.id);
-            },
-            PerfOpcode::ReqEnd => {
-                eprintln!("Received end '{:08x}'", id);
-
-                unsafe {
-                    STATS.running = false;
-                }
-                if let Some(thread_handle) = thread_handle.take() {
-                    thread_handle.join().unwrap();
-                }
-
-                let mut send_pkt = bincode::serialize(&ethernet).unwrap();
-
-                pkt_info.op = PerfOpcode::ResEnd as u8;
-                let mut pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
-
-                send_pkt.append(&mut pkt_info_bytes);
-                send_perf(sock, &mut send_pkt, recv_bytes as usize);
-            }
-            PerfOpcode::ReqResult => {
-                eprintln!("Received result '{:08x}'", id);
-                elapsed_time = tstart.elapsed();
-
-                pkt_info.op = PerfOpcode::ResResult as u8;
-                let pkt_result = PktPerfResult {
-                    pkt_count: unsafe { STATS.pkt_count.to_be() },
-                    pkt_size: unsafe { STATS.total_bytes.to_be() },
-                    elapsed_time,
-                };
-
-                let mut send_pkt = bincode::serialize(&ethernet).unwrap();
-                let mut pkt_info_bytes = bincode::serialize(&pkt_info).unwrap();
-                let mut pkt_result_bytes = bincode::serialize(&pkt_result).unwrap();
-                send_pkt.append(&mut pkt_info_bytes);
-                send_pkt.append(&mut pkt_result_bytes);
-                send_perf(sock, &mut send_pkt, size as usize);
-            }
-            _ => {
-                println!("opcode = {:0x}", opcode as u8);
-            }
-        }
-    }
-}
-
-fn statistics_thread() {
-    let mut tdiff: Duration;
-    let start = Instant::now();
-    let mut tlast = start;
-
-    let mut last_id: u32 = 0;
-    let mut last_pkt_count: u64 = 0;
-    let mut last_total_bytes: u64 = 0;
-
-    while unsafe { STATS.running } {
-        tdiff = tlast.elapsed();
-
-        if tdiff.as_secs() >= 1 {
-            tlast = Instant::now();
-            tdiff = start.elapsed();
-            let time_elapsed: u16 = tdiff.as_secs() as u16;
-
-            let current_pkt_count: u64 = unsafe { STATS.pkt_count };
-            let current_total_bytes: u64 = unsafe { STATS.total_bytes };
-            let current_id: u32 = unsafe { STATS.last_id };
-            let diff_pkt_count: u64 = current_pkt_count - last_pkt_count;
-            let diff_total_bytes: u64 = current_total_bytes - last_total_bytes;
-
-            let loss_rate = 1.0 - ((diff_pkt_count) as f64 / ((current_id - last_id) as f64));
-
-            last_pkt_count = current_pkt_count;
-            last_total_bytes = current_total_bytes;
-            last_id = current_id;
-
-            println!(
-                "Stat {} {} pps {} bps loss {:.3}%",
-                time_elapsed,
-                diff_pkt_count,
-                diff_total_bytes * 8,
-                loss_rate * 100_f64
-            );
-            io::stdout().flush().unwrap();
-        } else {
-            let remaining_ns: u64 = (Duration::from_secs(1) - tdiff)
-                .as_nanos()
-                .try_into()
-                .expect("Conversion Fail u128->u64");
-            let duration = Duration::from_nanos(remaining_ns);
-            thread::sleep(duration);
-        }
-    }
-
-    tdiff = tlast.elapsed();
-    if tdiff.as_secs() >= 1 {
-        tdiff = start.elapsed();
-        let time_elapsed: u16 = tdiff
-            .as_secs()
-            .try_into()
-            .expect("Conversion Fail u64->u16");
-
-        let current_pkt_count: u64 = unsafe { STATS.pkt_count };
-        let current_total_bytes: u64 = unsafe { STATS.total_bytes };
-        let current_id: u32 = unsafe { STATS.last_id };
-
-        let diff_pkt_count: u64 = current_pkt_count - last_pkt_count;
-        let diff_total_bytes: u64 = current_total_bytes - last_total_bytes;
-        let loss_rate: f64 = 1.0 - ((diff_pkt_count) as f64 / ((current_id - last_id) as f64));
-
-        println!(
-            "Stat {} {} pps {} bps loss {:.3}%",
-            time_elapsed,
-            diff_pkt_count,
-            diff_total_bytes * 8,
-            loss_rate * 100_f64
-        );
-        io::stdout().flush().unwrap();
-    }
-}
-
-fn do_client(sock: &mut i32, iface: String, size: i32, target: String, time: i32) {
-    let mut pkt: Vec<u8> = vec![0; size as usize];
-    let ethernet_size = mem::size_of::<Ethernet>();
-    let pkt_info_size = mem::size_of::<PktInfo>();
-    let recv_packet_size = ethernet_size + pkt_info_size;
-
-    let timeout: libc::timeval = libc::timeval {
-        tv_sec: TIMEOUT_SEC as i64,
-        tv_usec: 0,
-    };
-    let res = unsafe {
-        libc::setsockopt(
-            *sock,
-            libc::SOL_SOCKET,
-            libc::SO_RCVTIMEO,
-            &timeout as *const _ as *const libc::c_void,
-            mem::size_of_val(&timeout) as u32,
-        )
-    };
-
-    if res < 0 {
-        panic!("last OS error: {:?}", Error::last_os_error());
-    }
-
-    let mut srcmac: [u8; 6] = [0; 6];
-
-    let mut ifr: ifstructs::ifreq = ifstructs::ifreq {
-        ifr_name: [0; 16],
-        ifr_ifru: ifstructs::ifr_ifru {
-            ifr_addr: libc::sockaddr {
-                sa_data: [0; 14],
-                sa_family: 0,
-            },
-        },
-    };
-
-    ifr.ifr_name[..iface.len()].clone_from_slice(iface.as_bytes());
-
-    unsafe {
-        if libc::ioctl(*sock, libc::SIOCGIFHWADDR, &ifr) == 0 {
-            libc::memcpy(
-                srcmac.as_mut_ptr() as *mut libc::c_void,
-                ifr.ifr_ifru.ifr_addr.sa_data.as_mut_ptr() as *const libc::c_void,
-                6,
-            );
-        } else {
-            println!("Failed to get mac adddr");
-            panic!("last OS error: {:?}", Error::last_os_error());
-        }
-    }
-
-    let dstmac: Vec<&str> = target.split(':').collect();
-    let dstmac = [
-        hex::decode(dstmac[0]).unwrap()[0],
-        hex::decode(dstmac[1]).unwrap()[0],
-        hex::decode(dstmac[2]).unwrap()[0],
-        hex::decode(dstmac[3]).unwrap()[0],
-        hex::decode(dstmac[4]).unwrap()[0],
-        hex::decode(dstmac[5]).unwrap()[0],
-    ];
-
-    println!("Starting client");
-
-    let custom_id: u32 = 0xdeadbeef;
-
-    let ethernet: Ethernet = Ethernet {
-        dest: dstmac,
-        src: srcmac,
-        ether_type: socket::htons(ETHERTYPE_PERF),
-    };
-
-    let mut pkt_info: PktInfo = PktInfo {
-        id: socket::htonl(custom_id),
-        op: PerfOpcode::ReqStart as u8,
-    };
-
-    prep_pkt(&mut pkt, &ethernet, &pkt_info);
-
-    loop {
-        send_perf(sock, &mut pkt, size as usize);
-        match recv_perf(
-            sock,
-            &custom_id,
-            PerfOpcode::ResStart,
-            &mut pkt,
-            recv_packet_size,
-        ) {
-            Ok(_status) => break,
-            Err(err) => println!("Error: {}", err),
-        }
-    }
-    println!("Fire");
-
-    let mut sent_id = 1;
-    pkt_info.op = PerfOpcode::Data as u8;
-    let tstart = Instant::now();
-    let mut tdiff = tstart.elapsed();
-
-    while RUNNING.load(Ordering::Relaxed) && tdiff.as_secs() < time as u64 {
-        pkt_info.id = socket::htonl(sent_id);
-        prep_pkt(&mut pkt, &ethernet, &pkt_info);
-        send_perf(sock, &mut pkt, size as usize);
-
-        sent_id += 1;
-        tdiff = tstart.elapsed();
-    }
-
-    eprintln!("Done");
-
-    pkt_info.id = socket::htonl(custom_id);
-    pkt_info.op = PerfOpcode::ReqEnd as u8;
-    prep_pkt(&mut pkt, &ethernet, &pkt_info);
-    loop {
-        send_perf(sock, &mut pkt, size as usize);
-        match recv_perf(
-            sock,
-            &custom_id,
-            PerfOpcode::ResEnd,
-            &mut pkt,
-            recv_packet_size,
-        ) {
-            Ok(_status) => break,
-            Err(err) => println!("Error: {}", err),
-        }
-    }
-}
-
-fn recv_perf(
-    sock: &i32,
-    id: &u32,
-    op: PerfOpcode,
-    pkt: &mut Vec<u8>,
-    size: usize,
-) -> Result<bool, String> {
-    let tstart: Instant = Instant::now();
-    let mut tdiff: Duration;
-    let ethernet_size = mem::size_of::<Ethernet>();
-    let pkt_info_size = mem::size_of::<PktInfo>();
-    while RUNNING.load(Ordering::Relaxed) {
-        let len = tsn::tsn_recv(*sock, pkt.as_mut_ptr(), size as i32);
-        tdiff = tstart.elapsed();
-
-        let mut pkt_info: PktInfo =
-            bincode::deserialize(&pkt[ethernet_size..ethernet_size + pkt_info_size])
-                .expect("Packet deserializing fail(pkt_info)");
-        pkt_info.id = socket::ntohl(pkt_info.id);
-
-        if len < 0 && tdiff.as_nanos() >= TIMEOUT_SEC as u128 {
-            return Err("Receive Timeout".to_string());
-        } else if pkt_info.id == *id && pkt_info.op == op as u8 {
-            break;
-        }
-    }
-    Ok(true)
-}
-
-fn send_perf(sock: &i32, pkt: &mut Vec<u8>, size: usize) {
-    let sent = tsn::tsn_send(*sock, pkt.as_mut_ptr(), size as i32);
-
-    if sent < 0 {
-        eprintln!("failed to send");
-    }
-}
-
-fn prep_pkt(pkt: &mut Vec<u8>, ethernet: &Ethernet, pkt_info: &PktInfo) {
-    let ethernet_bytes = bincode::serialize(&ethernet).unwrap();
-    let pkt_info_bytes = bincode::serialize(pkt_info).unwrap();
-    let ethernet_size = ethernet_bytes.len();
-    let pkt_info_size = pkt_info_bytes.len();
-
-    let (ethernet_place, rest) = pkt.split_at_mut(ethernet_size);
-    let (pktinfo_place, _) = rest.split_at_mut(pkt_info_size);
-
-    ethernet_place.copy_from_slice(&ethernet_bytes);
-    pktinfo_place.copy_from_slice(&pkt_info_bytes);
-}
-fn main() -> Result<(), std::io::Error> {
-    let _verbose: bool;
-    let iface: &str;
-    let size: &str;
-    let mut target: &str = "";
-    let mut time: &str = "";
-    let mode: Mode;
-
-    let server_command = ClapCommand::new("server")
+fn main() {
+    let server_command = Command::new("server")
         .about("Server mode")
-        .arg(
-            Arg::new("_verbose")
-                .long("_verbose")
-                .short('v')
-                .takes_value(false)
-                .required(false),
-        )
-        .arg(
-            Arg::new("interface")
-                .long("interface")
-                .short('i')
-                .takes_value(true),
-        )
-        .arg(
-            Arg::new("size")
-                .long("size")
-                .short('p')
-                .takes_value(true)
-                .default_value("100"),
-        );
+        .short_flag('s')
+        .arg(arg!(interface: -i --interface <interface> "interface to use").required(true));
 
-    let client_command = ClapCommand::new("client")
+    let client_command = Command::new("client")
         .about("Client mode")
+        .short_flag('c')
+        .arg(arg!(interface: -i --interface <interface> "interface to use").required(true))
+        .arg(arg!(target: -t --target <target> "Target MAC address").required(true))
         .arg(
-            Arg::new("_verbose")
-                .long("_verbose")
-                .short('v')
-                .takes_value(false)
-                .required(false),
+            arg!(size: -p --size <size> "packet size")
+                .required(false)
+                .default_value("64"),
         )
         .arg(
-            Arg::new("interface")
-                .long("interface")
-                .short('i')
-                .takes_value(true),
-        )
-        .arg(
-            Arg::new("size")
-                .long("size")
-                .short('p')
-                .takes_value(true)
-                .default_value("100"),
-        )
-        .arg(
-            Arg::new("target")
-                .long("target")
-                .short('t')
-                .takes_value(true),
-        )
-        .arg(
-            Arg::new("time")
-                .long("time")
-                .short('T')
-                .takes_value(true)
-                .default_value("120"),
+            arg!(duration: -d --duration <duration>)
+                .required(false)
+                .default_value("10"),
         );
 
-    let matched_command = ClapCommand::new("run")
+    let matched_command = Command::new("throughput")
+        .author(crate_authors!())
+        .version(crate_version!())
         .subcommand_required(true)
         .arg_required_else_help(true)
         .subcommand(server_command)
         .subcommand(client_command)
         .get_matches();
 
-    match matched_command.subcommand() {
-        Some(("server", sub_matches)) => {
-            mode = Mode::Server;
-            _verbose = sub_matches.is_present("_verbose");
-            iface = sub_matches.value_of("interface").expect("interface to use");
-            size = sub_matches.value_of("size").expect("packet size");
+    match matched_command.subcommand().unwrap() {
+        ("server", server_matches) => {
+            let iface = server_matches.value_of("interface").unwrap().to_string();
+            do_server(iface)
         }
-        Some(("client", sub_matches)) => {
-            mode = Mode::Client;
-            _verbose = sub_matches.is_present("_verbose");
-            iface = sub_matches.value_of("interface").expect("interface to use");
-            size = sub_matches.value_of("size").expect("packet size");
-            target = sub_matches.value_of("target").expect("target MAC address");
-            time = sub_matches
-                .value_of("time")
-                .expect("how many seconds to run test");
+        ("client", client_matches) => {
+            let iface = client_matches.value_of("interface").unwrap().to_string();
+            let target = client_matches.value_of("target").unwrap().to_string();
+            let size: usize = client_matches.value_of("size").unwrap().parse().unwrap();
+            let duration: usize = client_matches
+                .value_of("duration")
+                .unwrap()
+                .parse()
+                .unwrap();
+
+            do_client(iface, target, size, duration)
         }
-        _ => unreachable!(),
+        _ => panic!("Invalid command"),
+    }
+}
+
+fn do_server(iface_name: String) {
+    let interface_name_match = |iface: &NetworkInterface| iface.name == iface_name;
+    let interfaces = datalink::interfaces();
+    let interface = interfaces.into_iter().find(interface_name_match).unwrap();
+    let my_mac = interface.mac.unwrap();
+
+    let mut sock = match tsn::sock_open(&iface_name, VLAN_ID_PERF, VLAN_PRI_PERF, ETH_P_PERF) {
+        Ok(sock) => sock,
+        Err(e) => panic!("Failed to open TSN socket: {}", e),
+    };
+
+    if let Err(e) = sock.set_timeout(Duration::from_secs(1)) {
+        panic!("Failed to set timeout: {}", e)
     }
 
     unsafe {
-        SOCK =
-            tsn::tsn_sock_open(iface, VLAN_ID_PERF, VLAN_PRI_PERF, ETHERTYPE_PERF as u32).unwrap();
-
-        if SOCK.fd <= 0 {
-            println!("socket create error");
-            panic!("last OS error: {:?}", Error::last_os_error());
-        }
+        RUNNING = true;
     }
-
-    let mut signals = Signals::new([SIGINT])?;
-
+    // Handle signal handler
+    let mut signals = Signals::new([SIGINT]).unwrap();
     thread::spawn(move || {
         for _ in signals.forever() {
-            println!("Interrrupted");
-            RUNNING.store(false, Ordering::Relaxed);
-            tsn::tsn_sock_close(unsafe { &mut SOCK });
-            std::process::exit(1);
+            unsafe {
+                RUNNING = false;
+            }
         }
     });
 
-    match mode {
-        Mode::Server => {
-            let mut fd = unsafe { SOCK.fd };
-            do_server(&mut fd, FromStr::from_str(size).unwrap())
+    while unsafe { RUNNING } {
+        let mut packet = [0u8; 1514];
+        if sock.recv(&mut packet).is_err() {
+            continue;
         }
-        Mode::Client => {
-            let mut fd = unsafe { SOCK.fd };
-            do_client(
-                &mut fd,
-                iface.to_string(),
-                FromStr::from_str(size).unwrap(),
-                target.to_string(),
-                FromStr::from_str(time).unwrap(),
-            )
+
+        let eth_pkt: EthernetPacket = EthernetPacket::new(&packet).unwrap();
+        if eth_pkt.get_ethertype() != EtherType(ETHERTYPE_PERF) {
+            continue;
+        }
+
+        let perf_pkt: PerfPacket = PerfPacket::new(eth_pkt.payload()).unwrap();
+
+        match perf_pkt.get_op() {
+            PerfOpFieldValues::ReqStart => {
+                println!("Received ReqStart");
+
+                if unsafe { TEST_RUNNING } {
+                    println!("Already running");
+                    continue;
+                }
+
+                let req_start: PerfStartReqPacket =
+                    PerfStartReqPacket::new(perf_pkt.payload()).unwrap();
+                let duration: Duration = Duration::from_secs(req_start.get_duration().into());
+
+                unsafe {
+                    STATS.duration = duration.as_secs() as usize;
+                    STATS.pkt_count = 0;
+                    STATS.total_bytes = 0;
+                    STATS.last_id = 0;
+                    TEST_RUNNING = true;
+                }
+
+                // Make thread for statistics
+                thread::spawn(stats_worker);
+
+                let mut perf_buffer = vec![0; 8];
+                let mut eth_buffer = vec![0; 14 + 8];
+
+                let mut perf_pkt = MutablePerfPacket::new(&mut perf_buffer).unwrap();
+                perf_pkt.set_id(perf_pkt.get_id());
+                perf_pkt.set_op(PerfOpFieldValues::ResStart);
+
+                let mut eth_pkt = MutableEthernetPacket::new(&mut eth_buffer).unwrap();
+                eth_pkt.set_destination(eth_pkt.get_source());
+                eth_pkt.set_source(my_mac);
+                eth_pkt.set_ethertype(EtherType(ETHERTYPE_PERF));
+
+                eth_pkt.set_payload(perf_pkt.packet());
+                if let Err(e) = sock.send(eth_pkt.packet()) {
+                    eprintln!("Failed to send packet: {}", e)
+                }
+            }
+            PerfOpFieldValues::Data => {
+                unsafe {
+                    STATS.last_id = perf_pkt.get_id();
+                    STATS.pkt_count += 1;
+                    STATS.total_bytes += packet.len() + 4/* hidden VLAN tag */;
+                }
+            }
+            PerfOpFieldValues::ReqEnd => {
+                println!("Received ReqEnd");
+
+                unsafe { TEST_RUNNING = false }
+
+                let mut perf_buffer = vec![0; 8];
+                let mut eth_buffer = vec![0; 14 + 8];
+
+                let mut perf_pkt = MutablePerfPacket::new(&mut perf_buffer).unwrap();
+                perf_pkt.set_id(perf_pkt.get_id());
+                perf_pkt.set_op(PerfOpFieldValues::ResEnd);
+
+                let mut eth_pkt = MutableEthernetPacket::new(&mut eth_buffer).unwrap();
+                eth_pkt.set_destination(eth_pkt.get_source());
+                eth_pkt.set_source(my_mac);
+                eth_pkt.set_ethertype(EtherType(ETHERTYPE_PERF));
+
+                eth_pkt.set_payload(perf_pkt.packet());
+                if let Err(e) = sock.send(eth_pkt.packet()) {
+                    eprintln!("Failed to send packet: {}", e)
+                }
+
+                // Print statistics
+                unsafe {
+                    println!(
+                        "{} packets, {} bytes {} bps",
+                        STATS.pkt_count,
+                        STATS.total_bytes,
+                        STATS.total_bytes * 8 / STATS.duration
+                    );
+                }
+            }
+            _ => {}
         }
     }
 
-    tsn::tsn_sock_close(unsafe { &mut SOCK });
-    println!("sock closed");
-    Ok(())
+    println!("Closing socket...");
+    if let Err(e) = sock.close() {
+        eprintln!("Failed to close socket: {}", e);
+    }
+}
+
+fn do_client(iface_name: String, target: String, size: usize, duration: usize) {
+    let interface_name_match = |iface: &NetworkInterface| iface.name == iface_name;
+    let interfaces = datalink::interfaces();
+    let interface = interfaces.into_iter().find(interface_name_match).unwrap();
+    let my_mac = interface.mac.unwrap();
+
+    let target: MacAddr = target.parse().expect("Invalid MAC address");
+
+    let mut sock = match tsn::sock_open(&iface_name, VLAN_ID_PERF, VLAN_PRI_PERF, ETH_P_PERF) {
+        Ok(sock) => sock,
+        Err(e) => panic!("Failed to open TSN socket: {}", e),
+    };
+
+    if let Err(e) = sock.set_timeout(Duration::from_secs(1)) {
+        panic!("Failed to set timeout: {}", e)
+    }
+
+    // Request start
+    println!("Requesting start");
+    let mut req_start_buffer = vec![0; 4];
+    let mut perf_buffer = vec![0; 8 + 4];
+    let mut eth_buffer = vec![0; 14 + 8 + 4];
+
+    let mut perf_req_start_pkt = MutablePerfStartReqPacket::new(&mut req_start_buffer).unwrap();
+    perf_req_start_pkt.set_duration(duration.try_into().unwrap());
+
+    let mut perf_pkt = MutablePerfPacket::new(&mut perf_buffer).unwrap();
+    perf_pkt.set_id(0xdeadbeef); // TODO: Randomize
+    perf_pkt.set_op(PerfOpFieldValues::ReqStart);
+    perf_pkt.set_payload(perf_req_start_pkt.packet());
+
+    let mut eth_pkt = MutableEthernetPacket::new(&mut eth_buffer).unwrap();
+    eth_pkt.set_destination(target);
+    eth_pkt.set_source(my_mac);
+    eth_pkt.set_ethertype(EtherType(ETHERTYPE_PERF));
+    eth_pkt.set_payload(perf_pkt.packet());
+
+    for _ in 0..3 {
+        if let Err(e) = sock.send(eth_pkt.packet()) {
+            eprintln!("Failed to send packet: {}", e)
+        }
+
+        match wait_for_response(&mut sock, PerfOpFieldValues::ResStart) {
+            Err(_) => eprintln!("No response, retrying..."),
+            Ok(_) => break,
+        }
+    }
+
+    unsafe {
+        RUNNING = true;
+    }
+    // Handle signal handler
+    let mut signals = Signals::new([SIGINT]).unwrap();
+    thread::spawn(move || {
+        for _ in signals.forever() {
+            unsafe {
+                RUNNING = false;
+            }
+        }
+    });
+
+    // Send data
+    println!("Sending data");
+    let mut perf_buffer = vec![0; 8 + size];
+    let mut eth_buffer = vec![0; 14 + 8 + size];
+    let mut eth_pkt = MutableEthernetPacket::new(&mut eth_buffer).unwrap();
+    eth_pkt.set_destination(target);
+    eth_pkt.set_source(my_mac);
+    eth_pkt.set_ethertype(EtherType(ETHERTYPE_PERF));
+
+    let now = Instant::now();
+    let mut last_id = 0;
+    loop {
+        let mut perf_pkt = MutablePerfPacket::new(&mut perf_buffer).unwrap();
+        perf_pkt.set_id(last_id); // TODO: Randomize
+        perf_pkt.set_op(PerfOpFieldValues::Data);
+
+        eth_pkt.set_payload(perf_pkt.packet());
+        if sock.send(eth_pkt.packet()).is_err() {}
+
+        last_id += 1;
+
+        if now.elapsed().as_secs() > duration as u64 || !unsafe { RUNNING } {
+            break;
+        }
+    }
+
+    // Request end
+    println!("Requesting end");
+    let mut perf_buffer = vec![0; 8];
+    let mut eth_buffer = vec![0; 14 + 8];
+
+    let mut perf_pkt = MutablePerfPacket::new(&mut perf_buffer).unwrap();
+    perf_pkt.set_id(0xdeadbeef); // TODO: Randomize
+    perf_pkt.set_op(PerfOpFieldValues::ReqEnd);
+
+    let mut eth_pkt = MutableEthernetPacket::new(&mut eth_buffer).unwrap();
+    eth_pkt.set_destination(target);
+    eth_pkt.set_source(my_mac);
+    eth_pkt.set_ethertype(EtherType(ETHERTYPE_PERF));
+    eth_pkt.set_payload(perf_pkt.packet());
+
+    for _ in 0..3 {
+        if let Err(e) = sock.send(eth_pkt.packet()) {
+            eprintln!("Failed to send packet: {}", e);
+        }
+
+        match wait_for_response(&mut sock, PerfOpFieldValues::ResEnd) {
+            Ok(_) => break,
+            Err(_) => eprintln!("No response, retrying..."),
+        }
+    }
+
+    println!("Closing socket...");
+    if let Err(e) = sock.close() {
+        eprintln!("Failed to close socket: {}", e)
+    }
+}
+
+fn wait_for_response(sock: &mut tsn::TsnSocket, op: PerfOpField) -> Result<(), ()> {
+    let timeout = Duration::from_millis(1000);
+    let now = Instant::now();
+    loop {
+        if now.elapsed() > timeout {
+            return Err(());
+        }
+        let mut packet = [0; 1514];
+        if let Err(e) = sock.recv(&mut packet) {
+            eprintln!("Failed to receive packet: {}", e);
+            continue;
+        }
+
+        let eth_pkt: EthernetPacket = EthernetPacket::new(&packet).unwrap();
+        if eth_pkt.get_ethertype() != EtherType(ETHERTYPE_PERF) {
+            continue;
+        }
+
+        let perf_pkt: PerfPacket = PerfPacket::new(eth_pkt.payload()).unwrap();
+        if perf_pkt.get_op() == op {
+            return Ok(());
+        }
+    }
+}
+
+fn stats_worker() {
+    let stats = unsafe { &mut STATS };
+    let mut last_id = 0;
+    let mut last_bytes = 0;
+    let mut last_packets = 0;
+    let start_time = Instant::now();
+    let mut last_time = start_time;
+
+    const SECOND: Duration = Duration::from_secs(1);
+
+    while unsafe { TEST_RUNNING } {
+        let elapsed = last_time.elapsed();
+        if elapsed < SECOND {
+            thread::sleep(SECOND - elapsed);
+        }
+
+        last_time = Instant::now();
+
+        let id = stats.last_id;
+        let bytes = stats.total_bytes;
+        let bits = (bytes - last_bytes) * 8;
+        let total_packets = stats.pkt_count;
+        let packets = total_packets - last_packets;
+        let loss_rate = 1.0 - packets as f64 / (id - last_id) as f64;
+
+        let lap = start_time.elapsed().as_secs();
+
+        if lap > stats.duration as u64 {
+            unsafe {
+                TEST_RUNNING = false;
+            }
+            break;
+        }
+        println!(
+            "{0}s: \
+            {1} pps {2} bps, \
+            loss: {3:.2}%",
+            lap,
+            packets.to_formatted_string(&Locale::en),
+            bits.to_formatted_string(&Locale::en),
+            loss_rate * 100.0,
+        );
+
+        last_id = id;
+        last_bytes = bytes;
+        last_packets = total_packets;
+    }
 }
