@@ -14,7 +14,7 @@ use nix::{
     unistd::Pid,
 };
 use std::io::Error;
-use std::{mem, str};
+use std::{env, mem, str};
 use std::{mem::size_of, num::NonZeroUsize, os::raw::c_void, process, time::Duration};
 
 extern crate socket;
@@ -31,7 +31,6 @@ mod tas;
 mod vlan;
 
 const SHM_SIZE: usize = 128;
-const CONFIG_PATH: &str = "./config.yaml";
 
 // Make imple for TsnSocket
 impl TsnSocket {
@@ -63,20 +62,14 @@ enum LockKind {
 }
 
 fn create_vlan(ifname: &str, vlanid: u16) -> Result<i32, i32> {
-    let configs = config::read_config(CONFIG_PATH).unwrap();
-    let config = configs.get(ifname).unwrap();
-    let shm_name = format!("{}.{}", ifname, vlanid);
-    let shm_fd = shm_open(
-        &*shm_name,
-        OFlag::O_CREAT | OFlag::O_RDWR,
-        Mode::S_IRWXU | Mode::S_IRWXG | Mode::S_IRWXO,
-    )
-    .unwrap();
+    let config = get_config(ifname);
+    let shm_name = get_shmem_name(ifname, vlanid);
+    let shm_fd = get_shmem_fd(&shm_name);
     lock_shmem(&shm_fd, LockKind::Lock);
     let mut vlan_vec = read_shmem(&shm_name);
     let mut result = Ok(0);
     if vlan_vec.is_empty() {
-        result = vlan::create_vlan(config, ifname, vlanid);
+        result = vlan::create_vlan(&config, ifname, vlanid);
     }
     vlan_vec.push(process::id());
     write_shmem(&shm_name, &vlan_vec);
@@ -85,13 +78,8 @@ fn create_vlan(ifname: &str, vlanid: u16) -> Result<i32, i32> {
 }
 
 fn delete_vlan(ifname: &str, vlanid: u16) -> Result<i32, i32> {
-    let shm_name = format!("{}.{}", ifname, vlanid);
-    let shm_fd = shm_open(
-        &*shm_name,
-        OFlag::O_CREAT | OFlag::O_RDWR,
-        Mode::S_IRWXU | Mode::S_IRWXG | Mode::S_IRWXO,
-    )
-    .unwrap();
+    let shm_name = get_shmem_name(ifname, vlanid);
+    let shm_fd = get_shmem_fd(&shm_name);
     let mut result = Ok(0);
     lock_shmem(&shm_fd, LockKind::Lock);
     let mut vlan_vec = read_shmem(&shm_name);
@@ -121,6 +109,7 @@ pub fn sock_open(
     priority: u32,
     proto: u16,
 ) -> Result<TsnSocket, String> {
+    env::set_var("CONFIG_PATH", "./config.yaml");
     match create_vlan(ifname, vlanid) {
         Ok(v) => println!("{}", v),
         Err(_) => {
@@ -356,4 +345,24 @@ fn lock_shmem(shm_fd: &i32, kind: LockKind) {
         lock.l_type = libc::F_UNLCK as i16;
     }
     fcntl(*shm_fd, F_SETLKW(&lock)).unwrap();
+}
+
+fn get_config(ifname: &str) -> config::Config {
+    let config_path = env::var("CONFIG_PATH").unwrap_or("./config.yaml".to_string());
+    let configs = config::read_config(&config_path).unwrap();
+    let config = configs.get(ifname).unwrap();
+    config.clone()
+}
+
+fn get_shmem_name(ifname: &str, vlanid: u16) -> String {
+    format!("libtsn_vlan_{}.{}", ifname, vlanid)
+}
+
+fn get_shmem_fd(shm_name: &str) -> i32 {
+    shm_open(
+        shm_name,
+        OFlag::O_CREAT | OFlag::O_RDWR,
+        Mode::S_IRWXU | Mode::S_IRWXG | Mode::S_IRWXO,
+    )
+    .unwrap()
 }
