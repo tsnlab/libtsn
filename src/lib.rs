@@ -1,13 +1,23 @@
-use std::time::Duration;
-
+use core::slice;
 use nix::net::if_::if_nametoindex;
 use nix::sys::socket::msghdr;
 use nix::sys::time::{TimeSpec, TimeValLike};
 use nix::unistd::close;
+use nix::{
+    fcntl::{fcntl, FcntlArg::F_SETLKW, OFlag},
+    libc::{self, flock, ftruncate, msync, MS_SYNC},
+    sys::{
+        mman::{mmap, munmap, shm_open, shm_unlink, MapFlags, ProtFlags},
+        signal::kill,
+        stat::Mode,
+    },
+    unistd::Pid,
+};
 use std::io::prelude::*;
 use std::io::Error;
 use std::os::unix::net::UnixStream;
 use std::{mem, str};
+use std::{mem::size_of, num::NonZeroUsize, os::raw::c_void, process, time::Duration};
 
 extern crate socket;
 
@@ -16,6 +26,14 @@ pub struct TsnSocket {
     pub ifname: String,
     pub vlanid: u16,
 }
+
+mod cbs;
+mod config;
+mod tas;
+mod vlan;
+
+const SHM_SIZE: usize = 128;
+const CONFIG_PATH: &str = "./config.yaml";
 
 // Make imple for TsnSocket
 impl TsnSocket {
@@ -42,22 +60,63 @@ impl TsnSocket {
 
 const CONTROL_SOCK_PATH: &str = "/var/run/tsn.sock";
 
-fn send_cmd(command: String) -> Result<String, std::io::Error> {
-    let mut stream = UnixStream::connect(CONTROL_SOCK_PATH)?;
-    stream.write_all(command.as_bytes())?;
-    let mut msg = String::new();
-    stream.read_to_string(&mut msg)?;
-    Ok(msg)
+#[derive(Eq, PartialEq)]
+enum LockKind {
+    LOCK,
+    UNLOCK,
 }
 
-fn create_vlan(ifname: &str, vlanid: u16) -> Result<String, std::io::Error> {
-    let command = format!("create {} {}\n", ifname, vlanid);
-    send_cmd(command)
+fn create_vlan(ifname: &str, vlanid: u16) -> Result<i32, i32> {
+    let configs = config::read_config(CONFIG_PATH).unwrap();
+    let config = configs.get(ifname).unwrap();
+    let shm_name = format!("{}.{}", ifname, vlanid);
+    let shm_fd = shm_open(
+        &*shm_name,
+        OFlag::O_CREAT | OFlag::O_RDWR,
+        Mode::S_IRWXU | Mode::S_IRWXG | Mode::S_IRWXO,
+    )
+    .unwrap();
+    lock_shmem(&shm_fd, LockKind::LOCK);
+    let mut vlan_vec = read_shmem(&*shm_name);
+    let mut result = Ok(0);
+    if vlan_vec.len() == 0 {
+        result = vlan::create_vlan(config, ifname, vlanid);
+    }
+    vlan_vec.push(process::id());
+    write_shmem(&*shm_name, &vlan_vec);
+    lock_shmem(&shm_fd, LockKind::UNLOCK);
+    result
 }
 
-fn delete_vlan(ifname: &str, vlanid: u16) -> Result<String, std::io::Error> {
-    let command = format!("delete {} {}\n", ifname, vlanid);
-    send_cmd(command)
+fn delete_vlan(ifname: &str, vlanid: u16) -> Result<i32, i32> {
+    let shm_name = format!("{}.{}", ifname, vlanid);
+    let mut shm_fd = shm_open(
+        &*shm_name,
+        OFlag::O_CREAT | OFlag::O_RDWR,
+        Mode::S_IRWXU | Mode::S_IRWXG | Mode::S_IRWXO,
+    )
+    .unwrap();
+    let mut result = Ok(0);
+    lock_shmem(&shm_fd, LockKind::LOCK);
+    let mut vlan_vec = read_shmem(&*shm_name);
+
+    for i in 0..vlan_vec.len() {
+        if vlan_vec[i] == process::id() {
+            vlan_vec.remove(i);
+            break;
+        }
+    }
+    let mut exit_flag = false;
+    if vlan_vec.len() == 0 {
+        exit_flag = true;
+    }
+    vlan_vec.resize(SHM_SIZE / 4, 0);
+    write_shmem(&*shm_name, &vlan_vec);
+    if exit_flag {
+        shm_unlink(&*shm_name).unwrap();
+        result = vlan::delete_vlan(ifname, vlanid);
+    }
+    result
 }
 
 pub fn sock_open(
@@ -235,4 +294,73 @@ pub fn timespecff_diff(start: &mut TimeSpec, stop: &mut TimeSpec, result: &mut T
 
         *result = result_sec + result_nsec;
     }
+}
+
+fn open_shmem(shm_name: &str) -> *mut c_void {
+    let shm_fd = shm_open(
+        &*shm_name,
+        OFlag::O_CREAT | OFlag::O_RDWR,
+        Mode::S_IRWXU | Mode::S_IRWXG | Mode::S_IRWXO,
+    )
+    .unwrap();
+    let shm_ptr = unsafe {
+        ftruncate(shm_fd, SHM_SIZE as libc::off_t);
+        mmap(
+            None,
+            NonZeroUsize::new_unchecked(SHM_SIZE),
+            ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
+            MapFlags::MAP_SHARED,
+            shm_fd,
+            0,
+        )
+        .unwrap()
+    };
+    unsafe { msync(shm_ptr, SHM_SIZE, MS_SYNC) };
+
+    shm_ptr
+}
+
+fn read_shmem(shm_name: &str) -> Vec<u32> {
+    let shm_ptr = open_shmem(shm_name);
+
+    let mut vec_data: Vec<u32> = unsafe {
+        let data = slice::from_raw_parts(shm_ptr as *const u8, SHM_SIZE);
+        slice::from_raw_parts(data.to_vec().as_ptr() as *const u32, data.len() / 4).to_vec()
+    };
+    vec_data.retain(|&x| x != 0);
+    vec_data = vec_data
+        .into_iter()
+        .filter(|&x| kill(Pid::from_raw(x as i32), None).is_ok())
+        .collect();
+    unsafe { munmap(shm_ptr, SHM_SIZE).unwrap() };
+
+    vec_data
+}
+
+fn write_shmem(shm_name: &str, input: &Vec<u32>) {
+    let shm_ptr = open_shmem(shm_name);
+    let shm_byte = unsafe {
+        slice::from_raw_parts(input.as_ptr() as *const u8, size_of::<u32>() * input.len())
+    };
+    let addr = shm_ptr as *mut u8;
+    for i in 0..shm_byte.len() {
+        unsafe { *addr.add(i) = shm_byte[i] };
+    }
+    unsafe { munmap(shm_ptr, SHM_SIZE).unwrap() };
+}
+
+fn lock_shmem(shm_fd: &i32, kind: LockKind) {
+    let mut lock = flock {
+        l_type: libc::F_WRLCK as i16,
+        l_whence: libc::SEEK_SET as i16,
+        l_start: 0,
+        l_len: 0,
+        l_pid: 0,
+    };
+    if kind.eq(&LockKind::LOCK) {
+        lock.l_type = libc::F_WRLCK as i16;
+    } else {
+        lock.l_type = libc::F_UNLCK as i16;
+    }
+    fcntl(*shm_fd, F_SETLKW(&lock)).unwrap();
 }
