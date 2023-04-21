@@ -343,7 +343,7 @@ fn lock_shmem(shm_fd: &i32) -> Result<i32, Errno> {
     fcntl(*shm_fd, F_SETLKW(&lock))
 }
 
-fn unlock_shmem(shm_fd: &i32) -> Result<i32, Errno>  {
+fn unlock_shmem(shm_fd: &i32) -> Result<i32, Errno> {
     let lock = flock {
         l_type: libc::F_UNLCK as i16,
         l_whence: libc::SEEK_SET as i16,
