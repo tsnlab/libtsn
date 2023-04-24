@@ -89,7 +89,7 @@ fn delete_vlan(ifname: &str, vlanid: u16) -> Result<i32, i32> {
     }
     // delete dead process from vector
     vlan_vec.retain(|x| kill(Pid::from_raw(*x as i32), None).is_ok());
-    let mut exit_flag = vlan_vec.is_empty();
+    let exit_flag = vlan_vec.is_empty();
     vlan_vec.resize(SHM_SIZE / size_of::<u32>(), 0);
     write_shmem(&shm_name, &vlan_vec);
     let result = if exit_flag {
