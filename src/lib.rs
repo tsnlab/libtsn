@@ -30,7 +30,7 @@ mod cbs;
 mod config;
 mod tas;
 mod vlan;
-
+pub mod time;
 const SHM_SIZE: usize = 128;
 
 // Make imple for TsnSocket
@@ -279,7 +279,7 @@ pub fn timespecff_diff(start: &mut TimeSpec, stop: &mut TimeSpec, result: &mut T
     }
 }
 
-fn open_shmem(shm_name: &str) -> *mut c_void {
+fn open_shmem(shm_name: &str) -> Result<*mut c_void, Errno> {
     let shm_fd = shm_open(
         shm_name,
         OFlag::O_CREAT | OFlag::O_RDWR,
@@ -296,15 +296,14 @@ fn open_shmem(shm_name: &str) -> *mut c_void {
             shm_fd,
             0,
         )
-        .unwrap()
     };
-    unsafe { msync(shm_ptr, SHM_SIZE, MS_SYNC) };
+    unsafe { msync(shm_ptr.unwrap(), SHM_SIZE, MS_SYNC) };
 
     shm_ptr
 }
 
 fn read_shmem(shm_name: &str) -> Vec<u32> {
-    let shm_ptr = open_shmem(shm_name);
+    let shm_ptr = open_shmem(shm_name).unwrap();
 
     let mut vec_data: Vec<u32> = unsafe {
         let data = slice::from_raw_parts(shm_ptr as *const u8, SHM_SIZE);
@@ -321,7 +320,7 @@ fn read_shmem(shm_name: &str) -> Vec<u32> {
 }
 
 fn write_shmem(shm_name: &str, input: &Vec<u32>) {
-    let shm_ptr = open_shmem(shm_name);
+    let shm_ptr = open_shmem(shm_name).unwrap();
     let shm_byte = unsafe {
         slice::from_raw_parts(input.as_ptr() as *const u8, size_of::<u32>() * input.len())
     };
