@@ -55,30 +55,35 @@ impl TsnSocket {
     }
 }
 
-fn create_vlan(ifname: &str, vlanid: u16) -> Result<i32, i32> {
-    let config = get_config(ifname);
+fn create_vlan(ifname: &str, vlanid: u16) -> Result<i32, String> {
+    let config = get_config(ifname)?;
     let shm_name = get_shmem_name(ifname, vlanid);
-    let shm_fd = get_shmem_fd(&shm_name);
-    lock_shmem(&shm_fd).unwrap();
-    let mut vlan_vec = read_shmem(&shm_name);
+    let shm_fd = get_shmem_fd(&shm_name)?;
+    lock_shmem(&shm_fd)?;
+    let mut vlan_vec = read_shmem(&shm_name)?;
 
     // If I am the frist user of this vlan, create it
     let result = if vlan_vec.is_empty() {
         vlan::create_vlan(&config, ifname, vlanid)
     } else {
-        Ok(0)
+        Err(0)
     };
     vlan_vec.push(process::id());
-    write_shmem(&shm_name, &vlan_vec);
-    unlock_shmem(&shm_fd).unwrap();
-    result
+    write_shmem(&shm_name, &vlan_vec)?;
+    unlock_shmem(&shm_fd)?;
+    match result {
+        Ok(v) => Ok(v),
+        Err(_) => {
+            return Err(format!("Create vlan fails {}", Error::last_os_error()));
+        }
+    }
 }
 
-fn delete_vlan(ifname: &str, vlanid: u16) -> Result<i32, i32> {
+fn delete_vlan(ifname: &str, vlanid: u16) -> Result<i32, String> {
     let shm_name = get_shmem_name(ifname, vlanid);
-    let shm_fd = get_shmem_fd(&shm_name);
-    lock_shmem(&shm_fd).unwrap();
-    let mut vlan_vec = read_shmem(&shm_name);
+    let shm_fd = get_shmem_fd(&shm_name)?;
+    lock_shmem(&shm_fd)?;
+    let mut vlan_vec = read_shmem(&shm_name)?;
     // remove my pid from shmem
     for i in 0..vlan_vec.len() {
         if vlan_vec[i] == process::id() {
@@ -90,14 +95,19 @@ fn delete_vlan(ifname: &str, vlanid: u16) -> Result<i32, i32> {
     vlan_vec.retain(|x| kill(Pid::from_raw(*x as i32), None).is_ok());
     let exit_flag = vlan_vec.is_empty();
     vlan_vec.resize(SHM_SIZE / size_of::<u32>(), 0);
-    write_shmem(&shm_name, &vlan_vec);
+    write_shmem(&shm_name, &vlan_vec)?;
     let result = if exit_flag {
-        shm_unlink(&*shm_name).unwrap();
-        vlan::delete_vlan(ifname, vlanid)
+        if shm_unlink(&*shm_name).is_err() {
+            return Err(format!("Delete shmem fails {}", Error::last_os_error()));
+        }
+        match vlan::delete_vlan(ifname, vlanid) {
+            Ok(v) => Ok(v),
+            Err(_) => Err(format!("Delete vlan fails {}", Error::last_os_error())),
+        }
     } else {
         Ok(0)
     };
-    unlock_shmem(&shm_fd).unwrap();
+    unlock_shmem(&shm_fd)?;
     result
 }
 
@@ -278,13 +288,16 @@ pub fn timespecff_diff(start: &mut TimeSpec, stop: &mut TimeSpec, result: &mut T
     }
 }
 
-fn open_shmem(shm_name: &str) -> Result<*mut c_void, Errno> {
+fn open_shmem(shm_name: &str) -> Result<*mut c_void, String> {
     let shm_fd = shm_open(
         shm_name,
         OFlag::O_CREAT | OFlag::O_RDWR,
         Mode::S_IRWXU | Mode::S_IRWXG | Mode::S_IRWXO,
-    )
-    .unwrap();
+    );
+    let shm_fd = match shm_fd {
+        Ok(v) => v,
+        Err(_) => return Err(format!("Open shmem fails: {}", Error::last_os_error())),
+    };
     let shm_ptr = unsafe {
         ftruncate(shm_fd, SHM_SIZE as libc::off_t);
         mmap(
@@ -296,13 +309,18 @@ fn open_shmem(shm_name: &str) -> Result<*mut c_void, Errno> {
             0,
         )
     };
-    unsafe { msync(shm_ptr.unwrap(), SHM_SIZE, MS_SYNC) };
+    let shm_ptr = match shm_ptr {
+        Ok(v) => v,
+        Err(_) => return Err(format!("Open shmem fails: {}", Error::last_os_error())),
+    };
 
-    shm_ptr
+    unsafe { msync(shm_ptr, SHM_SIZE, MS_SYNC) };
+
+    Ok(shm_ptr)
 }
 
-fn read_shmem(shm_name: &str) -> Vec<u32> {
-    let shm_ptr = open_shmem(shm_name).unwrap();
+fn read_shmem(shm_name: &str) -> Result<Vec<u32>, String> {
+    let shm_ptr = open_shmem(shm_name)?;
 
     let mut vec_data: Vec<u32> = unsafe {
         let data = slice::from_raw_parts(shm_ptr as *const u8, SHM_SIZE);
@@ -313,13 +331,18 @@ fn read_shmem(shm_name: &str) -> Vec<u32> {
         .to_vec()
     };
     vec_data.retain(|&x| x != 0);
-    unsafe { munmap(shm_ptr, SHM_SIZE).unwrap() };
+    let vec_data = unsafe {
+        match munmap(shm_ptr, SHM_SIZE) {
+            Ok(_) => Ok(vec_data),
+            Err(_) => Err(format!("Read shmem fails: {}", Error::last_os_error())),
+        }
+    };
 
     vec_data
 }
 
-fn write_shmem(shm_name: &str, input: &Vec<u32>) {
-    let shm_ptr = open_shmem(shm_name).unwrap();
+fn write_shmem(shm_name: &str, input: &Vec<u32>) -> Result<String, String> {
+    let shm_ptr = open_shmem(shm_name)?;
     let shm_byte = unsafe {
         slice::from_raw_parts(input.as_ptr() as *const u8, size_of::<u32>() * input.len())
     };
@@ -327,10 +350,15 @@ fn write_shmem(shm_name: &str, input: &Vec<u32>) {
     for (i, item) in shm_byte.iter().enumerate() {
         unsafe { *addr.add(i) = *item };
     }
-    unsafe { munmap(shm_ptr, SHM_SIZE).unwrap() };
+    unsafe {
+        match munmap(shm_ptr, SHM_SIZE) {
+            Ok(_) => Ok("".to_string()),
+            Err(_) => Err(format!("Write shmem fails: {}", Error::last_os_error())),
+        }
+    }
 }
 
-fn lock_shmem(shm_fd: &i32) -> Result<i32, Errno> {
+fn lock_shmem(shm_fd: &i32) -> Result<i32, String> {
     let lock = flock {
         l_type: libc::F_WRLCK as i16,
         l_whence: libc::SEEK_SET as i16,
@@ -338,10 +366,13 @@ fn lock_shmem(shm_fd: &i32) -> Result<i32, Errno> {
         l_len: 0,
         l_pid: 0,
     };
-    fcntl(*shm_fd, F_SETLKW(&lock))
+    match fcntl(*shm_fd, F_SETLKW(&lock)) {
+        Ok(v) => Ok(v),
+        Err(_) => Err(format!("Lock shmem fails: {}", Error::last_os_error())),
+    }
 }
 
-fn unlock_shmem(shm_fd: &i32) -> Result<i32, Errno> {
+fn unlock_shmem(shm_fd: &i32) -> Result<i32, String> {
     let lock = flock {
         l_type: libc::F_UNLCK as i16,
         l_whence: libc::SEEK_SET as i16,
@@ -349,25 +380,37 @@ fn unlock_shmem(shm_fd: &i32) -> Result<i32, Errno> {
         l_len: 0,
         l_pid: 0,
     };
-    fcntl(*shm_fd, F_SETLKW(&lock))
+    match fcntl(*shm_fd, F_SETLKW(&lock)) {
+        Ok(v) => Ok(v),
+        Err(_) => Err(format!("Unlock shmem fails: {}", Error::last_os_error())),
+    }
 }
 
-fn get_config(ifname: &str) -> config::Config {
+fn get_config(ifname: &str) -> Result<config::Config, String> {
     let config_path = env::var("CONFIG_PATH").unwrap_or("./config.yaml".to_string());
-    let configs = config::read_config(&config_path).unwrap();
-    let config = configs.get(ifname).unwrap();
-    config.clone()
+    let configs = config::read_config(&config_path);
+    let configs = match configs {
+        Ok(v) => v,
+        Err(_) => return Err(format!("Read config fails: {}", Error::last_os_error())),
+    };
+    let config = configs.get(ifname);
+    match config {
+        Some(v) => Ok(v.clone()),
+        None => Err(format!("No config for {}", ifname)),
+    }
 }
 
 fn get_shmem_name(ifname: &str, vlanid: u16) -> String {
     format!("libtsn_vlan_{}.{}", ifname, vlanid)
 }
 
-fn get_shmem_fd(shm_name: &str) -> i32 {
-    shm_open(
+fn get_shmem_fd(shm_name: &str) -> Result<i32, String> {
+    match shm_open(
         shm_name,
         OFlag::O_CREAT | OFlag::O_RDWR,
         Mode::S_IRWXU | Mode::S_IRWXG | Mode::S_IRWXO,
-    )
-    .unwrap()
+    ) {
+        Ok(v) => Ok(v),
+        Err(_) => Err(format!("Open shmem fails: {}", Error::last_os_error())),
+    }
 }
