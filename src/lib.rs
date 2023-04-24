@@ -72,9 +72,7 @@ fn create_vlan(ifname: &str, vlanid: u16) -> Result<i32, String> {
     unlock_shmem(&shm_fd)?;
     match result {
         Ok(v) => Ok(v),
-        Err(_) => {
-            Err(format!("Create vlan fails {}", Error::last_os_error()))
-        }
+        Err(_) => Err(format!("Create vlan fails {}", Error::last_os_error())),
     }
 }
 
