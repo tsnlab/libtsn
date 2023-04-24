@@ -1,5 +1,4 @@
 use core::slice;
-use nix::errno::Errno;
 use nix::net::if_::if_nametoindex;
 use nix::sys::socket::msghdr;
 use nix::sys::time::{TimeSpec, TimeValLike};
@@ -74,7 +73,7 @@ fn create_vlan(ifname: &str, vlanid: u16) -> Result<i32, String> {
     match result {
         Ok(v) => Ok(v),
         Err(_) => {
-            return Err(format!("Create vlan fails {}", Error::last_os_error()));
+            Err(format!("Create vlan fails {}", Error::last_os_error()))
         }
     }
 }
@@ -331,14 +330,12 @@ fn read_shmem(shm_name: &str) -> Result<Vec<u32>, String> {
         .to_vec()
     };
     vec_data.retain(|&x| x != 0);
-    let vec_data = unsafe {
+    unsafe {
         match munmap(shm_ptr, SHM_SIZE) {
             Ok(_) => Ok(vec_data),
             Err(_) => Err(format!("Read shmem fails: {}", Error::last_os_error())),
         }
-    };
-
-    vec_data
+    }
 }
 
 fn write_shmem(shm_name: &str, input: &Vec<u32>) -> Result<String, String> {
