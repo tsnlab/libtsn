@@ -62,21 +62,21 @@ fn create_vlan(ifname: &str, vlanid: u16) -> Result<i32, i32> {
     let shm_fd = get_shmem_fd(&shm_name);
     lock_shmem(&shm_fd).unwrap();
     let mut vlan_vec = read_shmem(&shm_name);
-    let mut result = Ok(0);
-    // I am the frist creator of this vlan
-    if vlan_vec.is_empty() {
-        result = vlan::create_vlan(&config, ifname, vlanid);
-    }
+
+    // If I am the frist user of this vlan, create it
     vlan_vec.push(process::id());
     write_shmem(&shm_name, &vlan_vec);
     unlock_shmem(&shm_fd).unwrap();
-    result
+    if vlan_vec.is_empty() {
+        return vlan::create_vlan(&config, ifname, vlanid);
+    } {
+        Ok(0)
+    }
 }
 
 fn delete_vlan(ifname: &str, vlanid: u16) -> Result<i32, i32> {
     let shm_name = get_shmem_name(ifname, vlanid);
     let shm_fd = get_shmem_fd(&shm_name);
-    let mut result = Ok(0);
     lock_shmem(&shm_fd).unwrap();
     let mut vlan_vec = read_shmem(&shm_name);
     // remove my pid from shmem
@@ -88,16 +88,15 @@ fn delete_vlan(ifname: &str, vlanid: u16) -> Result<i32, i32> {
     }
     // delete dead process from vector
     vlan_vec.retain(|x| kill(Pid::from_raw(*x as i32), None).is_ok());
-    let mut exit_flag = false;
-    if vlan_vec.is_empty() {
-        exit_flag = true;
-    }
+    let mut exit_flag = vlan_vec.is_empty();
     vlan_vec.resize(SHM_SIZE / size_of::<u32>(), 0);
     write_shmem(&shm_name, &vlan_vec);
-    if exit_flag {
+    let result = if exit_flag {
         shm_unlink(&*shm_name).unwrap();
-        result = vlan::delete_vlan(ifname, vlanid);
-    }
+        vlan::delete_vlan(ifname, vlanid)
+    } else {
+        Ok(0)
+    };
     unlock_shmem(&shm_fd).unwrap();
     result
 }
