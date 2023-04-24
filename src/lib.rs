@@ -30,7 +30,6 @@ mod cbs;
 mod config;
 mod tas;
 mod vlan;
-pub mod time;
 const SHM_SIZE: usize = 128;
 
 // Make imple for TsnSocket
