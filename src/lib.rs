@@ -64,14 +64,15 @@ fn create_vlan(ifname: &str, vlanid: u16) -> Result<i32, i32> {
     let mut vlan_vec = read_shmem(&shm_name);
 
     // If I am the frist user of this vlan, create it
+    let result = if vlan_vec.is_empty() {
+        vlan::create_vlan(&config, ifname, vlanid)
+    } else {
+        Ok(0)
+    };
     vlan_vec.push(process::id());
     write_shmem(&shm_name, &vlan_vec);
     unlock_shmem(&shm_fd).unwrap();
-    if vlan_vec.is_empty() {
-        return vlan::create_vlan(&config, ifname, vlanid);
-    } {
-        Ok(0)
-    }
+    result
 }
 
 fn delete_vlan(ifname: &str, vlanid: u16) -> Result<i32, i32> {
