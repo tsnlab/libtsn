@@ -65,7 +65,7 @@ fn create_vlan(ifname: &str, vlanid: u16) -> Result<i32, String> {
     let result = if vlan_vec.is_empty() {
         vlan::create_vlan(&config, ifname, vlanid)
     } else {
-        Err(0)
+        Ok(0)
     };
     vlan_vec.push(process::id());
     write_shmem(&shm_name, &vlan_vec)?;
