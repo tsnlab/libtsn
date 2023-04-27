@@ -123,8 +123,7 @@ pub fn sock_open(
 
     let sock;
     let mut res;
-    let vlan_ifname = format!("{}.{}", ifname, vlanid);
-    let ifindex = if_nametoindex(vlan_ifname.as_bytes()).expect("vlan_ifname index");
+    let ifindex = if_nametoindex(ifname.as_bytes()).expect("vlan_ifname index");
     unsafe {
         sock = libc::socket(
             libc::AF_PACKET,
