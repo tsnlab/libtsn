@@ -1,6 +1,6 @@
 use crate::{cbs::CbsConfig, config::Config, tas::TasConfig};
 use itertools::Itertools;
-use std::{collections::HashMap, io::{self, Error}};
+use std::{collections::HashMap, io::Error};
 
 fn run_cmd(input: &str) -> Result<i32, String> {
     eprintln!("{}", input);
