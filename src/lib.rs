@@ -395,7 +395,11 @@ fn get_config(ifname: &str) -> Result<config::Config, String> {
 }
 
 fn get_shmem_name(ifname: &str, vlanid: u16) -> String {
-    format!("libtsn_vlan_{}.{}", ifname, vlanid)
+    if ifname.len() > 11 {
+        format!("libtsn_vlan_{}.{}", &ifname[..10], vlanid)
+    } else {
+        format!("libtsn_vlan_{}.{}", &ifname, vlanid)
+    }
 }
 
 fn get_shmem_fd(shm_name: &str) -> Result<i32, String> {
