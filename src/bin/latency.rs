@@ -270,6 +270,19 @@ fn do_client(
         }
     }
 
+    unsafe {
+        RUNNING = true;
+    }
+    // Handle signal handler
+    let mut signals = Signals::new([SIGINT]).unwrap();
+    thread::spawn(move || {
+        for _ in signals.forever() {
+            unsafe {
+                RUNNING = false;
+            }
+        }
+    });
+
     let mut tx_perf_buff = vec![0u8; size - 14];
     let mut tx_eth_buff = vec![0u8; size];
 
@@ -339,6 +352,13 @@ fn do_client(
             + Duration::from_nanos(rand::thread_rng().gen_range(0..10_000_000));
 
         thread::sleep(sleep_duration);
+        if unsafe { !RUNNING } {
+            break;
+        }
+    }
+
+    if sock.close().is_err() {
+        eprintln!("Failed to close socket");
     }
 }
 
