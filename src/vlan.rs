@@ -3,7 +3,7 @@ use itertools::Itertools;
 use std::{collections::HashMap, io::{self, Error}};
 
 fn run_cmd(input: &str) -> Result<i32, String> {
-    println!("{}", input);
+    eprintln!("{}", input);
     let split = input.split(char::is_whitespace);
     let cmd = split.clone().next().unwrap();
     let cmd = std::process::Command::new(cmd)

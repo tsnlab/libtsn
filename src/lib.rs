@@ -182,8 +182,7 @@ pub fn sock_open(
 
 pub fn sock_close(sock: &mut TsnSocket) -> Result<(), String> {
     match delete_vlan(&sock.ifname, sock.vlanid) {
-        Ok(v) => {
-            println!("{}", v);
+        Ok(_) => {
             close(sock.fd).unwrap();
             Ok(())
         }
