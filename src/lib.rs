@@ -54,13 +54,17 @@ impl TsnSocket {
     }
 }
 
-fn create_vlan(ifname: &str, vlanid: u16) -> Result<i32, String> {
+fn create_vlan(ifname: &str, vlanid: u16) -> Result<String, String> {
     let config = get_config(ifname)?;
     let shm_name = get_shmem_name(ifname, vlanid);
     let shm_fd = get_shmem_fd(&shm_name)?;
     lock_shmem(&shm_fd)?;
     let mut vlan_vec = read_shmem(&shm_name)?;
-
+    let name = if ifname.len() > 11 {
+        format!("{}.{}", &ifname[..10], vlanid)
+    } else {
+        format!("{}.{}", &ifname, vlanid)
+    };
     // If I am the frist user of this vlan, create it
     let result = if vlan_vec.is_empty() {
         vlan::create_vlan(&config, ifname, vlanid)
@@ -71,7 +75,7 @@ fn create_vlan(ifname: &str, vlanid: u16) -> Result<i32, String> {
     write_shmem(&shm_name, &vlan_vec)?;
     unlock_shmem(&shm_fd)?;
     match result {
-        Ok(v) => Ok(v),
+        Ok(_) => Ok(name),
         Err(_) => Err(format!("Create vlan fails {}", Error::last_os_error())),
     }
 }
@@ -114,16 +118,15 @@ pub fn sock_open(
     priority: u32,
     proto: u16,
 ) -> Result<TsnSocket, String> {
-    match create_vlan(ifname, vlanid) {
-        Ok(v) => println!("{}", v),
+    let name = match create_vlan(ifname, vlanid) {
+        Ok(v) => v,
         Err(_) => {
             return Err(format!("Create vlan fails {}", Error::last_os_error()));
         }
-    }
-
+    };
     let sock;
     let mut res;
-    let ifindex = if_nametoindex(ifname.as_bytes()).expect("vlan_ifname index");
+    let ifindex = if_nametoindex(name.as_bytes()).expect("vlan_ifname index");
     unsafe {
         sock = libc::socket(
             libc::AF_PACKET,
