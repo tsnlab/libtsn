@@ -1,9 +1,9 @@
 use crate::{cbs::CbsConfig, config::Config, tas::TasConfig};
 use itertools::Itertools;
-use std::collections::HashMap;
+use std::{collections::HashMap, io::Error};
 
-fn run_cmd(input: &str) -> Result<i32, i32> {
-    println!("{}", input);
+fn run_cmd(input: &str) -> Result<i32, String> {
+    eprintln!("{}", input);
     let split = input.split(char::is_whitespace);
     let cmd = split.clone().next().unwrap();
     let cmd = std::process::Command::new(cmd)
@@ -12,13 +12,13 @@ fn run_cmd(input: &str) -> Result<i32, i32> {
         .unwrap();
     let output = cmd.wait_with_output().unwrap();
     if output.status.success() {
-        Ok(output.status.code().unwrap())
+        Ok(0)
     } else {
-        Err(output.status.code().unwrap())
+        Err(Error::from_raw_os_error(output.status.code().unwrap()).to_string())
     }
 }
 
-pub fn setup_tas(ifname: &str, config: &TasConfig) -> Result<i32, i32> {
+pub fn setup_tas(ifname: &str, config: &TasConfig) -> Result<i32, String> {
     let handle = 100;
     let num_tc = config.num_tc;
     let mut priomap = String::new();
@@ -50,7 +50,7 @@ pub fn setup_tas(ifname: &str, config: &TasConfig) -> Result<i32, i32> {
     Ok(0)
 }
 
-pub fn setup_cbs(ifname: &str, config: &CbsConfig) -> Result<i32, i32> {
+pub fn setup_cbs(ifname: &str, config: &CbsConfig) -> Result<i32, String> {
     let root_handle = 100;
     let num_tc = config.num_tc;
     let mut priomap = String::new();
@@ -84,13 +84,13 @@ pub fn setup_cbs(ifname: &str, config: &CbsConfig) -> Result<i32, i32> {
     Ok(0)
 }
 
-pub fn create_vlan(config: &Config, ifname: &str, vlan_id: u16) -> Result<i32, i32> {
-    let name = format!("{}.{}", ifname, vlan_id);
+pub fn create_vlan(config: &Config, ifname: &str, vlan_id: u16) -> Result<i32, String> {
+    let name = get_vlan_name(ifname, vlan_id);
     let mut qos_map = HashMap::new();
 
     if config.tas.is_some() && config.cbs.is_some() {
         eprintln!("Does not support both TAS and CBS");
-        return Err(1);
+        return Err("Does not support both TAS and CBS".to_string());
     }
     for (prio, pri) in config.egress_qos_map.get(&(vlan_id as i64)).unwrap() {
         qos_map.insert(prio, pri);
@@ -115,11 +115,19 @@ pub fn create_vlan(config: &Config, ifname: &str, vlan_id: u16) -> Result<i32, i
     Ok(0)
 }
 
-pub fn delete_vlan(ifname: &str, vlanid: u16) -> Result<i32, i32> {
-    let name = format!("{}.{}", ifname, vlanid);
+pub fn delete_vlan(ifname: &str, vlanid: u16) -> Result<i32, String> {
+    let name = get_vlan_name(ifname, vlanid);
     let cmd = format!("ip link del {}", name);
     run_cmd(&cmd)?;
     let cmd = format!("tc qdisc delete dev {} root", ifname);
     run_cmd(&cmd)?;
     Ok(0)
+}
+
+pub fn get_vlan_name(ifname: &str, vlanid: u16) -> String {
+    if ifname.len() > 10 {
+        format!("{}.{}", &ifname[..10], vlanid)
+    } else {
+        format!("{}.{}", &ifname, vlanid)
+    }
 }

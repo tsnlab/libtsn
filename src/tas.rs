@@ -1,6 +1,7 @@
 use serde_yaml::{self, Value};
 use std::collections::HashMap;
 
+#[derive(Clone)]
 pub struct TasConfig {
     pub txtime_delay: i64,
     pub schedule: Vec<TasSchedule>,

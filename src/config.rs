@@ -6,6 +6,7 @@ use std::fs::File;
 use std::io::BufReader;
 use std::str;
 
+#[derive(Clone)]
 pub struct Config {
     pub egress_qos_map: HashMap<i64, HashMap<i64, i64>>,
     pub tas: Option<TasConfig>,
