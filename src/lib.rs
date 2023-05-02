@@ -60,11 +60,7 @@ fn create_vlan(ifname: &str, vlanid: u16) -> Result<String, String> {
     let shm_fd = get_shmem_fd(&shm_name)?;
     lock_shmem(&shm_fd)?;
     let mut vlan_vec = read_shmem(&shm_name)?;
-    let name = if ifname.len() > 11 {
-        format!("{}.{}", &ifname[..10], vlanid)
-    } else {
-        format!("{}.{}", &ifname, vlanid)
-    };
+    let name = vlan::get_vlan_name(ifname, vlanid);
     // If I am the frist user of this vlan, create it
     let result = if vlan_vec.is_empty() {
         vlan::create_vlan(&config, ifname, vlanid)
@@ -397,11 +393,7 @@ fn get_config(ifname: &str) -> Result<config::Config, String> {
 }
 
 fn get_shmem_name(ifname: &str, vlanid: u16) -> String {
-    if ifname.len() > 11 {
-        format!("libtsn_vlan_{}.{}", &ifname[..10], vlanid)
-    } else {
-        format!("libtsn_vlan_{}.{}", &ifname, vlanid)
-    }
+    format!("libtsn_vlan_{}", vlan::get_vlan_name(ifname, vlanid))
 }
 
 fn get_shmem_fd(shm_name: &str) -> Result<i32, String> {

@@ -85,11 +85,7 @@ pub fn setup_cbs(ifname: &str, config: &CbsConfig) -> Result<i32, String> {
 }
 
 pub fn create_vlan(config: &Config, ifname: &str, vlan_id: u16) -> Result<i32, String> {
-    let name = if ifname.len() > 11 {
-        format!("{}.{}", &ifname[..10], vlan_id)
-    } else {
-        format!("{}.{}", &ifname, vlan_id)
-    };
+    let name = get_vlan_name(ifname, vlan_id);
     let mut qos_map = HashMap::new();
 
     if config.tas.is_some() && config.cbs.is_some() {
@@ -120,14 +116,18 @@ pub fn create_vlan(config: &Config, ifname: &str, vlan_id: u16) -> Result<i32, S
 }
 
 pub fn delete_vlan(ifname: &str, vlanid: u16) -> Result<i32, String> {
-    let name = if ifname.len() > 11 {
-        format!("{}.{}", &ifname[..10], vlanid)
-    } else {
-        format!("{}.{}", &ifname, vlanid)
-    };
+    let name = get_vlan_name(ifname, vlanid);
     let cmd = format!("ip link del {}", name);
     run_cmd(&cmd)?;
     let cmd = format!("tc qdisc delete dev {} root", ifname);
     run_cmd(&cmd)?;
     Ok(0)
+}
+
+pub fn get_vlan_name(ifname: &str, vlanid: u16) -> String {
+    if ifname.len() > 10 {
+        format!("{}.{}", &ifname[..10], vlanid)
+    } else {
+        format!("{}.{}", &ifname, vlanid)
+    }
 }
