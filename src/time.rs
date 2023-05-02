@@ -4,7 +4,7 @@ static mut ERROR_CLOCK_GETTIME: Duration = Duration::new(1, 0);
 static mut ERROR_NANOSLEEP: Duration = Duration::new(1, 0);
 
 fn is_analysed() -> bool {
-    return unsafe { ERROR_CLOCK_GETTIME.as_secs() != 1 && ERROR_NANOSLEEP.as_secs() != 1 };
+    unsafe { ERROR_CLOCK_GETTIME.as_secs() != 1 && ERROR_NANOSLEEP.as_secs() != 1 }
 }
 
 pub fn tsn_time_analyze() {
