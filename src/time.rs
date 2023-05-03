@@ -52,9 +52,7 @@ pub fn tsn_time_analyze() {
     }
 
     unsafe {
-        ERROR_NANOSLEEP = Duration::from_nanos(
-            (diff.subsec_nanos() / COUNT as u32) as u64
-        );
+        ERROR_NANOSLEEP = Duration::from_nanos((diff.subsec_nanos() / COUNT as u32) as u64);
     }
 }
 
