@@ -36,7 +36,7 @@ pub fn tsn_time_analyze() {
         .duration_since(start)
         .expect("Failed to calculate time difference");
     unsafe {
-        ERROR_CLOCK_GETTIME = Duration::from_nanos(diff.subsec_nanos() / COUNT as u32);
+        ERROR_CLOCK_GETTIME = Duration::from_nanos((diff.subsec_nanos() / COUNT as u32).into());
     };
     // Analyze nanosleep
     let request = Duration::new(1, 0);
