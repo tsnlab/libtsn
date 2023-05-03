@@ -15,23 +15,23 @@ pub fn tsn_time_analyze() {
     eprintln!("Calculating sleep errors");
 
     const COUNT: i32 = 10;
-    let mut start: SystemTime;
-    let mut end: SystemTime;
-    let mut diff: Duration;
 
     // Analyze clock_gettime
-    start = SystemTime::now();
-    end = SystemTime::now();
-    end = SystemTime::now();
-    end = SystemTime::now();
-    end = SystemTime::now();
-    end = SystemTime::now();
-    end = SystemTime::now();
-    end = SystemTime::now();
-    end = SystemTime::now();
-    end = SystemTime::now();
-    end = SystemTime::now();
-    diff = end
+    let start = SystemTime::now();
+    let end = {
+        let mut _end: SystemTime;
+        _end = SystemTime::now();
+        _end = SystemTime::now();
+        _end = SystemTime::now();
+        _end = SystemTime::now();
+        _end = SystemTime::now();
+        _end = SystemTime::now();
+        _end = SystemTime::now();
+        _end = SystemTime::now();
+        _end = SystemTime::now();
+        SystemTime::now()
+    };
+    let diff = end
         .duration_since(start)
         .expect("Failed to calculate time difference");
     unsafe {
@@ -39,11 +39,11 @@ pub fn tsn_time_analyze() {
     };
     // Analyze nanosleep
     let request = Duration::new(1, 0);
-    diff = Duration::new(0, 0);
+    let mut diff = Duration::new(0, 0);
     for _ in 0..COUNT {
-        start = SystemTime::now();
+        let start = SystemTime::now();
         std::thread::sleep(request);
-        end = SystemTime::now();
+        let end = SystemTime::now();
         diff = diff.saturating_add(
             end.duration_since(start)
                 .expect("Failed to calculate time difference"),
