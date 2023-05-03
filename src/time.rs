@@ -17,6 +17,7 @@ pub fn tsn_time_analyze() {
     const COUNT: i32 = 10;
 
     // Analyze clock_gettime
+    // expanded loop, because of for-loop increases time error
     let start = SystemTime::now();
     let end = {
         let mut _end: SystemTime;
@@ -51,22 +52,21 @@ pub fn tsn_time_analyze() {
     }
 
     unsafe {
-        ERROR_NANOSLEEP = Duration::new(
-            diff.as_secs() - COUNT as u64,
-            diff.subsec_nanos() / COUNT as u32,
+        ERROR_NANOSLEEP = Duration::from_nanos(
+            (diff.subsec_nanos() / COUNT as u32) as u64
         );
     }
 }
 
-pub fn tsn_time_sleep_until(realtime: &Duration) -> Result<i64, i64> {
+pub fn tsn_time_sleep_until(endtime: &Duration) -> Result<i64, i64> {
     let now = SystemTime::now();
 
     let now = now.duration_since(UNIX_EPOCH).unwrap();
     // If already future, Don't need to sleep
-    if realtime.saturating_sub(now) == Duration::new(0, 0) {
+    if endtime.saturating_sub(now) == Duration::new(0, 0) {
         return Ok(0);
     }
-    let mut diff = realtime.saturating_sub(now);
+    let mut diff = endtime.saturating_sub(now);
     if diff < unsafe { ERROR_NANOSLEEP } {
         std::thread::sleep(diff);
     }
@@ -75,7 +75,7 @@ pub fn tsn_time_sleep_until(realtime: &Duration) -> Result<i64, i64> {
         loop {
             let now = SystemTime::now();
             let now = now.duration_since(UNIX_EPOCH).unwrap();
-            diff = realtime.saturating_sub(now);
+            diff = endtime.saturating_sub(now);
             if diff < ERROR_CLOCK_GETTIME {
                 break;
             }
