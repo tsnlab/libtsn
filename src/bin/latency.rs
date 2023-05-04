@@ -18,6 +18,7 @@ use pnet_packet::Packet;
 use pnet::datalink::{self, NetworkInterface};
 use pnet::packet::ethernet::{EtherType, EthernetPacket, MutableEthernetPacket};
 use pnet::util::MacAddr;
+use tsn::time::tsn_time_sleep_until;
 
 extern crate socket as soc;
 
@@ -256,7 +257,7 @@ fn do_client(
     let my_mac = interface.mac.unwrap();
 
     if precise {
-        eprintln!("Precise mode is not supported yet");
+        tsn::time::tsn_time_analyze();
     }
 
     let mut sock = match tsn::sock_open(&iface_name, VLAN_ID_PERF, VLAN_PRI_PERF, ETH_P_PERF) {
@@ -296,8 +297,14 @@ fn do_client(
     // Loop over count
     for i in 0..count {
         perf_pkt.set_id(i as u32);
-        let now = SystemTime::now();
-        perf_pkt.set_id(i as u32);
+        let mut now;
+        if precise {
+            now = SystemTime::now();
+            let duration = now.duration_since(UNIX_EPOCH).unwrap();
+            tsn_time_sleep_until(&Duration::new(duration.as_secs() + 1, 0))
+                .expect("Failed to sleep");
+        }
+        now = SystemTime::now();
         perf_pkt.set_tv_sec(now.duration_since(UNIX_EPOCH).unwrap().as_secs() as u32);
         perf_pkt.set_tv_nsec(now.duration_since(UNIX_EPOCH).unwrap().subsec_nanos());
 
@@ -348,10 +355,12 @@ fn do_client(
             }
         }
 
-        let sleep_duration = Duration::from_millis(700)
-            + Duration::from_nanos(rand::thread_rng().gen_range(0..10_000_000));
+        if !precise {
+            let sleep_duration = Duration::from_millis(700)
+                + Duration::from_nanos(rand::thread_rng().gen_range(0..10_000_000));
 
-        thread::sleep(sleep_duration);
+            thread::sleep(sleep_duration);
+        }
         if unsafe { !RUNNING } {
             break;
         }

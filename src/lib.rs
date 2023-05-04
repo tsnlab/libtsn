@@ -28,6 +28,7 @@ pub struct TsnSocket {
 mod cbs;
 mod config;
 mod tas;
+pub mod time;
 mod vlan;
 const SHM_SIZE: usize = 128;
 
