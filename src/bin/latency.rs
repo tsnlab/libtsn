@@ -153,9 +153,7 @@ fn do_server(iface_name: String, oneway: bool) {
                     res
                 }
                 _ => match sock.recv(&mut packet) {
-                    Ok(size) => {
-                        size
-                    },
+                    Ok(size) => size,
                     Err(_) => {
                         continue;
                     }
