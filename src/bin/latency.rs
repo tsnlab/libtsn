@@ -146,7 +146,6 @@ fn do_server(iface_name: String) {
         false => None,
     };
     let mut rx_timestamp;
->>>>>>> 4263eac (get rx, tx timestamp)
     while unsafe { RUNNING } {
         // TODO: Cleanup this code
         let mut rx_timestamp;
@@ -170,29 +169,29 @@ fn do_server(iface_name: String) {
                     res
                 }
                 _ => match sock.recv(&mut packet) {
-                    Ok(size) => size,
+                    Ok(size) => {
+                        size
+                    },
                     Err(_) => {
                         continue;
                     }
                 },
             }
         };
-<<<<<<< HEAD
-=======
         rx_timestamp = SystemTime::now();
         println!("Received {} bytes", recv_bytes);
         // Get rx timestamp
-        if oneway {
-            match get_timestamp(msg.unwrap()) {
-                Ok(timestamp) => {
-                    rx_timestamp = timestamp;
+        let rx_timestamp = {
+            if oneway {
+                if let Ok(timestamp) = get_timestamp(msg.unwrap()) {
+                    timestamp
+                } else {
+                    SystemTime::now()
                 }
-                Err(e) => {
-                    eprintln!("Failed to get timestamp: {}", e);
-                }
+            } else {
+                SystemTime::now()
             }
-            println!("rx_timestamp: {:?}", rx_timestamp);
-        }
+        };
 
 >>>>>>> 4263eac (get rx, tx timestamp)
         // Match packet size
@@ -252,6 +251,7 @@ fn do_server(iface_name: String) {
             let tv_sec = perf_pkt.get_tv_sec();
             let tv_nsec = perf_pkt.get_tv_nsec();
             let tx_timestamp = UNIX_EPOCH + Duration::new(tv_sec.into(), tv_nsec);
+            println!("rx_timestamp: {:?}", rx_timestamp);
             println!("tx_timestamp: {:?}", tx_timestamp);
             let elapsed = rx_timestamp.duration_since(tx_timestamp).unwrap();
             let elapsed_ns = elapsed.as_nanos();
