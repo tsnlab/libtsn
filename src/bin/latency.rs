@@ -138,7 +138,6 @@ fn do_server(iface_name: String, oneway: bool) {
         },
         false => None,
     };
-    let mut rx_timestamp;
     while unsafe { RUNNING } {
         // TODO: Cleanup this code
         let recv_bytes = {
@@ -154,27 +153,28 @@ fn do_server(iface_name: String, oneway: bool) {
                     res
                 }
                 _ => match sock.recv(&mut packet) {
-                    Ok(size) => size,
+                    Ok(size) => {
+                        size
+                    },
                     Err(_) => {
                         continue;
                     }
                 },
             }
         };
-        rx_timestamp = SystemTime::now();
         println!("Received {} bytes", recv_bytes);
         // Get rx timestamp
-        if oneway {
-            match get_timestamp(msg.unwrap()) {
-                Ok(timestamp) => {
-                    rx_timestamp = timestamp;
+        let rx_timestamp = {
+            if oneway {
+                if let Ok(timestamp) = get_timestamp(msg.unwrap()) {
+                    timestamp
+                } else {
+                    SystemTime::now()
                 }
-                Err(e) => {
-                    eprintln!("Failed to get timestamp: {}", e);
-                }
+            } else {
+                SystemTime::now()
             }
-            println!("rx_timestamp: {:?}", rx_timestamp);
-        }
+        };
 
         // Match packet size
         let mut rx_packet = packet.split_at(recv_bytes as usize).0.to_owned();
@@ -190,6 +190,7 @@ fn do_server(iface_name: String, oneway: bool) {
             let tv_sec = perf_pkt.get_tv_sec();
             let tv_nsec = perf_pkt.get_tv_nsec();
             let tx_timestamp = UNIX_EPOCH + Duration::new(tv_sec.into(), tv_nsec);
+            println!("rx_timestamp: {:?}", rx_timestamp);
             println!("tx_timestamp: {:?}", tx_timestamp);
             let elapsed = rx_timestamp.duration_since(tx_timestamp).unwrap();
             let elapsed_ns = elapsed.as_nanos();
