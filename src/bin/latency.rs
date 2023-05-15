@@ -161,18 +161,7 @@ fn do_server(iface_name: String, oneway: bool) {
             }
         };
         println!("Received {} bytes", recv_bytes);
-        // Get rx timestamp
-        let rx_timestamp = {
-            if oneway {
-                if let Ok(timestamp) = get_timestamp(msg.unwrap()) {
-                    timestamp
-                } else {
-                    SystemTime::now()
-                }
-            } else {
-                SystemTime::now()
-            }
-        };
+
 
         // Match packet size
         let mut rx_packet = packet.split_at(recv_bytes as usize).0.to_owned();
@@ -183,30 +172,15 @@ fn do_server(iface_name: String, oneway: bool) {
         }
 
         if oneway {
-            let perf_pkt = PerfPacket::new(eth_pkt.payload()).unwrap();
-            let id = perf_pkt.get_id();
-            let tv_sec = perf_pkt.get_tv_sec();
-            let tv_nsec = perf_pkt.get_tv_nsec();
-            let tx_timestamp = UNIX_EPOCH + Duration::new(tv_sec.into(), tv_nsec);
+            // Get rx timestamp
+            let rx_timestamp = {
+                if let Ok(timestamp) = get_timestamp(msg.unwrap()) {
+                    timestamp
+                } else {
+                    SystemTime::now()
+                }
+            };
             println!("rx_timestamp: {:?}", rx_timestamp);
-            println!("tx_timestamp: {:?}", tx_timestamp);
-            let elapsed = rx_timestamp.duration_since(tx_timestamp).unwrap();
-            let elapsed_ns = elapsed.as_nanos();
-            println!(
-                "{}: {}.{:09} -> {}.{:09} = {} ns",
-                id,
-                tx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_secs(),
-                tx_timestamp
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .subsec_nanos(),
-                rx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_secs(),
-                rx_timestamp
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .subsec_nanos(),
-                elapsed_ns
-            );
         } else {
             eth_pkt.set_destination(eth_pkt.get_source());
             eth_pkt.set_source(my_mac);
