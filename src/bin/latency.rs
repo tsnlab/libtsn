@@ -162,7 +162,6 @@ fn do_server(iface_name: String, oneway: bool) {
         };
         println!("Received {} bytes", recv_bytes);
 
-
         // Match packet size
         let mut rx_packet = packet.split_at(recv_bytes as usize).0.to_owned();
 
