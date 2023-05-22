@@ -172,7 +172,7 @@ pub fn sock_open(
 
     Ok(TsnSocket {
         fd: sock,
-        ifname: name,
+        ifname: ifname.to_string(),
         vlanid,
     })
 }
