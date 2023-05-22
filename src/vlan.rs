@@ -125,8 +125,8 @@ pub fn delete_vlan(ifname: &str, vlanid: u16) -> Result<i32, String> {
 }
 
 pub fn get_vlan_name(ifname: &str, vlanid: u16) -> String {
-    if ifname.len() > 10 {
-        format!("{}.{}", &ifname[..10], vlanid)
+    if ifname.len() > 9 {
+        format!("{}.{}", &ifname[..9], vlanid)
     } else {
         format!("{}.{}", &ifname, vlanid)
     }
