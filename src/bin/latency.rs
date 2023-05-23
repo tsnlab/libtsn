@@ -149,7 +149,8 @@ fn do_server(iface_name: String, oneway: bool) {
         },
         false => None,
     };
-    let mut rx_map: HashMap<usize, SystemTime> = HashMap::new();
+    let mut last_rx: (i32, SystemTime) = (-1, SystemTime::now());
+    // let mut rx_map: HashMap<usize, SystemTime> = HashMap::new();
     while unsafe { RUNNING } {
         // TODO: Cleanup this code
         let recv_bytes = {
@@ -181,18 +182,17 @@ fn do_server(iface_name: String, oneway: bool) {
         let mut perf_pkt = MutablePerfPacket::new(eth_pkt.payload_mut()).unwrap();
         if oneway {
             if perf_pkt.get_op() == PerfOp::Tx as u8 {
-                // Get rx timestamp
-                let rx_timestamp = match msg {
-                    Some(msg) => get_timestamp(msg),
-                    None => SystemTime::now(),
-                };
-                rx_map.insert(perf_pkt.get_id() as usize, rx_timestamp);
-            } else if perf_pkt.get_op() == PerfOp::Sync as u8 {
-                let rx_timestamp = rx_map.get(&(perf_pkt.get_id() as usize));
-                if rx_timestamp.is_none() {
-                    continue;
+                if perf_pkt.get_id() as i32 > last_rx.0 {
+                    let rx_timestamp = match msg {
+                        Some(msg) => get_rx_timestamp(msg),
+                        None => SystemTime::now(),
+                    };
+                    last_rx = (perf_pkt.get_id() as i32, rx_timestamp);
                 }
-                let rx_timestamp = rx_timestamp.unwrap();
+            } else if perf_pkt.get_op() == PerfOp::Sync as u8
+                && last_rx.0 == perf_pkt.get_id() as i32
+            {
+                let rx_timestamp = last_rx.1;
                 let tx_sec = perf_pkt.get_tv_sec();
                 let tx_nsec = perf_pkt.get_tv_nsec();
                 if tx_sec == 0 && tx_nsec == 0 {
@@ -321,9 +321,6 @@ fn do_client(
             true => perf_pkt.set_op(PerfOp::Tx as u8),
             false => perf_pkt.set_op(PerfOp::Ping as u8),
         };
-        perf_pkt.set_tv_sec(now.duration_since(UNIX_EPOCH).unwrap().as_secs() as u32);
-        perf_pkt.set_tv_nsec(now.duration_since(UNIX_EPOCH).unwrap().subsec_nanos());
-
         eth_pkt.set_payload(perf_pkt.packet());
 
         if let Err(e) = sock.send(eth_pkt.packet()) {
@@ -356,7 +353,7 @@ fn do_client(
                         if unsafe { libc::recvmsg(sock.fd, &mut msg, 0) } < 0 {
                             continue;
                         }
-                        rx_timestamp = get_timestamp(msg).duration_since(UNIX_EPOCH).unwrap();
+                        rx_timestamp = get_rx_timestamp(msg).duration_since(UNIX_EPOCH).unwrap();
                     }
                     None => {
                         if sock.recv(&mut rx_eth_buff).is_err() {
@@ -379,13 +376,13 @@ fn do_client(
                 }
                 let tx_timestamp = tx_timestamp.unwrap().duration_since(UNIX_EPOCH).unwrap();
                 let elapsed = rx_timestamp.checked_sub(tx_timestamp).unwrap();
+                tx_map.remove(&id);
                 println!(
                     "{}: {}.{:09} s",
                     id,
                     elapsed.as_secs(),
                     elapsed.subsec_nanos()
                 );
-
                 break;
             }
         }
@@ -407,7 +404,6 @@ fn do_client(
 }
 
 fn enable_rx_timestamp(sock: &tsn::TsnSocket, iov: &mut libc::iovec) -> Result<msghdr, String> {
-    // return Err("Not implemented yet".to_string());
     const CONTROLSIZE: usize = 1024;
     let mut control: [libc::c_char; CONTROLSIZE] = [0; CONTROLSIZE];
 
@@ -445,13 +441,12 @@ fn enable_rx_timestamp(sock: &tsn::TsnSocket, iov: &mut libc::iovec) -> Result<m
     }
 }
 
+// support SW tx_timestamp yet
 fn get_tx_timestamp(fd: i32) -> SystemTime {
     SystemTime::now()
 }
 
-fn get_timestamp(msg: msghdr) -> SystemTime {
-    // return Err("Not implemented yet".to_string());
-
+fn get_rx_timestamp(msg: msghdr) -> SystemTime {
     let mut tend: libc::timespec = libc::timespec {
         tv_sec: 0,
         tv_nsec: 0,
