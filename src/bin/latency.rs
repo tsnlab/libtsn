@@ -180,44 +180,40 @@ fn do_server(iface_name: String, oneway: bool) {
             continue;
         }
         let mut perf_pkt = MutablePerfPacket::new(eth_pkt.payload_mut()).unwrap();
-        if oneway {
-            if perf_pkt.get_op() == PerfOp::Tx as u8 {
-                if perf_pkt.get_id() as i32 > last_rx.0 {
-                    let rx_timestamp = match msg {
-                        Some(msg) => get_rx_timestamp(msg),
-                        None => SystemTime::now(),
-                    };
-                    last_rx = (perf_pkt.get_id() as i32, rx_timestamp);
-                }
-            } else if perf_pkt.get_op() == PerfOp::Sync as u8
-                && last_rx.0 == perf_pkt.get_id() as i32
-            {
-                let rx_timestamp = last_rx.1;
-                let tx_sec = perf_pkt.get_tv_sec();
-                let tx_nsec = perf_pkt.get_tv_nsec();
-                if tx_sec == 0 && tx_nsec == 0 {
-                    continue;
-                }
-                let tx_timestamp = UNIX_EPOCH + Duration::new(tx_sec.into(), tx_nsec);
-                let elapsed = rx_timestamp.duration_since(tx_timestamp).unwrap();
-                let elapsed_ns = elapsed.as_nanos();
-                println!(
-                    "{}: {}.{:09} -> {}.{:09} = {} ns",
-                    perf_pkt.get_id(),
-                    tx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_secs(),
-                    tx_timestamp
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap()
-                        .subsec_nanos(),
-                    rx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_secs(),
-                    rx_timestamp
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap()
-                        .subsec_nanos(),
-                    elapsed_ns
-                );
+        if perf_pkt.get_op() == PerfOp::Tx as u8 {
+            if perf_pkt.get_id() as i32 > last_rx.0 {
+                let rx_timestamp = match msg {
+                    Some(msg) => get_rx_timestamp(msg),
+                    None => SystemTime::now(),
+                };
+                last_rx = (perf_pkt.get_id() as i32, rx_timestamp);
             }
-        } else {
+        } else if perf_pkt.get_op() == PerfOp::Sync as u8 && last_rx.0 == perf_pkt.get_id() as i32 {
+            let rx_timestamp = last_rx.1;
+            let tx_sec = perf_pkt.get_tv_sec();
+            let tx_nsec = perf_pkt.get_tv_nsec();
+            if tx_sec == 0 && tx_nsec == 0 {
+                continue;
+            }
+            let tx_timestamp = UNIX_EPOCH + Duration::new(tx_sec.into(), tx_nsec);
+            let elapsed = rx_timestamp.duration_since(tx_timestamp).unwrap();
+            let elapsed_ns = elapsed.as_nanos();
+            println!(
+                "{}: {}.{:09} -> {}.{:09} = {} ns",
+                perf_pkt.get_id(),
+                tx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_secs(),
+                tx_timestamp
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .subsec_nanos(),
+                rx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_secs(),
+                rx_timestamp
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .subsec_nanos(),
+                elapsed_ns
+            );
+        } else if perf_pkt.get_op() == PerfOp::Ping as u8 {
             println!("recv_bytes: {}", recv_bytes);
             perf_pkt.set_op(PerfOp::Pong as u8);
             eth_pkt.set_destination(eth_pkt.get_source());
@@ -309,19 +305,18 @@ fn do_client(
     // Loop over count
     for i in 0..count {
         perf_pkt.set_id(i as u32);
-        let mut now;
+        let now;
+        match oneway {
+            true => perf_pkt.set_op(PerfOp::Tx as u8),
+            false => perf_pkt.set_op(PerfOp::Ping as u8),
+        };
+        eth_pkt.set_payload(perf_pkt.packet());
         if precise {
             now = SystemTime::now();
             let duration = now.duration_since(UNIX_EPOCH).unwrap();
             tsn_time_sleep_until(&Duration::new(duration.as_secs() + 1, 0))
                 .expect("Failed to sleep");
         }
-        now = SystemTime::now();
-        match oneway {
-            true => perf_pkt.set_op(PerfOp::Tx as u8),
-            false => perf_pkt.set_op(PerfOp::Ping as u8),
-        };
-        eth_pkt.set_payload(perf_pkt.packet());
 
         if let Err(e) = sock.send(eth_pkt.packet()) {
             eprintln!("Failed to send packet: {}", e);
