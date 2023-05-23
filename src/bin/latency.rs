@@ -14,7 +14,7 @@ use clap::{arg, crate_authors, crate_version, Command};
 
 use pnet_macros::packet;
 use pnet_macros_support::types::u32be;
-use pnet_packet::{Packet, MutablePacket};
+use pnet_packet::{MutablePacket, Packet};
 
 use pnet::datalink::{self, NetworkInterface};
 use pnet::packet::ethernet::{EtherType, EthernetPacket, MutableEthernetPacket};
@@ -374,7 +374,7 @@ fn do_client(
                 let perf_pkt = PerfPacket::new(rx_eth_pkt.payload()).unwrap();
                 let id = perf_pkt.get_id() as usize;
                 let tx_timestamp = tx_map.get(&id);
-                if None == tx_timestamp {
+                if tx_timestamp.is_none() {
                     continue;
                 }
                 let tx_timestamp = tx_timestamp.unwrap().duration_since(UNIX_EPOCH).unwrap();
