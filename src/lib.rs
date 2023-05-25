@@ -304,9 +304,6 @@ pub fn enable_tx_timestamp(sock: &TsnSocket) -> Result<(), Error> {
         )
     };
     if err < 0 {
-        unsafe {
-            libc::perror("setsockopt SO_SELECT_ERR_QUEUE\0".as_ptr() as *const libc::c_char);
-        }
         return Err(Error::last_os_error());
     }
 
