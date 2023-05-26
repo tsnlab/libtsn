@@ -55,8 +55,7 @@ fn main() {
     let server_command = Command::new("server")
         .about("Server mode")
         .short_flag('s')
-        .arg(arg!(-i --interface <interface> "Interface to use").required(true))
-        .arg(arg!(-'1' - -oneway).required(false));
+        .arg(arg!(-i --interface <interface> "Interface to use").required(true));
 
     let client_command = Command::new("client")
         .about("Client mode")
@@ -136,7 +135,7 @@ fn do_server(iface_name: String) {
     };
     let msg: Option<msghdr> = match enable_rx_timestamp(&sock, &mut iov) {
         Ok(msg) => {
-            eprintln!("Set sock timestamp");
+            eprintln!("Socket RX timestamp enabled");
             Some(msg)
         }
         Err(e) => {
@@ -146,7 +145,7 @@ fn do_server(iface_name: String) {
     };
     let is_rx_ts_enabled = msg.is_some();
     let mut last_rx_id: u32 = 0;
-    let mut last_rx_ts: SystemTime = SystemTime::now();
+    let mut last_rx_ts: SystemTime = UNIX_EPOCH;
     while unsafe { RUNNING } {
         // TODO: Cleanup this code
         let mut rx_timestamp;
@@ -181,48 +180,56 @@ fn do_server(iface_name: String) {
             continue;
         }
         let mut perf_pkt = MutablePerfPacket::new(eth_pkt.payload_mut()).unwrap();
-        if perf_pkt.get_op() == PerfOp::Tx as u8 {
-            if let Some(msg) = msg {
-                rx_timestamp = match get_rx_timestamp(msg) {
-                    Ok(time) => time,
-                    Err(_) => rx_timestamp,
+        match perf_pkt.get_op() {
+            // PerfOp::Tx
+            2 => {
+                if let Some(msg) = msg {
+                    if let Ok(ts) = get_rx_timestamp(msg) {
+                        rx_timestamp = ts;
+                    }
+                }
+                last_rx_id = perf_pkt.get_id();
+                last_rx_ts = rx_timestamp;
+            }
+            // PerfOp::Sync
+            3 => {
+                if last_rx_id == perf_pkt.get_id() {
+                    let rx_timestamp = last_rx_ts;
+                    let tx_sec = perf_pkt.get_tv_sec();
+                    let tx_nsec = perf_pkt.get_tv_nsec();
+                    if tx_sec == 0 && tx_nsec == 0 {
+                        continue;
+                    }
+                    let tx_timestamp = UNIX_EPOCH + Duration::new(tx_sec.into(), tx_nsec);
+                    let elapsed = rx_timestamp.duration_since(tx_timestamp).unwrap();
+                    let elapsed_ns = elapsed.as_nanos();
+                    println!(
+                        "{}: {}.{:09} -> {}.{:09} = {} ns",
+                        perf_pkt.get_id(),
+                        tx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_secs(),
+                        tx_timestamp
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap()
+                            .subsec_nanos(),
+                        rx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_secs(),
+                        rx_timestamp
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap()
+                            .subsec_nanos(),
+                        elapsed_ns
+                    );
                 }
             }
-            last_rx_id = perf_pkt.get_id();
-            last_rx_ts = rx_timestamp;
-        } else if perf_pkt.get_op() == PerfOp::Sync as u8 && last_rx_id == perf_pkt.get_id() {
-            let rx_timestamp = last_rx_ts;
-            let tx_sec = perf_pkt.get_tv_sec();
-            let tx_nsec = perf_pkt.get_tv_nsec();
-            if tx_sec == 0 && tx_nsec == 0 {
-                continue;
+            // PerfOp::Ping
+            0 => {
+                perf_pkt.set_op(PerfOp::Pong as u8);
+                eth_pkt.set_destination(eth_pkt.get_source());
+                eth_pkt.set_source(my_mac);
+                if sock.send(eth_pkt.packet()).is_err() {
+                    eprintln!("Failed to send packet");
+                };
             }
-            let tx_timestamp = UNIX_EPOCH + Duration::new(tx_sec.into(), tx_nsec);
-            let elapsed = rx_timestamp.duration_since(tx_timestamp).unwrap();
-            let elapsed_ns = elapsed.as_nanos();
-            println!(
-                "{}: {}.{:09} -> {}.{:09} = {} ns",
-                perf_pkt.get_id(),
-                tx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_secs(),
-                tx_timestamp
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .subsec_nanos(),
-                rx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_secs(),
-                rx_timestamp
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .subsec_nanos(),
-                elapsed_ns
-            );
-        } else if perf_pkt.get_op() == PerfOp::Ping as u8 {
-            println!("recv_bytes: {}", recv_bytes);
-            perf_pkt.set_op(PerfOp::Pong as u8);
-            eth_pkt.set_destination(eth_pkt.get_source());
-            eth_pkt.set_source(my_mac);
-            if sock.send(eth_pkt.packet()).is_err() {
-                eprintln!("Failed to send packet");
-            };
+            _ => {}
         }
     }
 
@@ -303,13 +310,14 @@ fn do_client(
         },
     };
 
-    for id in 1..count + 1 {
+    for id in 1..=count {
         perf_pkt.set_id(id as u32);
         let now;
-        match oneway {
-            true => perf_pkt.set_op(PerfOp::Tx as u8),
-            false => perf_pkt.set_op(PerfOp::Ping as u8),
-        };
+        if oneway {
+            perf_pkt.set_op(PerfOp::Tx as u8);
+        } else {
+            perf_pkt.set_op(PerfOp::Ping as u8);
+        }
         eth_pkt.set_payload(perf_pkt.packet());
         if precise {
             now = SystemTime::now();
@@ -348,9 +356,8 @@ fn do_client(
                             continue;
                         }
                         rx_timestamp = SystemTime::now();
-                        rx_timestamp = match get_rx_timestamp(msg) {
-                            Ok(time) => time,
-                            Err(_) => rx_timestamp,
+                        if let Ok(ts) = get_rx_timestamp(msg) {
+                            rx_timestamp = ts;
                         }
                     }
                     None => {
