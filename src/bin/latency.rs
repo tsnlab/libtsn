@@ -183,7 +183,10 @@ fn do_server(iface_name: String) {
         let mut perf_pkt = MutablePerfPacket::new(eth_pkt.payload_mut()).unwrap();
         if perf_pkt.get_op() == PerfOp::Tx as u8 {
             if let Some(msg) = msg {
-                rx_timestamp = get_rx_timestamp(msg);
+                rx_timestamp = match get_rx_timestamp(msg) {
+                    Ok(time) => time,
+                    Err(_) => rx_timestamp,
+                }
             }
             last_rx_id = perf_pkt.get_id();
             last_rx_ts = rx_timestamp;
@@ -344,7 +347,11 @@ fn do_client(
                         if unsafe { libc::recvmsg(sock.fd, &mut msg, 0) } < 0 {
                             continue;
                         }
-                        rx_timestamp = get_rx_timestamp(msg);
+                        rx_timestamp = SystemTime::now();
+                        rx_timestamp = match get_rx_timestamp(msg) {
+                            Ok(time) => time,
+                            Err(_) => rx_timestamp,
+                        }
                     }
                     None => {
                         if sock.recv(&mut rx_eth_buff).is_err() {
@@ -434,7 +441,7 @@ fn get_tx_timestamp(fd: i32) -> SystemTime {
     SystemTime::now()
 }
 
-fn get_rx_timestamp(msg: msghdr) -> SystemTime {
+fn get_rx_timestamp(msg: msghdr) -> Result<SystemTime, u32> {
     let mut tend: libc::timespec = libc::timespec {
         tv_sec: 0,
         tv_nsec: 0,
@@ -464,8 +471,8 @@ fn get_rx_timestamp(msg: msghdr) -> SystemTime {
                 );
             }
             let time = UNIX_EPOCH + Duration::new(tend.tv_sec as u64, tend.tv_nsec as u32);
-            return time;
+            return Ok(time);
         }
     }
-    SystemTime::now()
+    Err(1)
 }
