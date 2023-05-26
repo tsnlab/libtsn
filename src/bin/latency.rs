@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::io::Error;
 use std::mem;
 use std::option::Option;
@@ -85,9 +84,8 @@ fn main() {
     match matched_command.subcommand() {
         Some(("server", sub_matches)) => {
             let iface = sub_matches.value_of("interface").unwrap().to_string();
-            let oneway = sub_matches.is_present("oneway");
 
-            do_server(iface, oneway)
+            do_server(iface)
         }
         Some(("client", sub_matches)) => {
             let iface = sub_matches.value_of("interface").unwrap().to_string();
@@ -103,7 +101,7 @@ fn main() {
     }
 }
 
-fn do_server(iface_name: String, oneway: bool) {
+fn do_server(iface_name: String) {
     let interface_name_match = |iface: &NetworkInterface| iface.name == iface_name;
     let interfaces = datalink::interfaces();
     let interface = interfaces.into_iter().find(interface_name_match).unwrap();
@@ -136,27 +134,27 @@ fn do_server(iface_name: String, oneway: bool) {
         iov_base: packet.as_mut_ptr() as *mut libc::c_void,
         iov_len: packet.len(),
     };
-    let msg: Option<msghdr> = match oneway {
-        true => match enable_rx_timestamp(&sock, &mut iov) {
-            Ok(msg) => {
-                println!("Set sock timestamp");
-                Some(msg)
-            }
-            Err(e) => {
-                eprintln!("Failed to set sock timestamp: {}", e);
-                None
-            }
-        },
-        false => None,
+    let msg: Option<msghdr> = match enable_rx_timestamp(&sock, &mut iov) {
+        Ok(msg) => {
+            eprintln!("Set sock timestamp");
+            Some(msg)
+        }
+        Err(e) => {
+            eprintln!("Failed to set sock timestamp: {}", e);
+            None
+        }
     };
-    let mut last_rx: (i32, SystemTime) = (-1, SystemTime::now());
-    // let mut rx_map: HashMap<usize, SystemTime> = HashMap::new();
+    let is_rx_ts_enabled = msg.is_some();
+    let mut last_rx_id: u32 = 0;
+    let mut last_rx_ts: SystemTime = SystemTime::now();
     while unsafe { RUNNING } {
         // TODO: Cleanup this code
+        let mut rx_timestamp;
         let recv_bytes = {
-            match (oneway, msg) {
+            match (is_rx_ts_enabled, msg) {
                 (true, Some(mut msg)) => {
                     let res = unsafe { libc::recvmsg(sock.fd, &mut msg, 0) };
+                    rx_timestamp = SystemTime::now();
                     if res == -1 {
                         continue;
                     } else if res == 0 {
@@ -166,7 +164,10 @@ fn do_server(iface_name: String, oneway: bool) {
                     res
                 }
                 _ => match sock.recv(&mut packet) {
-                    Ok(size) => size,
+                    Ok(size) => {
+                        rx_timestamp = SystemTime::now();
+                        size
+                    }
                     Err(_) => {
                         continue;
                     }
@@ -181,15 +182,13 @@ fn do_server(iface_name: String, oneway: bool) {
         }
         let mut perf_pkt = MutablePerfPacket::new(eth_pkt.payload_mut()).unwrap();
         if perf_pkt.get_op() == PerfOp::Tx as u8 {
-            if perf_pkt.get_id() as i32 > last_rx.0 {
-                let rx_timestamp = match msg {
-                    Some(msg) => get_rx_timestamp(msg),
-                    None => SystemTime::now(),
-                };
-                last_rx = (perf_pkt.get_id() as i32, rx_timestamp);
+            if let Some(msg) = msg {
+                rx_timestamp = get_rx_timestamp(msg);
             }
-        } else if perf_pkt.get_op() == PerfOp::Sync as u8 && last_rx.0 == perf_pkt.get_id() as i32 {
-            let rx_timestamp = last_rx.1;
+            last_rx_id = perf_pkt.get_id();
+            last_rx_ts = rx_timestamp;
+        } else if perf_pkt.get_op() == PerfOp::Sync as u8 && last_rx_id == perf_pkt.get_id() {
+            let rx_timestamp = last_rx_ts;
             let tx_sec = perf_pkt.get_tv_sec();
             let tx_nsec = perf_pkt.get_tv_nsec();
             if tx_sec == 0 && tx_nsec == 0 {
@@ -277,7 +276,6 @@ fn do_client(
     let mut perf_pkt = MutablePerfPacket::new(&mut tx_perf_buff).unwrap();
 
     let mut eth_pkt = MutableEthernetPacket::new(&mut tx_eth_buff).unwrap();
-    let mut tx_map: HashMap<usize, SystemTime> = HashMap::new();
 
     eth_pkt.set_destination(target);
     eth_pkt.set_source(my_mac);
@@ -302,9 +300,8 @@ fn do_client(
         },
     };
 
-    // Loop over count
-    for i in 0..count {
-        perf_pkt.set_id(i as u32);
+    for id in 1..count + 1 {
+        perf_pkt.set_id(id as u32);
         let now;
         match oneway {
             true => perf_pkt.set_op(PerfOp::Tx as u8),
@@ -323,7 +320,6 @@ fn do_client(
             continue;
         }
         let tx_timestamp = get_tx_timestamp(sock.fd);
-        tx_map.insert(i, tx_timestamp);
         if oneway {
             perf_pkt.set_tv_sec(tx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_secs() as u32);
             perf_pkt.set_tv_nsec(
@@ -348,13 +344,13 @@ fn do_client(
                         if unsafe { libc::recvmsg(sock.fd, &mut msg, 0) } < 0 {
                             continue;
                         }
-                        rx_timestamp = get_rx_timestamp(msg).duration_since(UNIX_EPOCH).unwrap();
+                        rx_timestamp = get_rx_timestamp(msg);
                     }
                     None => {
                         if sock.recv(&mut rx_eth_buff).is_err() {
                             continue;
                         }
-                        rx_timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+                        rx_timestamp = SystemTime::now();
                     }
                 }
 
@@ -364,14 +360,11 @@ fn do_client(
                 }
 
                 let perf_pkt = PerfPacket::new(rx_eth_pkt.payload()).unwrap();
-                let id = perf_pkt.get_id() as usize;
-                let tx_timestamp = tx_map.get(&id);
-                if tx_timestamp.is_none() {
-                    continue;
+                let rcv_id = perf_pkt.get_id() as usize;
+                if id != rcv_id {
+                    break;
                 }
-                let tx_timestamp = tx_timestamp.unwrap().duration_since(UNIX_EPOCH).unwrap();
-                let elapsed = rx_timestamp.checked_sub(tx_timestamp).unwrap();
-                tx_map.remove(&id);
+                let elapsed = rx_timestamp.duration_since(tx_timestamp).unwrap();
                 println!(
                     "{}: {}.{:09} s",
                     id,
@@ -436,7 +429,7 @@ fn enable_rx_timestamp(sock: &tsn::TsnSocket, iov: &mut libc::iovec) -> Result<m
     }
 }
 
-// support SW tx_timestamp yet
+// not support tx_timestamp yet
 fn get_tx_timestamp(fd: i32) -> SystemTime {
     SystemTime::now()
 }
