@@ -13,7 +13,7 @@ use nix::{
     },
     unistd::Pid,
 };
-use std::io::Error;
+use std::io::{Error, ErrorKind};
 use std::{env, mem, str};
 use std::{mem::size_of, num::NonZeroUsize, os::raw::c_void, process, time::Duration};
 
@@ -48,6 +48,14 @@ impl TsnSocket {
 
     pub fn recv_msg(&self, msg: &mut msghdr) -> Result<isize, String> {
         recv_msg(self, msg)
+    }
+
+    pub fn enable_tx_timestamp(&self) -> Result<(), Error> {
+        enable_tx_timestamp(self)
+    }
+
+    pub fn get_tx_timestamp(&self) -> Result<time::Timespec, Error> {
+        get_tx_timestamp(self)
     }
 
     pub fn close(&mut self) -> Result<(), String> {
@@ -256,6 +264,183 @@ pub fn recv_msg(sock: &TsnSocket, msg: &mut msghdr) -> Result<isize, String> {
     } else {
         Ok(res)
     }
+}
+
+pub fn enable_tx_timestamp(sock: &TsnSocket) -> Result<(), Error> {
+    let sockfd = sock.fd;
+    let interface_name = &sock.ifname;
+
+    // setsockopt
+    let ts_flags: u32 = libc::SOF_TIMESTAMPING_TX_HARDWARE
+        | libc::SOF_TIMESTAMPING_SYS_HARDWARE
+        | libc::SOF_TIMESTAMPING_RAW_HARDWARE
+        | libc::SOF_TIMESTAMPING_TX_SOFTWARE
+        | libc::SOF_TIMESTAMPING_RX_SOFTWARE
+        | libc::SOF_TIMESTAMPING_SOFTWARE;
+
+    let err = unsafe {
+        libc::setsockopt(
+            sockfd,
+            libc::SOL_SOCKET,
+            libc::SO_TIMESTAMPING,
+            &ts_flags as *const _ as *const libc::c_void,
+            std::mem::size_of::<u32>().try_into().unwrap(),
+        )
+    };
+    if err < 0 {
+        return Err(Error::last_os_error());
+    }
+
+    // setsockopt for err queue
+
+    let flags: i32 = 1;
+    let err = unsafe {
+        libc::setsockopt(
+            sockfd,
+            libc::SOL_SOCKET,
+            libc::SO_SELECT_ERR_QUEUE,
+            &flags as *const _ as *const libc::c_void,
+            std::mem::size_of::<i32>().try_into().unwrap(),
+        )
+    };
+    if err < 0 {
+        return Err(Error::last_os_error());
+    }
+
+    // ioctl
+    let mut ts_cfg = libc::hwtstamp_config {
+        tx_type: libc::HWTSTAMP_TX_ON as i32,
+        rx_filter: libc::HWTSTAMP_FILTER_NONE as i32,
+        flags: 0,
+    };
+
+    let mut ifr_name: [libc::c_char; libc::IFNAMSIZ] = [0; libc::IFNAMSIZ];
+    for (source, target) in interface_name.as_bytes().iter().zip(ifr_name.iter_mut()) {
+        *target = *source as libc::c_char;
+    }
+
+    let ifreq = libc::ifreq {
+        ifr_name,
+        ifr_ifru: libc::__c_anonymous_ifr_ifru {
+            ifru_data: (&mut ts_cfg as *mut _) as *mut libc::c_char,
+        },
+    };
+
+    let err = unsafe {
+        // Not useless conversion because aarch64 has different type
+        #[allow(clippy::useless_conversion)]
+        libc::ioctl(sockfd, libc::SIOCSHWTSTAMP.try_into().unwrap(), &ifreq)
+    };
+    if err < 0 {
+        // XXX: While ioctl failed, SW timestamp is still enabled.
+        eprintln!("ioctl SIOCSHWTSTAMP failed: {}", Error::last_os_error());
+        eprintln!("But SW timestamp by kernel is still enabled.")
+    }
+
+    Ok(())
+}
+
+pub fn get_tx_timestamp(sock: &TsnSocket) -> Result<time::Timespec, Error> {
+    let sockfd = sock.fd;
+
+    let buf: [u8; 256] = [0u8; 256];
+    let buflen = std::mem::size_of_val(&buf);
+
+    let control: [u8; 256] = [0u8; 256];
+
+    let iov = libc::iovec {
+        iov_base: buf.as_ptr() as *mut libc::c_void,
+        iov_len: buflen,
+    };
+
+    let msg: libc::msghdr = unsafe {
+        // Avoid private field not provided error
+        let mut msg: libc::msghdr = std::mem::MaybeUninit::zeroed().assume_init();
+
+        msg.msg_name = std::ptr::null_mut();
+        msg.msg_namelen = 0;
+        msg.msg_iov = &iov as *const _ as *mut libc::iovec;
+        msg.msg_iovlen = 1;
+        msg.msg_control = control.as_ptr() as *mut libc::c_void;
+        msg.msg_controllen = {
+            // aarch64 has msg_controllen as u32, not usize
+            #[allow(clippy::useless_conversion)]
+            std::mem::size_of_val(&control).try_into().unwrap()
+        };
+        msg.msg_flags = 0;
+        msg
+    };
+
+    let pfd = libc::pollfd {
+        fd: sockfd,
+        events: libc::POLLPRI,
+        revents: 0,
+    };
+
+    let res = unsafe { libc::poll(&pfd as *const _ as *mut libc::pollfd, 1, 1000) };
+
+    match res {
+        0 => {
+            return Err(Error::new(ErrorKind::TimedOut, "poll timeout"));
+        }
+        res if res < 0 => {
+            return Err(Error::last_os_error());
+        }
+        _ => {}
+    }
+
+    // XXX: IDK why but this doesn't work on NXP
+    // Commenting this out for now
+    // if !(pfd.revents & libc::POLLPRI) != 0 {
+    //     return Err(Error::new(ErrorKind::Other, format!("unexpected revents {}", pfd.revents)));
+    // }
+
+    // Poll done. Now read the timestamp
+
+    let cnt = unsafe {
+        libc::recvmsg(
+            sockfd,
+            &msg as *const _ as *mut libc::msghdr,
+            libc::MSG_ERRQUEUE,
+        )
+    };
+
+    if cnt < 0 {
+        return Err(Error::last_os_error());
+    }
+
+    // Recvmsg done. Parse the timestamp
+    let mut cm = unsafe { libc::CMSG_FIRSTHDR(&msg) };
+    // Loop while cm is not null
+    while !cm.is_null() {
+        let cmsg_level = unsafe { (*cm).cmsg_level };
+        let cmsg_type = unsafe { (*cm).cmsg_type };
+
+        if cmsg_level == libc::SOL_SOCKET && cmsg_type == libc::SO_TIMESTAMPING {
+            let ts = unsafe {
+                let ts = libc::CMSG_DATA(cm) as *const [libc::timespec; 3];
+                *ts
+            };
+
+            // 0 - SW tx timestamp
+            // 1 - Legacy HW tx timestamp
+            // 2 - HW tx timestamp
+            let ts = match ts {
+                ts if ts[2].tv_sec != 0 || ts[2].tv_nsec != 0 => ts[2],
+                ts if ts[1].tv_sec != 0 || ts[1].tv_nsec != 0 => ts[1],
+                ts if ts[0].tv_sec != 0 || ts[0].tv_nsec != 0 => ts[0],
+                _ => unreachable!(),
+            };
+            return Ok(time::Timespec {
+                tv_sec: ts.tv_sec,
+                tv_nsec: ts.tv_nsec,
+            });
+        }
+
+        cm = unsafe { libc::CMSG_NXTHDR(&msg, cm) };
+    }
+
+    Err(Error::new(ErrorKind::NotFound, "No timestamp found"))
 }
 
 pub fn timespecff_diff(start: &mut TimeSpec, stop: &mut TimeSpec, result: &mut TimeSpec) {

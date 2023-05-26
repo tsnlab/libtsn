@@ -3,6 +3,12 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 static mut ERROR_CLOCK_GETTIME: Duration = Duration::new(1, 0);
 static mut ERROR_NANOSLEEP: Duration = Duration::new(1, 0);
 
+#[derive(Debug)]
+pub struct Timespec {
+    pub tv_sec: i64,
+    pub tv_nsec: i64,
+}
+
 fn is_analysed() -> bool {
     unsafe { ERROR_CLOCK_GETTIME.as_secs() != 1 && ERROR_NANOSLEEP.as_secs() != 1 }
 }
