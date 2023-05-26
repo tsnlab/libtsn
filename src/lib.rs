@@ -291,7 +291,7 @@ pub fn enable_tx_timestamp(sock: &TsnSocket) -> Result<(), Error> {
         return Err(Error::last_os_error());
     }
 
-    // setsoockopt for err queue
+    // setsockopt for err queue
 
     let flags: i32 = 1;
     let err = unsafe {
@@ -381,11 +381,9 @@ pub fn get_tx_timestamp(sock: &TsnSocket) -> Result<time::Timespec, Error> {
 
     match res {
         0 => {
-            println!("poll timeout");
             return Err(Error::new(ErrorKind::TimedOut, "poll timeout"));
         }
         res if res < 0 => {
-            println!("poll error: {}", Error::last_os_error());
             return Err(Error::last_os_error());
         }
         _ => {}
