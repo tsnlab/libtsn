@@ -132,34 +132,31 @@ fn do_server(iface_name: String) {
     });
 
     let mut packet = [0u8; 1514];
-    let msg: Option<msghdr> = match oneway {
-        true => match enable_rx_timestamp(&sock, &mut packet) {
-            Ok(msg) => {
-                println!("Set sock timestamp");
-                Some(msg)
-            }
-            Err(e) => {
-                eprintln!("Failed to set sock timestamp: {}", e);
-                None
-            }
-        },
-        false => None,
+    let mut iov: libc::iovec = libc::iovec {
+        iov_base: packet.as_mut_ptr() as *mut libc::c_void,
+        iov_len: packet.len(),
     };
-    let mut rx_timestamp;
+    let msg: Option<msghdr> = match enable_rx_timestamp(&sock, &mut iov) {
+        Ok(msg) => {
+            eprintln!("Socket RX timestamp enabled");
+            Some(msg)
+        }
+        Err(e) => {
+            eprintln!("Failed to set sock timestamp: {}", e);
+            None
+        }
+    };
+    let is_rx_ts_enabled = msg.is_some();
+    let mut last_rx_id: u32 = 0;
+    let mut last_rx_ts: SystemTime = UNIX_EPOCH;
     while unsafe { RUNNING } {
         // TODO: Cleanup this code
         let mut rx_timestamp;
         let recv_bytes = {
-<<<<<<< HEAD
             match (is_rx_ts_enabled, msg) {
                 (true, Some(mut msg)) => {
                     let res = unsafe { libc::recvmsg(sock.fd, &mut msg, 0) };
                     rx_timestamp = SystemTime::now();
-=======
-            match (oneway, msg) {
-                (true, Some(mut msg)) => {
-                    let res = unsafe { libc::recvmsg(sock.fd, &mut msg, 0) };
->>>>>>> 4263eac (get rx, tx timestamp)
                     if res == -1 {
                         continue;
                     } else if res == 0 {
@@ -170,30 +167,15 @@ fn do_server(iface_name: String) {
                 }
                 _ => match sock.recv(&mut packet) {
                     Ok(size) => {
+                        rx_timestamp = SystemTime::now();
                         size
-                    },
+                    }
                     Err(_) => {
                         continue;
                     }
                 },
             }
         };
-        rx_timestamp = SystemTime::now();
-        println!("Received {} bytes", recv_bytes);
-        // Get rx timestamp
-        let rx_timestamp = {
-            if oneway {
-                if let Ok(timestamp) = get_timestamp(msg.unwrap()) {
-                    timestamp
-                } else {
-                    SystemTime::now()
-                }
-            } else {
-                SystemTime::now()
-            }
-        };
-
->>>>>>> 4263eac (get rx, tx timestamp)
         // Match packet size
         let mut rx_packet = packet.split_at(recv_bytes as usize).0.to_owned();
         let mut eth_pkt = MutableEthernetPacket::new(&mut rx_packet).unwrap();
@@ -202,7 +184,6 @@ fn do_server(iface_name: String) {
         }
         let mut perf_pkt = MutablePerfPacket::new(eth_pkt.payload_mut()).unwrap();
 
-<<<<<<< HEAD
         match PerfOp::from_u8(perf_pkt.get_op()) {
             Some(PerfOp::Tx) => {
                 if let Some(msg) = msg {
@@ -244,39 +225,6 @@ fn do_server(iface_name: String) {
                 };
             }
             _ => {}
-=======
-        if oneway {
-            let perf_pkt = PerfPacket::new(eth_pkt.payload()).unwrap();
-            let id = perf_pkt.get_id();
-            let tv_sec = perf_pkt.get_tv_sec();
-            let tv_nsec = perf_pkt.get_tv_nsec();
-            let tx_timestamp = UNIX_EPOCH + Duration::new(tv_sec.into(), tv_nsec);
-            println!("rx_timestamp: {:?}", rx_timestamp);
-            println!("tx_timestamp: {:?}", tx_timestamp);
-            let elapsed = rx_timestamp.duration_since(tx_timestamp).unwrap();
-            let elapsed_ns = elapsed.as_nanos();
-            println!(
-                "{}: {}.{:09} -> {}.{:09} = {} ns",
-                id,
-                tx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_secs(),
-                tx_timestamp
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .subsec_nanos(),
-                rx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_secs(),
-                rx_timestamp
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .subsec_nanos(),
-                elapsed_ns
-            );
-        } else {
-            eth_pkt.set_destination(eth_pkt.get_source());
-            eth_pkt.set_source(my_mac);
-            if sock.send(eth_pkt.packet()).is_err() {
-                eprintln!("Failed to send packet");
-            };
->>>>>>> 4263eac (get rx, tx timestamp)
         }
     }
 
@@ -472,10 +420,6 @@ fn do_client(
 }
 
 fn enable_rx_timestamp(sock: &tsn::TsnSocket, iov: &mut libc::iovec) -> Result<msghdr, String> {
-<<<<<<< HEAD
-=======
-    // return Err("Not implemented yet".to_string());
->>>>>>> 4263eac (get rx, tx timestamp)
     const CONTROLSIZE: usize = 1024;
     let mut control: [libc::c_char; CONTROLSIZE] = [0; CONTROLSIZE];
 
@@ -512,14 +456,8 @@ fn enable_rx_timestamp(sock: &tsn::TsnSocket, iov: &mut libc::iovec) -> Result<m
         Ok(msg)
     }
 }
-<<<<<<< HEAD
 
 fn get_rx_timestamp(msg: msghdr) -> Result<SystemTime, u32> {
-=======
-fn get_timestamp(msg: msghdr) -> Result<SystemTime, String> {
-    // return Err("Not implemented yet".to_string());
-
->>>>>>> 4263eac (get rx, tx timestamp)
     let mut tend: libc::timespec = libc::timespec {
         tv_sec: 0,
         tv_nsec: 0,
