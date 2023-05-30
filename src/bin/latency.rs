@@ -6,8 +6,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::vec::Vec;
 
 use nix::sys::socket::{cmsghdr, msghdr};
-use num_derive::{FromPrimitive};
-use num_traits::{FromPrimitive};
+use num_derive::FromPrimitive;
+use num_traits::FromPrimitive;
 use rand::Rng;
 use signal_hook::{consts::SIGINT, iterator::Signals};
 
@@ -197,12 +197,14 @@ fn do_server(iface_name: String) {
             Some(PerfOp::Sync) => {
                 if last_rx_id == perf_pkt.get_id() {
                     let rx_timestamp = last_rx_ts;
-                    let tx_timestamp = Duration::new(perf_pkt.get_tv_sec().into(), perf_pkt.get_tv_nsec());
+                    let tx_timestamp =
+                        Duration::new(perf_pkt.get_tv_sec().into(), perf_pkt.get_tv_nsec());
                     if tx_timestamp.is_zero() {
                         continue;
                     }
                     let rx_timestamp = rx_timestamp.duration_since(UNIX_EPOCH).unwrap();
-                    let elapsed_ns = rx_timestamp.as_nanos() as i128 - tx_timestamp.as_nanos() as i128;
+                    let elapsed_ns =
+                        rx_timestamp.as_nanos() as i128 - tx_timestamp.as_nanos() as i128;
                     println!(
                         "{}: {}.{:09} -> {}.{:09} = {} ns",
                         perf_pkt.get_id(),
