@@ -6,6 +6,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::vec::Vec;
 
 use nix::sys::socket::{cmsghdr, msghdr};
+use num_derive::{FromPrimitive, ToPrimitive};
+use num_traits::{FromPrimitive, ToPrimitive};
 use rand::Rng;
 use signal_hook::{consts::SIGINT, iterator::Signals};
 
@@ -42,6 +44,7 @@ pub struct Perf {
     payload: Vec<u8>,
 }
 
+#[derive(FromPrimitive, ToPrimitive)]
 enum PerfOp {
     //RTT mode
     Ping = 0,
@@ -180,9 +183,9 @@ fn do_server(iface_name: String) {
             continue;
         }
         let mut perf_pkt = MutablePerfPacket::new(eth_pkt.payload_mut()).unwrap();
-        match perf_pkt.get_op() {
-            // PerfOp::Tx
-            2 => {
+
+        match PerfOp::from_u8(perf_pkt.get_op()) {
+            Some(PerfOp::Tx) => {
                 if let Some(msg) = msg {
                     if let Ok(ts) = get_rx_timestamp(msg) {
                         rx_timestamp = ts;
@@ -190,9 +193,8 @@ fn do_server(iface_name: String) {
                 }
                 last_rx_id = perf_pkt.get_id();
                 last_rx_ts = rx_timestamp;
-            }
-            // PerfOp::Sync
-            3 => {
+            },
+            Some(PerfOp::Sync) => {
                 if last_rx_id == perf_pkt.get_id() {
                     let rx_timestamp = last_rx_ts;
                     let tx_sec = perf_pkt.get_tv_sec();
@@ -219,16 +221,15 @@ fn do_server(iface_name: String) {
                         elapsed_ns
                     );
                 }
-            }
-            // PerfOp::Ping
-            0 => {
+            },
+            Some(PerfOp::Ping) => {
                 perf_pkt.set_op(PerfOp::Pong as u8);
                 eth_pkt.set_destination(eth_pkt.get_source());
                 eth_pkt.set_source(my_mac);
                 if sock.send(eth_pkt.packet()).is_err() {
                     eprintln!("Failed to send packet");
                 };
-            }
+            },
             _ => {}
         }
     }
