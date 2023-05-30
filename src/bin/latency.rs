@@ -203,23 +203,30 @@ fn do_server(iface_name: String) {
                         continue;
                     }
                     let tx_timestamp = UNIX_EPOCH + Duration::new(tx_sec.into(), tx_nsec);
-                    let elapsed = rx_timestamp.duration_since(tx_timestamp).unwrap();
-                    let elapsed_ns = elapsed.as_nanos();
-                    println!(
-                        "{}: {}.{:09} -> {}.{:09} = {} ns",
-                        perf_pkt.get_id(),
-                        tx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_secs(),
-                        tx_timestamp
-                            .duration_since(UNIX_EPOCH)
-                            .unwrap()
-                            .subsec_nanos(),
-                        rx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_secs(),
-                        rx_timestamp
-                            .duration_since(UNIX_EPOCH)
-                            .unwrap()
-                            .subsec_nanos(),
-                        elapsed_ns
-                    );
+                    let elapsed = rx_timestamp.duration_since(tx_timestamp);
+                    match elapsed {
+                        Ok(elapsed) => {
+                            let elapsed_ns = elapsed.as_nanos();
+                            println!(
+                                "{}: {}.{:09} -> {}.{:09} = {} ns",
+                                perf_pkt.get_id(),
+                                tx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_secs(),
+                                tx_timestamp
+                                    .duration_since(UNIX_EPOCH)
+                                    .unwrap()
+                                    .subsec_nanos(),
+                                rx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_secs(),
+                                rx_timestamp
+                                    .duration_since(UNIX_EPOCH)
+                                    .unwrap()
+                                    .subsec_nanos(),
+                                elapsed_ns
+                            );
+                        }
+                        Err(_) => {
+                            eprintln!("Error: negative elapsed time");
+                        }
+                            }
                 }
             },
             Some(PerfOp::Ping) => {
