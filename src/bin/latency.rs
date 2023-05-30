@@ -202,31 +202,19 @@ fn do_server(iface_name: String) {
                     if tx_sec == 0 && tx_nsec == 0 {
                         continue;
                     }
-                    let tx_timestamp = UNIX_EPOCH + Duration::new(tx_sec.into(), tx_nsec);
-                    let elapsed = rx_timestamp.duration_since(tx_timestamp);
-                    match elapsed {
-                        Ok(elapsed) => {
-                            let elapsed_ns = elapsed.as_nanos();
-                            println!(
-                                "{}: {}.{:09} -> {}.{:09} = {} ns",
-                                perf_pkt.get_id(),
-                                tx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_secs(),
-                                tx_timestamp
-                                    .duration_since(UNIX_EPOCH)
-                                    .unwrap()
-                                    .subsec_nanos(),
-                                rx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_secs(),
-                                rx_timestamp
-                                    .duration_since(UNIX_EPOCH)
-                                    .unwrap()
-                                    .subsec_nanos(),
-                                elapsed_ns
-                            );
-                        }
-                        Err(_) => {
-                            eprintln!("Error: negative elapsed time");
-                        }
-                    }
+
+                    let tx_timestamp = Duration::new(tx_sec.into(), tx_nsec);
+                    let rx_timestamp = rx_timestamp.duration_since(UNIX_EPOCH).unwrap();
+                    let elapsed = rx_timestamp.as_nanos() as i128 - tx_timestamp.as_nanos() as i128;
+                    println!(
+                        "{}: {}.{:09} -> {}.{:09} = {} ns",
+                        perf_pkt.get_id(),
+                        tx_timestamp.as_secs(),
+                        tx_timestamp.subsec_nanos(),
+                        rx_timestamp.as_secs(),
+                        rx_timestamp.subsec_nanos(),
+                        elapsed
+                    );
                 }
             }
             Some(PerfOp::Ping) => {
