@@ -44,7 +44,7 @@ pub struct Perf {
     payload: Vec<u8>,
 }
 
-#[derive(FromPrimitive, ToPrimitive)]
+#[derive(FromPrimitive)]
 enum PerfOp {
     //RTT mode
     Ping = 0,
@@ -193,7 +193,7 @@ fn do_server(iface_name: String) {
                 }
                 last_rx_id = perf_pkt.get_id();
                 last_rx_ts = rx_timestamp;
-            },
+            }
             Some(PerfOp::Sync) => {
                 if last_rx_id == perf_pkt.get_id() {
                     let rx_timestamp = last_rx_ts;
@@ -226,9 +226,9 @@ fn do_server(iface_name: String) {
                         Err(_) => {
                             eprintln!("Error: negative elapsed time");
                         }
-                            }
+                    }
                 }
-            },
+            }
             Some(PerfOp::Ping) => {
                 perf_pkt.set_op(PerfOp::Pong as u8);
                 eth_pkt.set_destination(eth_pkt.get_source());
@@ -236,7 +236,7 @@ fn do_server(iface_name: String) {
                 if sock.send(eth_pkt.packet()).is_err() {
                     eprintln!("Failed to send packet");
                 };
-            },
+            }
             _ => {}
         }
     }
