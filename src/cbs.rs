@@ -30,10 +30,15 @@ pub fn get_linkspeed(ifname: &str) -> Result<String, String> {
     let output = Command::new("ethtool").arg(ifname).output();
     match output {
         Ok(output) => {
-            let out = str::from_utf8(&output.stdout).unwrap();
-            let pattern = regex::Regex::new(r"Speed: (?P<speed>\d+(?:|k|M|G)b[p/]?s)").unwrap();
-            let matched = pattern.captures(out).unwrap();
-            Ok(matched.name("speed").unwrap().as_str().to_string())
+            let out = str::from_utf8(&output.stdout).expect("failed to parse cbs schedule");
+            let pattern = regex::Regex::new(r"Speed: (?P<speed>\d+(?:|k|M|G)b[p/]?s)")
+                .expect("failed to parse cbs schedule");
+            let matched = pattern.captures(out).expect("failed to parse cbs schedule");
+            Ok(matched
+                .name("speed")
+                .expect("failed to parse cbs schedule")
+                .as_str()
+                .to_string())
         }
         Err(e) => Err(e.to_string()),
     }
@@ -42,12 +47,23 @@ pub fn to_bits(input: &Value) -> Result<i64, String> {
     if let Some(value) = input.as_str() {
         let matched =
             regex::Regex::new(r"^(?P<v>[\d_]+)\s*(?P<modifier>|k|M|G|ki|Mi|Gi)(?P<b>b|B)$")
-                .unwrap()
+                .expect("failed to parse cbs schedule")
                 .captures(value)
-                .unwrap();
-        let v = matched.name("v").unwrap().as_str().parse::<i64>().unwrap();
-        let modifier = matched.name("modifier").unwrap().as_str();
-        let b = matched.name("b").unwrap().as_str();
+                .expect("failed to parse cbs schedule");
+        let v = matched
+            .name("v")
+            .expect("failed to parse cbs schedule")
+            .as_str()
+            .parse::<i64>()
+            .expect("failed to parse cbs schedule");
+        let modifier = matched
+            .name("modifier")
+            .expect("failed to parse cbs schedule")
+            .as_str();
+        let b = matched
+            .name("b")
+            .expect("failed to parse cbs schedule")
+            .as_str();
         let multiplier_bits = match b {
             "b" => 1,
             "B" => 8,
@@ -65,17 +81,25 @@ pub fn to_bits(input: &Value) -> Result<i64, String> {
         };
         return Ok(v * multiplier_bits * multiplier_modifier);
     }
-    Ok(input.as_i64().unwrap())
+    Ok(input.as_i64().expect("failed to parse cbs schedule"))
 }
 
 pub fn to_bps(input: &Value) -> Result<i64, String> {
     if let Some(value) = input.as_str() {
         let matched = regex::Regex::new(r"^(?P<v>[\d_]+)\s*(?P<modifier>|k|M|G)(?P<b>b|B)[p/]s$")
-            .unwrap()
+            .expect("failed to parse cbs schedule")
             .captures(value)
-            .unwrap();
-        let v = matched.name("v").unwrap().as_str().parse::<i64>().unwrap();
-        let modifier = matched.name("modifier").unwrap().as_str();
+            .expect("failed to parse cbs schedule");
+        let v = matched
+            .name("v")
+            .expect("failed to parse cbs schedule")
+            .as_str()
+            .parse::<i64>()
+            .expect("failed to parse cbs schedule");
+        let modifier = matched
+            .name("modifier")
+            .expect("failed to parse cbs schedule")
+            .as_str();
         return {
             match modifier {
                 "" => Ok(v),
@@ -86,7 +110,7 @@ pub fn to_bps(input: &Value) -> Result<i64, String> {
             }
         };
     }
-    Ok(input.as_i64().unwrap())
+    Ok(input.as_i64().expect("failed to parse cbs schedule"))
 }
 
 pub fn calc_credits(
@@ -95,7 +119,7 @@ pub fn calc_credits(
 ) -> (CbsCredit, CbsCredit) {
     let mut idle_slope_a = 0;
     let mut max_frame_a = 0;
-    for stream in streams.get(&'a').unwrap() {
+    for stream in streams.get(&'a').expect("failed to parse cbs schedule") {
         idle_slope_a += stream.bandwidth;
         max_frame_a += stream.max_frame;
     }
@@ -111,7 +135,7 @@ pub fn calc_credits(
 
     let mut idle_slope_b = 0;
     let mut max_frame_b = 0;
-    for stream in streams.get(&'b').unwrap() {
+    for stream in streams.get(&'b').expect("failed to parse cbs schedule") {
         idle_slope_b += stream.bandwidth;
         max_frame_b += stream.max_frame;
     }
@@ -144,40 +168,50 @@ pub fn normalise_cbs(ifname: &str, config: &Value) -> Result<CbsConfig, String> 
         Ok(speed) => to_bps(&Value::String(speed))?,
         Err(_) => 1_000_000_000, // 1000Mbps
     };
-    for (prio, priomap) in config.as_mapping().unwrap() {
-        if !tc_map.contains_key(&prio.as_i64().unwrap()) {
-            tc_map.insert(prio.as_i64().unwrap(), tc_map.len() as i64);
+    for (prio, priomap) in config.as_mapping().expect("failed to parse cbs schedule") {
+        if !tc_map.contains_key(&prio.as_i64().expect("failed to parse cbs schedule")) {
+            tc_map.insert(
+                prio.as_i64().expect("failed to parse cbs schedule"),
+                tc_map.len() as i64,
+            );
         }
         let child = CbsChild {
-            prio: prio.as_i64().unwrap(),
+            prio: prio.as_i64().expect("failed to parse cbs schedule"),
             max_frame: to_bits(
                 priomap
                     .get(&Value::String("max_frame".to_string()))
-                    .unwrap(),
+                    .expect("failed to parse cbs schedule"),
             )?,
             bandwidth: to_bps(
                 priomap
                     .get(&Value::String("bandwidth".to_string()))
-                    .unwrap(),
+                    .expect("failed to parse cbs schedule"),
             )?,
         };
         let index = priomap
-            .get(Value::String("class".to_string()).as_str().unwrap())
-            .unwrap()
+            .get(
+                Value::String("class".to_string())
+                    .as_str()
+                    .expect("failed to parse cbs schedule"),
+            )
+            .expect("failed to parse cbs schedule")
             .as_str()
-            .unwrap()
+            .expect("failed to parse cbs schedule")
             .chars()
             .next()
-            .unwrap();
-        streams.get_mut(&index).unwrap().push(child);
+            .expect("failed to parse cbs schedule");
+        streams
+            .get_mut(&index)
+            .expect("failed to parse cbs schedule")
+            .push(child);
     }
     tc_map.insert(-1, tc_map.len() as i64);
     let num_tc = tc_map.len() as i64;
     for i in 0..16 {
         if tc_map.contains_key(&i) {
-            ret_map.insert(i, *tc_map.get(&i).unwrap());
+            ret_map.insert(i, *tc_map.get(&i).expect("failed to parse cbs schedule"));
         } else {
-            ret_map.insert(i, *tc_map.get(&-1).unwrap());
+            ret_map.insert(i, *tc_map.get(&-1).expect("failed to parse cbs schedule"));
         }
     }
     let (credits_a, credits_b) = calc_credits(&streams, linkspeed);
