@@ -446,6 +446,11 @@ fn enable_rx_timestamp(sock: &tsn::TsnSocket, iov: &mut libc::iovec) -> Result<m
     }
 }
 
+// not support tx_timestamp yet
+fn get_tx_timestamp(fd: i32) -> SystemTime {
+    SystemTime::now()
+}
+
 fn get_rx_timestamp(msg: msghdr) -> Result<SystemTime, u32> {
     let mut tend: libc::timespec = libc::timespec {
         tv_sec: 0,
