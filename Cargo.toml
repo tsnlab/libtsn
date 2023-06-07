@@ -28,7 +28,7 @@ num-traits = "0.2"
 num-derive = "0.3"
 
 [[bin]]
-name = "latency"
+name = "latency-kontron"
 path = "src/bin/latency.rs"
 
 [[bin]]

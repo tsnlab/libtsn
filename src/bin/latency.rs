@@ -190,7 +190,9 @@ fn do_server(iface_name: String) {
         }
         let mut perf_pkt = MutablePerfPacket::new(eth_pkt.payload_mut()).unwrap();
 
-        if perf_pkt.get_gptp_length() != 0xff && perf_pkt.get_gptp_domain_number() != 0xff {
+        if perf_pkt.get_gptp_type() != 0x10 &&
+            perf_pkt.get_gptp_domain_number() != 0x00 &&
+            perf_pkt.get_gptp_length() != 0x1337 {
             // Not a perf packet
             continue;
         }
@@ -307,8 +309,8 @@ fn do_client(
 
     perf_pkt.set_gptp_type(0x10); // gPTP SYNC
     perf_pkt.set_gptp_version(0x02); // PTPv2
-    perf_pkt.set_gptp_length(0xff);
-    perf_pkt.set_gptp_domain_number(0xff);
+    perf_pkt.set_gptp_length(0x1337);
+    perf_pkt.set_gptp_domain_number(0x00);
 
     let mut rx_eth_buff = [0u8; 1514];
     let mut iov: libc::iovec = libc::iovec {
