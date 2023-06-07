@@ -14,7 +14,7 @@ use signal_hook::{consts::SIGINT, iterator::Signals};
 use clap::{arg, crate_authors, crate_version, Command};
 
 use pnet_macros::packet;
-use pnet_macros_support::types::u32be;
+use pnet_macros_support::types::{u16be, u32be};
 use pnet_packet::{MutablePacket, Packet};
 
 use pnet::datalink::{self, NetworkInterface};
@@ -26,7 +26,7 @@ extern crate socket as soc;
 
 const VLAN_ID_PERF: u16 = 10;
 const VLAN_PRI_PERF: u32 = 3;
-const ETHERTYPE_PERF: u16 = 0x1337;
+const ETHERTYPE_PERF: u16 = libc::ETH_P_1588 as u16;
 // const ETH_P_PERF: u16 = libc::ETH_P_ALL as u16; // FIXME: use ETHERTYPE_PERF
 const ETH_P_PERF: u16 = ETHERTYPE_PERF;
 const TIMEOUT_SEC: u64 = 1;
@@ -36,6 +36,11 @@ static mut RUNNING: bool = false;
 /// Packet format for Perf tool
 #[packet]
 pub struct Perf {
+    gptp_type: u8,
+    gptp_version: u8,
+    gptp_length: u16be,
+    gptp_domain_number: u8,
+
     id: u32be,
     op: u8,
     tv_sec: u32be,
@@ -176,6 +181,7 @@ fn do_server(iface_name: String) {
                 },
             }
         };
+
         // Match packet size
         let mut rx_packet = packet.split_at(recv_bytes as usize).0.to_owned();
         let mut eth_pkt = MutableEthernetPacket::new(&mut rx_packet).unwrap();
@@ -183,6 +189,11 @@ fn do_server(iface_name: String) {
             continue;
         }
         let mut perf_pkt = MutablePerfPacket::new(eth_pkt.payload_mut()).unwrap();
+
+        if perf_pkt.get_gptp_length() != 0xff && perf_pkt.get_gptp_domain_number() != 0xff {
+            // Not a perf packet
+            continue;
+        }
 
         match PerfOp::from_u8(perf_pkt.get_op()) {
             Some(PerfOp::Tx) => {
@@ -293,6 +304,11 @@ fn do_client(
     eth_pkt.set_destination(target);
     eth_pkt.set_source(my_mac);
     eth_pkt.set_ethertype(EtherType(ETHERTYPE_PERF));
+
+    perf_pkt.set_gptp_type(0x10); // gPTP SYNC
+    perf_pkt.set_gptp_version(0x02); // PTPv2
+    perf_pkt.set_gptp_length(0xff);
+    perf_pkt.set_gptp_domain_number(0xff);
 
     let mut rx_eth_buff = [0u8; 1514];
     let mut iov: libc::iovec = libc::iovec {
@@ -423,14 +439,22 @@ fn enable_rx_timestamp(sock: &tsn::TsnSocket, iov: &mut libc::iovec) -> Result<m
     const CONTROLSIZE: usize = 1024;
     let mut control: [libc::c_char; CONTROLSIZE] = [0; CONTROLSIZE];
 
-    let msg = msghdr {
-        msg_iov: iov,
-        msg_iovlen: 1,
-        msg_control: control.as_mut_ptr() as *mut libc::c_void,
-        msg_controllen: CONTROLSIZE,
-        msg_flags: 0,
-        msg_name: std::ptr::null_mut::<libc::c_void>(),
-        msg_namelen: 0,
+    let msg: libc::msghdr = unsafe {
+        // Avoid private field not provided error
+        let mut msg: libc::msghdr = std::mem::MaybeUninit::zeroed().assume_init();
+
+        msg.msg_name = std::ptr::null_mut();
+        msg.msg_namelen = 0;
+        msg.msg_iov = iov as *const _ as *mut libc::iovec;
+        msg.msg_iovlen = 1;
+        msg.msg_control = control.as_ptr() as *mut libc::c_void;
+        msg.msg_controllen = {
+            // aarch64 has msg_controllen as u32, not usize
+            #[allow(clippy::useless_conversion)]
+            std::mem::size_of_val(&control).try_into().unwrap()
+        };
+        msg.msg_flags = 0;
+        msg
     };
 
     let sockflags: u32 = libc::SOF_TIMESTAMPING_RX_HARDWARE

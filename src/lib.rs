@@ -123,12 +123,7 @@ pub fn sock_open(
     priority: u32,
     proto: u16,
 ) -> Result<TsnSocket, String> {
-    let name = match create_vlan(ifname, vlanid) {
-        Ok(v) => v,
-        Err(_) => {
-            return Err(format!("Create vlan fails {}", Error::last_os_error()));
-        }
-    };
+    let name = ifname;
     let sock;
     let mut res;
     let ifindex = if_nametoindex(name.as_bytes()).expect("vlan_ifname index");
@@ -186,13 +181,8 @@ pub fn sock_open(
 }
 
 pub fn sock_close(sock: &mut TsnSocket) -> Result<(), String> {
-    match delete_vlan(&sock.ifname, sock.vlanid) {
-        Ok(_) => {
-            close(sock.fd).unwrap();
-            Ok(())
-        }
-        Err(_) => Err(format!("Delete vlan fails: {}", Error::last_os_error())),
-    }
+    close(sock.fd).unwrap();
+    Ok(())
 }
 
 pub fn sock_set_timeout(sock: &mut TsnSocket, timeout: Duration) -> Result<(), String> {
