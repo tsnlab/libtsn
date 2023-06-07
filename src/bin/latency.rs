@@ -333,18 +333,7 @@ fn do_client(
             eprintln!("Failed to send packet: {}", e);
             continue;
         }
-        let mut tx_timestamp = SystemTime::now();
-        if is_tx_ts_enabled {
-            let msg_ts = sock.get_tx_timestamp();
-            match msg_ts {
-                Ok(ts) => {
-                    tx_timestamp = UNIX_EPOCH + Duration::new(ts.tv_sec as u64, ts.tv_nsec as u32);
-                }
-                Err(e) => {
-                    eprintln!("Failed to get TX timestamp: {}", e);
-                }
-            }
-        }
+        let tx_timestamp = get_tx_timestamp(sock.fd);
         if oneway {
             perf_pkt.set_tv_sec(tx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_secs() as u32);
             perf_pkt.set_tv_nsec(
