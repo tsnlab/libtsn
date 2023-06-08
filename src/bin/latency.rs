@@ -359,6 +359,7 @@ fn do_client(
                 }
                 Err(e) => {
                     eprintln!("Failed to get TX timestamp: {}", e);
+                    break;
                 }
             }
         }
@@ -424,10 +425,11 @@ fn do_client(
         }
 
         if !precise {
-            let sleep_duration = Duration::from_millis(700)
-                + Duration::from_nanos(rand::thread_rng().gen_range(0..10_000_000));
+            let duration = Duration::from_micros(
+                rand::thread_rng().gen_range(50_000..51_000)
+            );
 
-            thread::sleep(sleep_duration);
+            thread::sleep(duration);
         }
         if unsafe { !RUNNING } {
             break;
