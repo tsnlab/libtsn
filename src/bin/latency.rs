@@ -229,7 +229,7 @@ fn do_server(iface_name: String) {
             }
             Some(PerfOp::Ping) => {
                 perf_pkt.set_op(PerfOp::Pong as u8);
-                eth_pkt.set_destination(eth_pkt.get_source());
+                // eth_pkt.set_destination(eth_pkt.get_source());
                 eth_pkt.set_source(my_mac);
                 if sock.send(eth_pkt.packet()).is_err() {
                     eprintln!("Failed to send packet");
