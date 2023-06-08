@@ -200,6 +200,8 @@ fn do_server(iface_name: String) {
                 if let Some(msg) = msg {
                     if let Ok(ts) = get_rx_timestamp(msg) {
                         rx_timestamp = ts;
+                    } else {
+                        eprintln!("Failed to get HW RX timestamp");
                     }
                 }
                 last_rx_id = perf_pkt.get_id();
@@ -388,6 +390,8 @@ fn do_client(
                         rx_timestamp = SystemTime::now();
                         if let Ok(ts) = get_rx_timestamp(msg) {
                             rx_timestamp = ts;
+                        } else {
+                            eprintln!("Failed to get HW RX timestamp");
                         }
                     }
                     None => {
