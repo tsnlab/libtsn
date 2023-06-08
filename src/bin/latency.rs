@@ -69,7 +69,6 @@ fn main() {
         .about("Client mode")
         .short_flag('c')
         .arg(arg!(-i --interface <interface> "Interface to use").required(true))
-        .arg(arg!(-t --target <target> "Target MAC address").required(true))
         .arg(arg!(-'1' - -oneway).required(false))
         .arg(arg!(-s --size <size>).default_value("64").required(false))
         .arg(
@@ -96,13 +95,12 @@ fn main() {
         }
         Some(("client", sub_matches)) => {
             let iface = sub_matches.value_of("interface").unwrap().to_string();
-            let target = sub_matches.value_of("target").unwrap().to_string();
             let oneway: bool = sub_matches.is_present("oneway");
             let size: usize = sub_matches.value_of("size").unwrap().parse().unwrap();
             let count: usize = sub_matches.value_of("count").unwrap().parse().unwrap();
             let precise = sub_matches.is_present("precise");
 
-            do_client(iface, target, size, count, oneway, precise)
+            do_client(iface, size, count, oneway, precise)
         }
         _ => unreachable!(),
     }
@@ -190,9 +188,9 @@ fn do_server(iface_name: String) {
         }
         let mut perf_pkt = MutablePerfPacket::new(eth_pkt.payload_mut()).unwrap();
 
-        if perf_pkt.get_gptp_type() != 0x10 &&
-            perf_pkt.get_gptp_domain_number() != 0x00 &&
-            perf_pkt.get_gptp_length() != 0x1337 {
+        if perf_pkt.get_gptp_type() != 0x10
+            || perf_pkt.get_gptp_domain_number() != 0x00
+            || perf_pkt.get_gptp_length() != 0x1337 {
             // Not a perf packet
             continue;
         }
@@ -248,13 +246,12 @@ fn do_server(iface_name: String) {
 
 fn do_client(
     iface_name: String,
-    target: String,
     size: usize,
     count: usize,
     oneway: bool,
     precise: bool,
 ) {
-    let target: MacAddr = target.parse().unwrap();
+    let target: MacAddr = r#"01:80:c2:00:00:0e"#.parse().unwrap();
     let interface_name_match = |iface: &NetworkInterface| iface.name == iface_name;
     let interfaces = datalink::interfaces();
     let interface = interfaces.into_iter().find(interface_name_match).unwrap();
@@ -378,6 +375,7 @@ fn do_client(
                 eprintln!("Failed to send packet: {}", e);
                 continue;
             }
+            println!("Sent packet {} - {}.{:09}", id, perf_pkt.get_tv_sec(), perf_pkt.get_tv_nsec());
         } else {
             let retry_start = Instant::now();
             let mut rx_timestamp;
@@ -439,7 +437,7 @@ fn do_client(
 
 fn enable_rx_timestamp(sock: &tsn::TsnSocket, iov: &mut libc::iovec) -> Result<msghdr, String> {
     const CONTROLSIZE: usize = 1024;
-    let mut control: [libc::c_char; CONTROLSIZE] = [0; CONTROLSIZE];
+    let control: [libc::c_char; CONTROLSIZE] = [0; CONTROLSIZE];
 
     let msg: libc::msghdr = unsafe {
         // Avoid private field not provided error

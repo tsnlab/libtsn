@@ -123,6 +123,12 @@ pub fn sock_open(
     priority: u32,
     proto: u16,
 ) -> Result<TsnSocket, String> {
+    // let name = match create_vlan(ifname, vlanid) {
+    //     Ok(v) => v,
+    //     Err(_) => {
+    //         return Err(format!("Create vlan fails {}", Error::last_os_error()));
+    //     }
+    // };
     let name = ifname;
     let sock;
     let mut res;
@@ -181,6 +187,13 @@ pub fn sock_open(
 }
 
 pub fn sock_close(sock: &mut TsnSocket) -> Result<(), String> {
+    // match delete_vlan(&sock.ifname, sock.vlanid) {
+    //     Ok(_) => {
+    //         close(sock.fd).unwrap();
+    //         Ok(())
+    //     }
+    //     Err(_) => Err(format!("Delete vlan fails: {}", Error::last_os_error())),
+    // }
     close(sock.fd).unwrap();
     Ok(())
 }
@@ -258,6 +271,7 @@ pub fn recv_msg(sock: &TsnSocket, msg: &mut msghdr) -> Result<isize, String> {
 
 pub fn enable_tx_timestamp(sock: &TsnSocket) -> Result<(), Error> {
     let sockfd = sock.fd;
+    // let interface_name = vlan::get_vlan_name(&sock.ifname, sock.vlanid);
     let interface_name = &sock.ifname;
 
     // setsockopt
