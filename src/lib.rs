@@ -428,7 +428,11 @@ pub fn get_tx_timestamp(sock: &TsnSocket) -> Result<time::Timespec, Error> {
             let ts = match ts {
                 ts if ts[2].tv_sec != 0 || ts[2].tv_nsec != 0 => ts[2],
                 ts if ts[1].tv_sec != 0 || ts[1].tv_nsec != 0 => ts[1],
-                ts if ts[0].tv_sec != 0 || ts[0].tv_nsec != 0 => ts[0],
+                ts if ts[0].tv_sec != 0 || ts[0].tv_nsec != 0 => {
+                    // Log warning
+                    eprintln!("SW TX timestamp(from driver) used");
+                    ts[0]
+                }
                 _ => unreachable!(),
             };
             return Ok(time::Timespec {
