@@ -360,6 +360,11 @@ fn do_client(
                 eprintln!("Failed to send packet: {}", e);
                 continue;
             }
+
+            // Must consume packet's timestamp
+            if is_tx_ts_enabled {
+                let _ = sock.get_tx_timestamp();
+            }
         } else {
             let retry_start = Instant::now();
             let mut rx_timestamp;
