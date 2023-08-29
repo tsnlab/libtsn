@@ -14,14 +14,24 @@ cargo build --release  # Release build
 cargo build  # Debug build
 ```
 
-## Packaging
-
-Use tsnlab debian repository to install libtsn library.
+## Run examples
 
 ```sh
-curl -fsSL https://packages.tsnlab.com/public.gpg | sudo apt-key add -
-echo "deb https://packages.tsnlab.com/ unstable main" | sudo tee /etc/apt/sources.list/tsnlab.list
-sudo apt update && sudo apt install libtsn
+#Run latency
+
+#Server
+sudo ./target/release/latency -s -i <interface>
+#Client
+sudo ./target/release/latency -c -i <interface> -t <target MAC address>
+```
+
+```sh
+#Run throughput
+
+#Server
+sudo ./target/release/throughput -s -i <interface>
+#Client
+sudo ./target/release/latency -c -i <interface> -t <target MAC address>
 ```
 
 ## License
