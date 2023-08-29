@@ -5,7 +5,7 @@
 TSN library(libtsn) is a library for making <abbr title="Time Sensitive Networking">TSN</abbr> application.
 
 
-## Build (Rust)
+## Build
 
 To install rust, run `curl -fsS https://sh.rustup.rs | sh`
 
@@ -14,7 +14,7 @@ cargo build --release  # Release build
 cargo build  # Debug build
 ```
 
-## Run examples
+## Running examples
 
 ```sh
 #Run latency
