@@ -5,7 +5,7 @@
 TSN library(libtsn) is a library for making <abbr title="Time Sensitive Networking">TSN</abbr> application.
 
 
-## Build (Rust)
+## Build
 
 To install rust, run `curl -fsS https://sh.rustup.rs | sh`
 
@@ -14,83 +14,34 @@ cargo build --release  # Release build
 cargo build  # Debug build
 ```
 
-## Build (C)
-
-libtsn (c) has following build dependencies
-
-- [GCC]
-- [CMake]
-- [Ninja build]
-
-After installing build dependencies, Follow these steps
+## Running examples
 
 ```sh
-cmake -B build -G Ninja .
-cmake --build build
-```
+#Run latency
 
-[GCC]: https://gcc.gnu.org/
-[CMake]: https://cmake.org/
-[Ninja build]: https://ninja-build.org/
+#Server
+sudo ./target/release/latency -s -i <interface>
+#Client
+sudo ./target/release/latency -c -i <interface> -t <target MAC address>
 
-### Running examples
-
-Before running examples, Install runtime dependencies
-
-- Python3.8+
-
-```sh
-pip3 install -r requirements.txt
+#To see more options
+sudo ./target/release/latency --help
+sudo ./target/release/latency server help
+sudo ./target/release/latency client help
 ```
 
 ```sh
-cmake -B build -G Ninja -DBUILD_EXAMPLES=ON .
-cmake --build build
+#Run throughput
 
-# Edit config.yaml and run daemon on both listener, talker side
-sudo ./build/tsnucd
+#Server
+sudo ./target/release/throughput -s -i <interface>
+#Client
+sudo ./target/release/latency -c -i <interface> -t <target MAC address>
 
-# Run latency
-# Listener
-sudo ./build/examples/latency/latency -s -i devname
-# Talker
-sudo ./build/examples/latency/latency -c -i devname -t c0:ff:ee:de:ca:ff -C 210
-
-# Run throughput
-# Listener
-sudo ./build/examples/throughput/throughput -s -i devname
-# Talker
-sudo ./build/examples/throughput/throughput -c -i devname -t c0:ff:ee:de:ca:ff -T 60
-```
-
-
-## lint
-
-### C lint
-
-```sh
-bin/check-clang-format
-# Install as git commit hook
-cp bin/check-clang-format .git/hooks/pre-commit
-```
-
-
-### Python lint
-
-```sh
-pip3 install flake8
-flake8
-```
-
-
-## Packaging
-
-Use tsnlab debian repository to install libtsn library.
-
-```sh
-curl -fsSL https://packages.tsnlab.com/public.gpg | sudo apt-key add -
-echo "deb https://packages.tsnlab.com/ unstable main" | sudo tee /etc/apt/sources.list/tsnlab.list
-sudo apt update && sudo apt install libtsn
+#To see more options
+sudo ./target/release/throughput --help
+sudo ./target/release/throughput server help
+sudo ./target/release/throughput client help
 ```
 
 ## License
