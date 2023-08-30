@@ -274,7 +274,15 @@ fn do_client(
             }
         }
     });
-
+    let is_tx_ts_enabled = {
+        if sock.enable_tx_timestamp().is_err() {
+            eprintln!("Failed to enable TX timestamp");
+            false
+        } else {
+            eprintln!("Socket TX timestamp enabled");
+            true
+        }
+    };
     let mut tx_perf_buff = vec![0u8; size - 14];
     let mut tx_eth_buff = vec![0u8; size];
 
@@ -325,7 +333,18 @@ fn do_client(
             eprintln!("Failed to send packet: {}", e);
             continue;
         }
-        let tx_timestamp = get_tx_timestamp(sock.fd);
+        let mut tx_timestamp = SystemTime::now();
+        if is_tx_ts_enabled {
+            let msg_ts = sock.get_tx_timestamp();
+            match msg_ts {
+                Ok(ts) => {
+                    tx_timestamp = UNIX_EPOCH + Duration::new(ts.tv_sec as u64, ts.tv_nsec as u32);
+                }
+                Err(e) => {
+                    eprintln!("Failed to get TX timestamp: {}", e);
+                }
+            }
+        }
         if oneway {
             perf_pkt.set_tv_sec(tx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_secs() as u32);
             perf_pkt.set_tv_nsec(
@@ -340,6 +359,11 @@ fn do_client(
             if let Err(e) = sock.send(eth_pkt.packet()) {
                 eprintln!("Failed to send packet: {}", e);
                 continue;
+            }
+
+            // Must consume packet's timestamp
+            if is_tx_ts_enabled {
+                let _ = sock.get_tx_timestamp();
             }
         } else {
             let retry_start = Instant::now();
@@ -436,11 +460,6 @@ fn enable_rx_timestamp(sock: &tsn::TsnSocket, iov: &mut libc::iovec) -> Result<m
     } else {
         Ok(msg)
     }
-}
-
-// not support tx_timestamp yet
-fn get_tx_timestamp(fd: i32) -> SystemTime {
-    SystemTime::now()
 }
 
 fn get_rx_timestamp(msg: msghdr) -> Result<SystemTime, u32> {
