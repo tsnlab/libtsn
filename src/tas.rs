@@ -43,24 +43,28 @@ pub fn normalise_tas(config: &Value) -> Result<TasConfig, String> {
     let mut ret_map = HashMap::new();
     let schedules = config
         .get(&Value::String("schedule".to_string()))
-        .unwrap()
+        .expect("failed to parse tas schedule")
         .as_sequence()
-        .unwrap();
+        .expect("failed to parse tas schedule");
     for schedule in schedules {
         let mut v = Vec::new();
-
         for prio in schedule
             .get(&Value::String("prio".to_string()))
-            .unwrap()
+            .expect("failed to parse tas schedule")
             .as_sequence()
-            .unwrap()
+            .expect("failed to parse tas schedule")
         {
-            v.push(prio.as_i64().unwrap());
+            v.push(prio.as_i64().expect("priority must be an integer"));
             if prio.as_i64().unwrap() > 0 && !tc_map.contains_key(&prio.as_i64().unwrap()) {
                 tc_map.insert(prio.as_i64().unwrap(), tc_map.len() as i64);
             }
         }
-        let time = to_ns(schedule.get(&Value::String("time".to_string())).unwrap())?;
+        let time = to_ns(
+            schedule
+                .get(&Value::String("time".to_string()))
+                .expect("failed to parse tas schedule"),
+        )
+        .expect("tas schedule time must be in ns");
         tas_schedule.push(TasSchedule { time, prio: v });
     }
 
@@ -91,7 +95,7 @@ pub fn normalise_tas(config: &Value) -> Result<TasConfig, String> {
     let txtime_delay = to_ns(
         config
             .get(&Value::String("txtime_delay".to_string()))
-            .unwrap(),
+            .expect("failed to parse tas schedule"),
     )?;
     Ok(TasConfig {
         txtime_delay,

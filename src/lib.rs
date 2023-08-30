@@ -81,7 +81,7 @@ fn create_vlan(ifname: &str, vlanid: u16) -> Result<String, String> {
     unlock_shmem(&shm_fd)?;
     match result {
         Ok(_) => Ok(name),
-        Err(_) => Err(format!("Create vlan fails {}", Error::last_os_error())),
+        Err(e) => Err(format!("Create vlan fails {}", e)),
     }
 }
 
@@ -108,7 +108,7 @@ fn delete_vlan(ifname: &str, vlanid: u16) -> Result<i32, String> {
         }
         match vlan::delete_vlan(ifname, vlanid) {
             Ok(v) => Ok(v),
-            Err(_) => Err(format!("Delete vlan fails {}", Error::last_os_error())),
+            Err(e) => Err(format!("Delete vlan fails {}", e)),
         }
     } else {
         Ok(0)
@@ -125,8 +125,8 @@ pub fn sock_open(
 ) -> Result<TsnSocket, String> {
     let name = match create_vlan(ifname, vlanid) {
         Ok(v) => v,
-        Err(_) => {
-            return Err(format!("Create vlan fails {}", Error::last_os_error()));
+        Err(e) => {
+            return Err(format!("Create vlan fails {}", e));
         }
     };
     let sock;
@@ -188,10 +188,10 @@ pub fn sock_open(
 pub fn sock_close(sock: &mut TsnSocket) -> Result<(), String> {
     match delete_vlan(&sock.ifname, sock.vlanid) {
         Ok(_) => {
-            close(sock.fd).unwrap();
+            close(sock.fd).expect("close sock");
             Ok(())
         }
-        Err(_) => Err(format!("Delete vlan fails: {}", Error::last_os_error())),
+        Err(e) => Err(format!("Delete vlan fails: {}", e)),
     }
 }
 
@@ -573,7 +573,7 @@ fn get_config(ifname: &str) -> Result<config::Config, String> {
     let configs = config::read_config(&config_path);
     let configs = match configs {
         Ok(v) => v,
-        Err(_) => return Err(format!("Read config fails: {}", Error::last_os_error())),
+        Err(e) => return Err(format!("Read config fails: {}", e)),
     };
     let config = configs.get(ifname);
     match config {
