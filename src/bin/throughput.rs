@@ -171,7 +171,7 @@ fn do_server(iface_name: String) {
 
         match sock.recv(&mut packet) {
             Ok(n) => packet_size = n as usize,
-            Err(_) => conitnue,
+            Err(_) => continue,
         };
 
         let eth_pkt: EthernetPacket = EthernetPacket::new(&packet).unwrap();
