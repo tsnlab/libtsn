@@ -167,9 +167,12 @@ fn do_server(iface_name: String) {
 
     while unsafe { RUNNING } {
         let mut packet = [0u8; 1514];
-        if sock.recv(&mut packet).is_err() {
-            continue;
-        }
+        let packet_size;
+
+        match sock.recv(&mut packet) {
+            Ok(n) => packet_size = n as usize,
+            Err(_) => conitnue,
+        };
 
         let eth_pkt: EthernetPacket = EthernetPacket::new(&packet).unwrap();
         if eth_pkt.get_ethertype() != EtherType(ETHERTYPE_PERF) {
@@ -223,7 +226,7 @@ fn do_server(iface_name: String) {
                 unsafe {
                     STATS.last_id = perf_pkt.get_id();
                     STATS.pkt_count += 1;
-                    STATS.total_bytes += packet.len() + 4/* hidden VLAN tag */;
+                    STATS.total_bytes += packet_size + 4/* hidden VLAN tag */;
                 }
             }
             PerfOpFieldValues::ReqEnd => {
