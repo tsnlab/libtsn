@@ -75,7 +75,7 @@ pub fn setup_cbs(ifname: &str, config: &CbsConfig) -> Result<i32, String> {
         let hicredit = val.hicredit;
         let locredit = val.locredit;
         let cmd = format!(
-            "tc qdisc replace dev {} parent {}:{} handle {}
+            "tc qdisc replace dev {} parent {}:{} handle {} \
             cbs idleslope {} sendslope {} hicredit {} locredit {} offload 1",
             ifname, root_handle, qid, handle, idleslope, sendslope, hicredit, locredit
         );
