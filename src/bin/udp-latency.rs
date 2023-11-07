@@ -21,8 +21,8 @@ use tsn::time::tsn_time_sleep_until;
 
 use pnet::packet::ip::IpNextHeaderProtocols;
 use pnet::packet::ipv4::*;
-use std::net::Ipv4Addr;
 use std::net::IpAddr;
+use std::net::Ipv4Addr;
 
 use pnet::packet::udp::*;
 
@@ -57,7 +57,6 @@ enum PerfOp {
     Tx = 2,
     Sync = 3,
 }
-
 
 /*****************************************************************/
 /* Main */
@@ -109,7 +108,9 @@ fn main() {
             let count: usize = sub_matches.value_of("count").unwrap().parse().unwrap();
             let precise = sub_matches.is_present("precise");
 
-            do_client(iface, target, destip, destport, size, count, oneway, precise)
+            do_client(
+                iface, target, destip, destport, size, count, oneway, precise,
+            )
         }
         _ => unreachable!(),
     }
@@ -160,7 +161,7 @@ fn do_server(iface_name: String) {
                 Ok(rx_bytes) => {
                     rx_timestamp = SystemTime::now();
                     rx_bytes
-                },
+                }
                 Err(_) => continue,
             }
         };
@@ -307,8 +308,8 @@ fn do_client(
     };
 
     let mut tx_perf_buff = vec![0u8; size - 14 - 20 - 8]; // 8 : UDP Header Size
-    let mut tx_udp_buff = vec![0u8; size - 14 - 20];      // 20 : IP Header Size
-    let mut tx_ip_buff = vec![0u8; size - 14];            // 14 : Eth Header Size
+    let mut tx_udp_buff = vec![0u8; size - 14 - 20]; // 20 : IP Header Size
+    let mut tx_ip_buff = vec![0u8; size - 14]; // 14 : Eth Header Size
     let mut tx_eth_buff = vec![0u8; size];
 
     let mut perf_pkt = MutablePerfPacket::new(&mut tx_perf_buff).unwrap();
@@ -320,7 +321,7 @@ fn do_client(
     udp_pkt.set_source(rand::random::<u16>());
     udp_pkt.set_destination(dest_port);
     udp_pkt.set_length((size - 14 - 20).try_into().unwrap()); // udp_len = pkt_size - eth_hdr_len - ip_hdr_len
-    //udp_pkt.set_checksum();
+                                                              //udp_pkt.set_checksum();
 
     /* Create IP Header */
     ip_pkt.set_version(0x04); // 0x04 == IP Version 4
@@ -329,10 +330,13 @@ fn do_client(
     ip_pkt.set_total_length((size - 14).try_into().unwrap()); // total_len = pkt_size - eth_hdr_len
     ip_pkt.set_ttl(0x40); // 0x40 == TTL default is 64(0x40)
     ip_pkt.set_next_level_protocol(IpNextHeaderProtocols::Udp); // Upper Layer Protocol
-    ip_pkt.set_source(match my_ip { IpAddr::V4(ip4) => ip4, IpAddr::V6(_) => todo!() });
+    ip_pkt.set_source(match my_ip {
+        IpAddr::V4(ip4) => ip4,
+        IpAddr::V6(_) => todo!(),
+    });
     ip_pkt.set_destination(dest_ip);
     ip_pkt.set_checksum(pnet_packet::ipv4::checksum(&ip_pkt.to_immutable()));
-    
+
     /* Create Ethernet Header */
     eth_pkt.set_destination(target);
     eth_pkt.set_source(my_mac);
@@ -348,14 +352,13 @@ fn do_client(
         /* Set to the Packet(L2,3,4) Payload */
         if oneway {
             perf_pkt.set_op(PerfOp::Tx as u8);
-        }
-        else {
+        } else {
             perf_pkt.set_op(PerfOp::Ping as u8);
         }
         udp_pkt.set_payload(perf_pkt.packet());
         ip_pkt.set_payload(udp_pkt.packet());
         eth_pkt.set_payload(ip_pkt.packet());
-        
+
         if precise {
             let duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
             tsn_time_sleep_until(&Duration::new(duration.as_secs() + 1, 0))
@@ -372,11 +375,11 @@ fn do_client(
         let tx_timestamp = SystemTime::now();
 
         /*
-         * IF enabled oneway option, 
+         * IF enabled oneway option,
          *    => Set the operation on Perf packet to Perf::Sync
          *    => And perf packet send to server
          * ELSE
-         *    => First, 
+         *    => First,
          *    => Receive echo packet from server
          *    => And calcuate RTT using echo packet
          */
@@ -404,8 +407,7 @@ fn do_client(
             if is_tx_ts_enabled {
                 let _ = sock.get_tx_timestamp();
             }
-        }
-        else {
+        } else {
             let retry_start = Instant::now();
             let mut rx_timestamp;
             while retry_start.elapsed().as_secs() < TIMEOUT_SEC {
@@ -438,14 +440,13 @@ fn do_client(
                     break;
                 }
 
-
                 let elapsed = rx_timestamp.duration_since(tx_timestamp).unwrap();
                 println!(
                     "pkt id[{}]: RTT {}.{:09}s",
                     id,
                     elapsed.as_secs(),
                     elapsed.subsec_nanos()
-                    );
+                );
                 break;
             }
         }
