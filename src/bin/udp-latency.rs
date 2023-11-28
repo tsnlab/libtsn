@@ -65,6 +65,7 @@ fn main() {
     let server_command = Command::new("server")
         .about("Server mode")
         .short_flag('s')
+        .arg(arg!(--vlan_off).required(false))
         .arg(arg!(-i --interface <interface> "Interface to use").required(true));
 
     let client_command = Command::new("client")
@@ -74,6 +75,7 @@ fn main() {
         .arg(arg!(-t --target <target> "Target MAC address").required(true))
         .arg(arg!(-d --destip <destip> "Destination IP address").required(true))
         .arg(arg!(-p --destport <destport> "Destination Port number").required(true))
+        .arg(arg!(--vlan_off).required(false))
         .arg(arg!(-'1' - -oneway).required(false))
         .arg(arg!(-s --size <size>).default_value("64").required(false))
         .arg(
@@ -82,6 +84,7 @@ fn main() {
                 .required(false),
         )
         .arg(arg!(-p --precise "Precise mode"));
+    
 
     let matched_command = Command::new("latency")
         .author(crate_authors!())
@@ -95,8 +98,9 @@ fn main() {
     match matched_command.subcommand() {
         Some(("server", sub_matches)) => {
             let iface = sub_matches.value_of("interface").unwrap().to_string();
+            let vlan_off: bool = sub_matches.is_present("vlan_off");
 
-            do_server(iface)
+            do_server(iface, vlan_off)
         }
         Some(("client", sub_matches)) => {
             let iface = sub_matches.value_of("interface").unwrap().to_string();
@@ -107,9 +111,10 @@ fn main() {
             let size: usize = sub_matches.value_of("size").unwrap().parse().unwrap();
             let count: usize = sub_matches.value_of("count").unwrap().parse().unwrap();
             let precise = sub_matches.is_present("precise");
+            let vlan_off: bool = sub_matches.is_present("vlan_off");
 
             do_client(
-                iface, target, destip, destport, size, count, oneway, precise,
+                iface, target, destip, destport, size, count, oneway, precise, vlan_off
             )
         }
         _ => unreachable!(),
@@ -119,13 +124,20 @@ fn main() {
 /*****************************************************************/
 /* Server */
 /*****************************************************************/
-fn do_server(iface_name: String) {
+fn do_server(
+    iface_name: String,
+    vlan_off: bool
+) {
     let interface_name_match = |iface: &NetworkInterface| iface.name == iface_name;
     let interfaces = datalink::interfaces();
     let interface = interfaces.into_iter().find(interface_name_match).unwrap();
     let my_mac = interface.mac.unwrap();
 
-    let mut sock = match tsn::sock_open(&iface_name, VLAN_ID_PERF, VLAN_PRI_PERF, 0x0800) {
+    if vlan_off {
+        println!("vlan_off mode");
+    };
+
+    let mut sock = match tsn::sock_open(&iface_name, VLAN_ID_PERF, VLAN_PRI_PERF, 0x0800, vlan_off) {
         Ok(sock) => sock,
         Err(e) => panic!("Failed to open TSN socket: {}", e),
     };
@@ -182,7 +194,7 @@ fn do_server(iface_name: String) {
         /* IP */
         let mut ip_pkt = MutableIpv4Packet::new(eth_pkt.payload_mut()).unwrap();
         if ip_pkt.get_next_level_protocol() != IpNextHeaderProtocols::Udp {
-            eprintln!("IP Protocol Error");
+            //eprintln!("IP Protocol Error");
             break;
         }
         let my_ip = ip_pkt.get_destination();
@@ -256,6 +268,7 @@ fn do_client(
     count: usize,
     oneway: bool,
     precise: bool,
+    vlan_off: bool,
 ) {
     let target: MacAddr = target.parse().unwrap();
     let dest_ip: Ipv4Addr = destip.parse().unwrap();
@@ -272,7 +285,11 @@ fn do_client(
         tsn::time::tsn_time_analyze();
     }
 
-    let mut sock = match tsn::sock_open(&iface_name, VLAN_ID_PERF, VLAN_PRI_PERF, 0x0800) {
+    if vlan_off {
+        println!("vlan_off mode");
+    };
+
+    let mut sock = match tsn::sock_open(&iface_name, VLAN_ID_PERF, VLAN_PRI_PERF, 0x0800, vlan_off) {
         Ok(sock) => sock,
         Err(e) => panic!("Failed to open TSN socket: {}", e),
     };
@@ -377,11 +394,11 @@ fn do_client(
         /*
          * IF enabled oneway option,
          *    => Set the operation on Perf packet to Perf::Sync
-         *    => And perf packet send to server
+         *    => And send perf packet to server
          * ELSE
-         *    => First,
-         *    => Receive echo packet from server
-         *    => And calcuate RTT using echo packet
+         *    => First, send perf packet to server
+         *    => And receive echo packet from server
+         *    => And calcuate RTT
          */
         if oneway {
             perf_pkt.set_tv_sec(tx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_secs() as u32);
@@ -426,7 +443,7 @@ fn do_client(
                 /* IP Packet */
                 let rx_ip_pkt = Ipv4Packet::new(rx_eth_pkt.payload()).unwrap();
                 if rx_ip_pkt.get_next_level_protocol() != IpNextHeaderProtocols::Udp {
-                    eprintln!("IP Protocol Error");
+                    //eprintln!("IP Protocol Error : upper proto {}", rx_ip_pkt.get_next_level_protocol());
                     continue;
                 }
 
@@ -452,7 +469,7 @@ fn do_client(
         }
 
         if !precise {
-            let sleep_duration = Duration::from_millis(700)
+            let sleep_duration = Duration::from_millis(500)
                 + Duration::from_nanos(rand::thread_rng().gen_range(0..10_000_000));
 
             thread::sleep(sleep_duration);
