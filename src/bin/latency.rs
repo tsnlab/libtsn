@@ -109,7 +109,8 @@ fn do_server(iface_name: String) {
     let interface = interfaces.into_iter().find(interface_name_match).unwrap();
     let my_mac = interface.mac.unwrap();
 
-    let mut sock = match tsn::sock_open(&iface_name, VLAN_ID_PERF, VLAN_PRI_PERF, ETH_P_PERF, false) {
+    let mut sock = match tsn::sock_open(&iface_name, VLAN_ID_PERF, VLAN_PRI_PERF, ETH_P_PERF, false)
+    {
         Ok(sock) => sock,
         Err(e) => panic!("Failed to open TSN socket: {}", e),
     };
@@ -251,7 +252,8 @@ fn do_client(
         tsn::time::tsn_time_analyze();
     }
 
-    let mut sock = match tsn::sock_open(&iface_name, VLAN_ID_PERF, VLAN_PRI_PERF, ETH_P_PERF, false) {
+    let mut sock = match tsn::sock_open(&iface_name, VLAN_ID_PERF, VLAN_PRI_PERF, ETH_P_PERF, false)
+    {
         Ok(sock) => sock,
         Err(e) => panic!("Failed to open TSN socket: {}", e),
     };

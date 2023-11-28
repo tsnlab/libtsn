@@ -127,11 +127,11 @@ pub fn sock_open(
     let name = match vlan_off {
         true => ifname.to_string(),
         false => match create_vlan(ifname, vlanid) {
-                    Ok(v) =>  v as String,
-                    Err(_) => {
-                        return Err(format!("Create vlan fails {}", Error::last_os_error()));
-                    }
-                }
+            Ok(v) => v as String,
+            Err(_) => {
+                return Err(format!("Create vlan fails {}", Error::last_os_error()));
+            }
+        },
     };
 
     let sock;

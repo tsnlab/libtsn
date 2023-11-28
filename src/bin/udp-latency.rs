@@ -84,7 +84,6 @@ fn main() {
                 .required(false),
         )
         .arg(arg!(-p --precise "Precise mode"));
-    
 
     let matched_command = Command::new("latency")
         .author(crate_authors!())
@@ -114,7 +113,7 @@ fn main() {
             let vlan_off: bool = sub_matches.is_present("vlan_off");
 
             do_client(
-                iface, target, destip, destport, size, count, oneway, precise, vlan_off
+                iface, target, destip, destport, size, count, oneway, precise, vlan_off,
             )
         }
         _ => unreachable!(),
@@ -124,10 +123,7 @@ fn main() {
 /*****************************************************************/
 /* Server */
 /*****************************************************************/
-fn do_server(
-    iface_name: String,
-    vlan_off: bool
-) {
+fn do_server(iface_name: String, vlan_off: bool) {
     let interface_name_match = |iface: &NetworkInterface| iface.name == iface_name;
     let interfaces = datalink::interfaces();
     let interface = interfaces.into_iter().find(interface_name_match).unwrap();
@@ -137,7 +133,8 @@ fn do_server(
         println!("vlan_off mode");
     };
 
-    let mut sock = match tsn::sock_open(&iface_name, VLAN_ID_PERF, VLAN_PRI_PERF, 0x0800, vlan_off) {
+    let mut sock = match tsn::sock_open(&iface_name, VLAN_ID_PERF, VLAN_PRI_PERF, 0x0800, vlan_off)
+    {
         Ok(sock) => sock,
         Err(e) => panic!("Failed to open TSN socket: {}", e),
     };
@@ -289,7 +286,8 @@ fn do_client(
         println!("vlan_off mode");
     };
 
-    let mut sock = match tsn::sock_open(&iface_name, VLAN_ID_PERF, VLAN_PRI_PERF, 0x0800, vlan_off) {
+    let mut sock = match tsn::sock_open(&iface_name, VLAN_ID_PERF, VLAN_PRI_PERF, 0x0800, vlan_off)
+    {
         Ok(sock) => sock,
         Err(e) => panic!("Failed to open TSN socket: {}", e),
     };
