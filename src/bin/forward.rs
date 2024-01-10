@@ -1,13 +1,21 @@
-use std::thread;
-use clap::{Command, arg};
+use clap::{arg, Command};
 use signal_hook::{consts::SIGINT, iterator::Signals};
+use std::thread;
 
 static mut RUNNING: bool = false;
 
 #[allow(non_upper_case_globals)]
-static mut iface1_sock: tsn::TsnSocket = tsn::TsnSocket { fd: 0, ifname: String::new(), vlanid: 0 };
+static mut iface1_sock: tsn::TsnSocket = tsn::TsnSocket {
+    fd: 0,
+    ifname: String::new(),
+    vlanid: 0,
+};
 #[allow(non_upper_case_globals)]
-static mut iface2_sock: tsn::TsnSocket = tsn::TsnSocket { fd: 0, ifname: String::new(), vlanid: 0 };
+static mut iface2_sock: tsn::TsnSocket = tsn::TsnSocket {
+    fd: 0,
+    ifname: String::new(),
+    vlanid: 0,
+};
 
 fn main() {
     let matches = Command::new("forward")
@@ -28,18 +36,16 @@ fn do_l2_forward(nic1_name: String, nic2_name: String) {
     /* FIXME) unsafe... ToT... */
     unsafe {
         /* Init iface1 socket */
-        iface1_sock = match tsn::sock_open(&nic1_name, 0, 0, proto, vlan_off)
-        {
+        iface1_sock = match tsn::sock_open(&nic1_name, 0, 0, proto, vlan_off) {
             Ok(sock) => sock,
-            Err(e) => panic!("Failed to open TSN socket: {}", e)
+            Err(e) => panic!("Failed to open TSN socket: {}", e),
         };
         println!("iface1 socket init successful");
 
         /* Init iface2 socket */
-        iface2_sock = match tsn::sock_open(&nic2_name, 0, 0, proto, vlan_off)
-        {
+        iface2_sock = match tsn::sock_open(&nic2_name, 0, 0, proto, vlan_off) {
             Ok(sock) => sock,
-            Err(e) => panic!("Failed to open TSN socket: {}", e)
+            Err(e) => panic!("Failed to open TSN socket: {}", e),
         };
         println!("iface2 socket init successful");
 
@@ -48,7 +54,7 @@ fn do_l2_forward(nic1_name: String, nic2_name: String) {
         let mut signals = Signals::new([SIGINT]).unwrap();
         thread::spawn(move || {
             for _ in signals.forever() {
-                    RUNNING = false;
+                RUNNING = false;
             }
         });
 
@@ -84,6 +90,5 @@ fn do_l2_forward(nic1_name: String, nic2_name: String) {
         if iface2_sock.close().is_err() {
             eprintln!("Failed to close socket");
         }
-
     } /* unsafe */
 }
