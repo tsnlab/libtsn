@@ -62,58 +62,56 @@ enum PerfOp {
 /* Main */
 /*****************************************************************/
 fn main() {
-    let server_command = Command::new("server")
-        .about("Server mode")
-        .short_flag('s')
+    let receiver_command = Command::new("receiver")
+        .about("Receiver mode")
         .arg(arg!(--vlan_off).required(false))
         .arg(arg!(-i --interface <interface> "Interface to use").required(true));
 
-    let client_command = Command::new("client")
-        .about("Client mode")
-        .short_flag('c')
-        .arg(arg!(-i --interface <interface> "Interface to use").required(true))
-        .arg(arg!(-t --target <target> "Target MAC address").required(true))
-        .arg(arg!(-d --destip <destip> "Destination IP address").required(true))
-        .arg(arg!(-p --destport <destport> "Destination Port number").required(true))
+    let sender_command = Command::new("sender")
+        .about("Sender mode")
+        .arg(arg!(interface: -i --interface <interface> "Interface to use").required(true))
+        .arg(arg!(dest_mac: <destination_mac> "Target MAC address").required(true))
+        .arg(arg!(dest_ip: <destination_ip> "Destination IP address").required(true))
+        .arg(arg!(dest_port: <destination_port> "Destination Port number").required(true))
         .arg(arg!(--vlan_off).required(false))
         .arg(arg!(-'1' - -oneway).required(false))
-        .arg(arg!(-s --size <size>).default_value("64").required(false))
+        .arg(arg!(-s --size <size>).default_value("1440").required(false))
         .arg(
             arg!(-c --count <count> "How many send packets")
-                .default_value("100")
+                .default_value("10")
                 .required(false),
         )
         .arg(arg!(-p --precise "Precise mode"));
 
-    let matched_command = Command::new("latency")
+    let matched_command = Command::new("udp-latency")
         .author(crate_authors!())
         .version(crate_version!())
         .subcommand_required(true)
         .arg_required_else_help(true)
-        .subcommand(server_command)
-        .subcommand(client_command)
+        .subcommand(receiver_command)
+        .subcommand(sender_command)
         .get_matches();
 
     match matched_command.subcommand() {
-        Some(("server", sub_matches)) => {
+        Some(("receiver", sub_matches)) => {
             let iface = sub_matches.value_of("interface").unwrap().to_string();
             let vlan_off: bool = sub_matches.is_present("vlan_off");
 
-            do_server(iface, vlan_off)
+            do_receiver(iface, vlan_off)
         }
-        Some(("client", sub_matches)) => {
+        Some(("sender", sub_matches)) => {
             let iface = sub_matches.value_of("interface").unwrap().to_string();
-            let target = sub_matches.value_of("target").unwrap().to_string();
-            let destip = sub_matches.value_of("destip").unwrap().to_string();
-            let destport = sub_matches.value_of("destport").unwrap().to_string();
+            let dest_mac = sub_matches.value_of("dest_mac").unwrap().to_string();
+            let dest_ip = sub_matches.value_of("dest_ip").unwrap().to_string();
+            let dest_port = sub_matches.value_of("dest_port").unwrap().to_string();
             let oneway: bool = sub_matches.is_present("oneway");
             let size: usize = sub_matches.value_of("size").unwrap().parse().unwrap();
             let count: usize = sub_matches.value_of("count").unwrap().parse().unwrap();
             let precise = sub_matches.is_present("precise");
             let vlan_off: bool = sub_matches.is_present("vlan_off");
 
-            do_client(
-                iface, target, destip, destport, size, count, oneway, precise, vlan_off,
+            do_sender(
+                iface, dest_mac, dest_ip, dest_port, size, count, oneway, precise, vlan_off,
             )
         }
         _ => unreachable!(),
@@ -121,13 +119,14 @@ fn main() {
 }
 
 /*****************************************************************/
-/* Server */
+/* Receiver */
 /*****************************************************************/
-fn do_server(iface_name: String, vlan_off: bool) {
+fn do_receiver(iface_name: String, vlan_off: bool) {
     let interface_name_match = |iface: &NetworkInterface| iface.name == iface_name;
     let interfaces = datalink::interfaces();
     let interface = interfaces.into_iter().find(interface_name_match).unwrap();
-    let my_mac = interface.mac.unwrap();
+
+    let src_mac = interface.mac.unwrap();
 
     if vlan_off {
         println!("vlan_off mode");
@@ -184,9 +183,9 @@ fn do_server(iface_name: String, vlan_off: bool) {
             eprintln!("Ethernet Protocol Error");
             break;
         }
-        let peer_mac = eth_pkt.get_source();
-        eth_pkt.set_source(my_mac);
-        eth_pkt.set_destination(peer_mac);
+        let dest_mac = eth_pkt.get_source();
+        eth_pkt.set_source(src_mac);
+        eth_pkt.set_destination(dest_mac);
 
         /* IP */
         let mut ip_pkt = MutableIpv4Packet::new(eth_pkt.payload_mut()).unwrap();
@@ -194,17 +193,17 @@ fn do_server(iface_name: String, vlan_off: bool) {
             //eprintln!("IP Protocol Error");
             break;
         }
-        let my_ip = ip_pkt.get_destination();
-        let peer_ip = ip_pkt.get_source();
-        ip_pkt.set_source(my_ip);
-        ip_pkt.set_destination(peer_ip);
+        let src_ip = ip_pkt.get_destination();
+        let dest_ip = ip_pkt.get_source();
+        ip_pkt.set_source(src_ip);
+        ip_pkt.set_destination(dest_ip);
 
         /* UDP */
         let mut udp_pkt = MutableUdpPacket::new(ip_pkt.payload_mut()).unwrap();
-        let my_port = udp_pkt.get_destination();
-        let peer_port = udp_pkt.get_source();
-        udp_pkt.set_source(my_port);
-        udp_pkt.set_destination(peer_port);
+        let src_port = udp_pkt.get_destination();
+        let dest_port = udp_pkt.get_source();
+        udp_pkt.set_source(src_port);
+        udp_pkt.set_destination(dest_port);
 
         /* Perf */
         let mut perf_pkt = MutablePerfPacket::new(udp_pkt.payload_mut()).unwrap();
@@ -254,29 +253,29 @@ fn do_server(iface_name: String, vlan_off: bool) {
 }
 
 /*****************************************************************/
-/* Client */
+/* Sender */
 /*****************************************************************/
-fn do_client(
+fn do_sender(
     iface_name: String,
-    target: String,
-    destip: String,
-    destport: String,
+    dest_mac: String,
+    dest_ip: String,
+    dest_port: String,
     size: usize,
     count: usize,
     oneway: bool,
     precise: bool,
     vlan_off: bool,
 ) {
-    let target: MacAddr = target.parse().unwrap();
-    let dest_ip: Ipv4Addr = destip.parse().unwrap();
-    let dest_port: u16 = destport.parse().unwrap();
+    let dest_mac: MacAddr = dest_mac.parse().unwrap();
+    let dest_ip: Ipv4Addr = dest_ip.parse().unwrap();
+    let dest_port: u16 = dest_port.parse().unwrap();
 
     let interface_name_match = |iface: &NetworkInterface| iface.name == iface_name;
     let interfaces = datalink::interfaces();
     let interface = interfaces.into_iter().find(interface_name_match).unwrap();
 
-    let my_mac = interface.mac.unwrap();
-    let my_ip = interface.ips[0].ip();
+    let src_mac = interface.mac.unwrap();
+    let src_ip = interface.ips[0].ip();
 
     if precise {
         tsn::time::tsn_time_analyze();
@@ -345,7 +344,7 @@ fn do_client(
     ip_pkt.set_total_length((size - 14).try_into().unwrap()); // total_len = pkt_size - eth_hdr_len
     ip_pkt.set_ttl(0x40); // 0x40 == TTL default is 64(0x40)
     ip_pkt.set_next_level_protocol(IpNextHeaderProtocols::Udp); // Upper Layer Protocol
-    ip_pkt.set_source(match my_ip {
+    ip_pkt.set_source(match src_ip {
         IpAddr::V4(ip4) => ip4,
         IpAddr::V6(_) => todo!(),
     });
@@ -353,8 +352,8 @@ fn do_client(
     ip_pkt.set_checksum(pnet_packet::ipv4::checksum(&ip_pkt.to_immutable()));
 
     /* Create Ethernet Header */
-    eth_pkt.set_destination(target);
-    eth_pkt.set_source(my_mac);
+    eth_pkt.set_destination(dest_mac);
+    eth_pkt.set_source(src_mac);
     eth_pkt.set_ethertype(EtherType(0x0800)); // 0x0800 == IPv4
 
     let mut rx_eth_buff = [0u8; 1514];
@@ -424,12 +423,11 @@ fn do_client(
             }
         } else {
             let retry_start = Instant::now();
-            let mut rx_timestamp;
+            let rx_timestamp;
             while retry_start.elapsed().as_secs() < TIMEOUT_SEC {
                 if sock.recv(&mut rx_eth_buff).is_err() {
                     continue;
                 }
-                rx_timestamp = SystemTime::now();
 
                 /* Receive Eternet packet */
                 let rx_eth_pkt = EthernetPacket::new(&rx_eth_buff).unwrap();
@@ -454,6 +452,9 @@ fn do_client(
                 if id != rcv_id {
                     break;
                 }
+
+                // Get Rx Timestamp
+                rx_timestamp = SystemTime::now();
 
                 let elapsed = rx_timestamp.duration_since(tx_timestamp).unwrap();
                 println!(
