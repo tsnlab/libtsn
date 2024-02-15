@@ -1,5 +1,5 @@
 nics:
-  enp37s0:  # ifname
+  enp10s0:  # ifname
     egress-qos-map:
       5:  # vlan id
         # skb prio : vlan pri
@@ -8,7 +8,7 @@ nics:
       10:
         2: 2
         3: 3  # For perf test
-    tas:
+    _tas:
       txtime_delay: 500000
       schedule:
         - time: 300us
@@ -17,7 +17,7 @@ nics:
           prio: [ 2, 3 ]
         - time: 400000
           prio: [ -1 ]
-    cbs:
+    _cbs:
       # prio: dict map
       3:
         class: a

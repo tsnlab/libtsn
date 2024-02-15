@@ -123,15 +123,9 @@ pub fn sock_open(
     priority: u32,
     proto: u16,
 ) -> Result<TsnSocket, String> {
-    let name = match create_vlan(ifname, vlanid) {
-        Ok(v) => v,
-        Err(_) => {
-            return Err(format!("Create vlan fails {}", Error::last_os_error()));
-        }
-    };
     let sock;
     let mut res;
-    let ifindex = if_nametoindex(name.as_bytes()).expect("vlan_ifname index");
+    let ifindex = if_nametoindex(ifname.as_bytes()).expect("ifname index");
     unsafe {
         sock = libc::socket(
             libc::AF_PACKET,
