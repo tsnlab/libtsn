@@ -333,9 +333,10 @@ fn do_sender(
 
     /* Create UDP Header */
     udp_pkt.set_source(rand::random::<u16>());
+    let src_port = udp_pkt.get_source();
     udp_pkt.set_destination(dest_port);
     udp_pkt.set_length((size - 14 - 20).try_into().unwrap()); // udp_len = pkt_size - eth_hdr_len - ip_hdr_len
-                                                              //udp_pkt.set_checksum();
+                                                              // udp_pkt.set_checksum();
 
     /* Create IP Header */
     ip_pkt.set_version(0x04); // 0x04 == IP Version 4
@@ -432,7 +433,7 @@ fn do_sender(
                 /* Receive Eternet packet */
                 let rx_eth_pkt = EthernetPacket::new(&rx_eth_buff).unwrap();
                 if rx_eth_pkt.get_ethertype() != EtherType(0x0800) {
-                    eprintln!("Ethernet Protocol Error");
+                    //eprintln!("Ethernet Protocol Error");
                     continue;
                 }
 
@@ -445,6 +446,10 @@ fn do_sender(
 
                 /* UDP Packet */
                 let rx_udp_pkt = UdpPacket::new(rx_ip_pkt.payload()).unwrap();
+                if rx_udp_pkt.get_destination() != src_port {
+                    //eprintln!("Not matched udp port");
+                    continue;
+                }
 
                 /* Perf Packet */
                 let rx_perf_pkt = PerfPacket::new(rx_udp_pkt.payload()).unwrap();
