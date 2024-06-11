@@ -37,8 +37,8 @@ pub fn setup_tas(ifname: &str, config: &TasConfig) -> Result<i32, String> {
     }
     let cmd = format!(
         "tc qdisc replace dev {} parent root handle {} taprio num_tc {} map{}
-         queues{} base-time {}{} flags 0x1 txtime-delay {} clockid CLOCK_TAI",
-        ifname, handle, num_tc, priomap, queues, base_time, sched_entries, txtime_delay
+         queues{} base-time {}{} flags 0x{:x} txtime-delay {} clockid CLOCK_TAI",
+        ifname, handle, num_tc, priomap, queues, base_time, sched_entries, config.flags, txtime_delay
     );
     run_cmd(&cmd)?;
     let cmd = format!(

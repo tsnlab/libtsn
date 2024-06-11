@@ -9,6 +9,7 @@ nics:
         2: 2
         3: 3  # For perf test
     tas:
+      offload: full  # full, half, none
       txtime_delay: 500000
       schedule:
         - time: 300us

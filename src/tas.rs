@@ -10,6 +10,7 @@ pub struct TasConfig {
     pub queues: Vec<String>,
     pub base_time: i64,
     pub sched_entries: Vec<String>,
+    pub flags: i64,
 }
 #[derive(Debug, Clone)]
 pub struct TasSchedule {
@@ -43,6 +44,15 @@ pub fn normalise_tas(config: &Value) -> Result<TasConfig, String> {
     let mut tas_schedule: Vec<TasSchedule> = Vec::new();
     let mut tc_map: HashMap<i64, i64> = HashMap::new();
     let mut ret_map = HashMap::new();
+    let offload = config.get(&Value::String("offload".to_string()));
+    let flags = match offload {
+        Some(Value::String(s)) if s == "full" => 0x2,
+        Some(Value::String(s)) if s == "half" => 0x1,
+        Some(Value::String(s)) if s == "none" => 0x0,
+        None => 0x0,
+        Some(Value::String(s)) => return Err(format!("Invalid offload value: {}", s)),
+        _ => return Err("Invalid offload value".to_string()),
+    };
     let schedules = config
         .get(&Value::String("schedule".to_string()))
         .unwrap()
@@ -103,5 +113,6 @@ pub fn normalise_tas(config: &Value) -> Result<TasConfig, String> {
         queues,
         base_time: 0,
         sched_entries,
+        flags,
     })
 }
