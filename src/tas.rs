@@ -18,10 +18,12 @@ pub struct TasSchedule {
 }
 pub fn to_ns(input: &Value) -> Result<i64, String> {
     if let Some(value) = input.as_str() {
-        let matched = regex::Regex::new(r"^(?P<v>[\d_]+)\s*(?P<unit>|ns|us|µs|ms)$")
+        let matched = match regex::Regex::new(r"^(?P<v>[\d_]+)\s*(?P<unit>|ns|us|µs|ms)$")
             .unwrap()
-            .captures(value)
-            .unwrap();
+            .captures(value) {
+                Some(m) => m,
+                None => return Err(format!("{} is not valid time", value)),
+            };
         let v = matched.name("v").unwrap().as_str().parse::<i64>().unwrap();
         let unit = matched.name("unit").unwrap().as_str();
         return {

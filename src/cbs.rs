@@ -32,19 +32,24 @@ pub fn get_linkspeed(ifname: &str) -> Result<String, String> {
         Ok(output) => {
             let out = str::from_utf8(&output.stdout).unwrap();
             let pattern = regex::Regex::new(r"Speed: (?P<speed>\d+(?:|k|M|G)b[p/]?s)").unwrap();
-            let matched = pattern.captures(out).unwrap();
-            Ok(matched.name("speed").unwrap().as_str().to_string())
+            match pattern.captures(out) {
+                Some(matched) => Ok(matched.name("speed").unwrap().as_str().to_string()),
+                None => Err("Failed to get link speed via ethtool".to_string()),
+            }
         }
         Err(e) => Err(e.to_string()),
     }
 }
 pub fn to_bits(input: &Value) -> Result<i64, String> {
     if let Some(value) = input.as_str() {
-        let matched =
+        let matched = match
             regex::Regex::new(r"^(?P<v>[\d_]+)\s*(?P<modifier>|k|M|G|ki|Mi|Gi)(?P<b>b|B)$")
-                .unwrap()
-                .captures(value)
-                .unwrap();
+            .unwrap()
+            .captures(value)
+            {
+                Some(m) => m,
+                None => return Err(format!("{} is not valid bandwidth", value)),
+            };
         let v = matched.name("v").unwrap().as_str().parse::<i64>().unwrap();
         let modifier = matched.name("modifier").unwrap().as_str();
         let b = matched.name("b").unwrap().as_str();
@@ -70,10 +75,12 @@ pub fn to_bits(input: &Value) -> Result<i64, String> {
 
 pub fn to_bps(input: &Value) -> Result<i64, String> {
     if let Some(value) = input.as_str() {
-        let matched = regex::Regex::new(r"^(?P<v>[\d_]+)\s*(?P<modifier>|k|M|G)(?P<b>b|B)[p/]s$")
+        let matched = match regex::Regex::new(r"^(?P<v>[\d_]+)\s*(?P<modifier>|k|M|G)(?P<b>b|B)[p/]s$")
             .unwrap()
-            .captures(value)
-            .unwrap();
+            .captures(value) {
+                Some(m) => m,
+                None => return Err(format!("{} is not valid bandwidth", value)),
+            };
         let v = matched.name("v").unwrap().as_str().parse::<i64>().unwrap();
         let modifier = matched.name("modifier").unwrap().as_str();
         return {

@@ -80,8 +80,14 @@ fn main() {
             if info_matches.is_present("interface") {
                 let interfaces = info_matches.values_of("interface").unwrap();
                 for interface in interfaces {
+                    let config = match config.get(interface) {
+                        Some(c) => c,
+                        None => {
+                            eprintln!("Interface {} not found in config", interface);
+                            return;
+                        }
+                    };
                     println!("{}:", interface);
-                    let config = config.get(interface).unwrap();
                     info::get_info(config);
                 }
             } else {
