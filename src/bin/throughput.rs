@@ -416,6 +416,7 @@ fn wait_for_response(sock: &mut tsn::TsnSocket, op: PerfOpField) -> Result<(), (
 }
 
 fn stats_worker() {
+    #[allow(static_mut_refs)]
     let stats = unsafe { &mut STATS };
     let mut last_id = 0;
     let mut last_bytes = 0;
