@@ -88,12 +88,12 @@ fn main() {
                         }
                     };
                     println!("{}:", interface);
-                    info::get_info(config);
+                    info::print_info(config);
                 }
             } else {
                 for (interface, config) in config {
                     println!("{}:", interface);
-                    info::get_info(config);
+                    info::print_info(config);
                 }
             }
         }

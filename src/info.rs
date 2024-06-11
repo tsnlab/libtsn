@@ -1,6 +1,6 @@
 use crate::config::Config;
 
-pub fn get_info(config: &Config) {
+pub fn print_info(config: &Config) {
     if let Some(cbs) = &config.cbs {
         println!("  cbs:");
         let mut n = 1;
