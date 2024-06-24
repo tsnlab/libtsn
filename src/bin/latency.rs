@@ -11,7 +11,7 @@ use num_traits::FromPrimitive;
 use rand::Rng;
 use signal_hook::{consts::SIGINT, iterator::Signals};
 
-use clap::{arg, crate_authors, crate_version, Command};
+use clap::{arg, crate_authors, crate_version, value_parser, Command};
 
 use pnet_macros::packet;
 use pnet_macros_support::types::u32be;
@@ -54,6 +54,17 @@ enum PerfOp {
     Sync = 3,
 }
 
+struct ClientArgs {
+    interface: String,
+    target: MacAddr,
+    size: usize,
+    count: usize,
+    interval: u64,
+    jitter: u64,
+    oneway: bool,
+    precise: bool,
+}
+
 fn main() {
     let server_command = Command::new("server")
         .about("Server mode")
@@ -63,16 +74,36 @@ fn main() {
     let client_command = Command::new("client")
         .about("Client mode")
         .short_flag('c')
-        .arg(arg!(-i --interface <interface> "Interface to use").required(true))
-        .arg(arg!(-t --target <target> "Target MAC address").required(true))
+        .arg(arg!(-i --interface <interface> "Interface to use")
+            .value_parser(value_parser!(String))
+            .required(true))
+        .arg(arg!(-t --target <target> "Target MAC address")
+            .value_parser(value_parser!(MacAddr))
+            .required(true))
         .arg(arg!(-'1' - -oneway).required(false))
-        .arg(arg!(-s --size <size>).default_value("64").required(false))
-        .arg(
-            arg!(-c --count <count> "How many send packets")
-                .default_value("100")
-                .required(false),
+        .arg(arg!(-s --size <size>)
+            .value_parser(value_parser!(usize))
+            .default_value("64")
+            .required(false)
         )
-        .arg(arg!(-p --precise "Precise mode"));
+        .arg(arg!(-c --count <count> "How many send packets")
+            .value_parser(value_parser!(usize))
+            .default_value("100")
+            .required(false)
+        )
+        .arg(arg!(-I --interval <interval> "Interval between test packets (nanoseconds)")
+            .value_parser(value_parser!(u64))
+            .default_value("700000")
+            .required(false)
+        )
+        .arg(arg!(-j --jitter <jitter> "Jitter for interval")
+            .value_parser(value_parser!(u64))
+            .default_value("0")
+            .required(false)
+        )
+        .arg(arg!(-p --precise "Precise mode")
+            .long_help("TX packets would go on every X.000000000s. Interval and Jitter will be ignored.")
+        );
 
     let matched_command = Command::new("latency")
         .author(crate_authors!())
@@ -90,14 +121,27 @@ fn main() {
             do_server(iface)
         }
         Some(("client", sub_matches)) => {
-            let iface = sub_matches.value_of("interface").unwrap().to_string();
-            let target = sub_matches.value_of("target").unwrap().to_string();
+            let interface = sub_matches.get_one::<String>("interface").unwrap().to_string();
+            let target = *sub_matches.get_one("target").unwrap();
             let oneway: bool = sub_matches.is_present("oneway");
-            let size: usize = sub_matches.value_of("size").unwrap().parse().unwrap();
-            let count: usize = sub_matches.value_of("count").unwrap().parse().unwrap();
+            let size: usize = *sub_matches.get_one("size").unwrap();
+            let count: usize = *sub_matches.get_one("count").unwrap();
+            let interval = *sub_matches.get_one("interval").unwrap();
+            let jitter = *sub_matches.get_one("jitter").unwrap();
             let precise = sub_matches.is_present("precise");
 
-            do_client(iface, target, size, count, oneway, precise)
+            let client_args = ClientArgs{
+                interface,
+                target,
+                size,
+                count,
+                interval,
+                jitter,
+                oneway,
+                precise,
+            };
+
+            do_client(client_args)
         }
         _ => unreachable!(),
     }
@@ -233,30 +277,25 @@ fn do_server(iface_name: String) {
     }
 }
 
-fn do_client(
-    iface_name: String,
-    target: String,
-    size: usize,
-    count: usize,
-    oneway: bool,
-    precise: bool,
-) {
-    let target: MacAddr = target.parse().unwrap();
-    let interface_name_match = |iface: &NetworkInterface| iface.name == iface_name;
+fn do_client(args: ClientArgs) {
+    let interface_name_match = |iface: &NetworkInterface| iface.name == args.interface;
     let interfaces = datalink::interfaces();
-    let interface = interfaces.into_iter().find(interface_name_match).unwrap();
-    let my_mac = interface.mac.unwrap();
+    let interface = interfaces.into_iter().find(interface_name_match).unwrap_or_else(|| {
+        eprintln!("Interface not found: {}", args.interface);
+        std::process::exit(1);
+    });
+    let my_mac = interface.mac.expect("Failed to get MAC address");
 
-    if precise {
+    if args.precise {
         tsn::time::tsn_time_analyze();
     }
 
-    let mut sock = match tsn::sock_open(&iface_name, VLAN_ID_PERF, VLAN_PRI_PERF, ETH_P_PERF) {
+    let mut sock = match tsn::sock_open(&args.interface, VLAN_ID_PERF, VLAN_PRI_PERF, ETH_P_PERF) {
         Ok(sock) => sock,
         Err(e) => panic!("Failed to open TSN socket: {}", e),
     };
 
-    if !oneway {
+    if !args.oneway {
         if let Err(e) = sock.set_timeout(Duration::from_secs(TIMEOUT_SEC)) {
             panic!("Failed to set timeout: {}", e)
         }
@@ -283,14 +322,14 @@ fn do_client(
             true
         }
     };
-    let mut tx_perf_buff = vec![0u8; size - 14];
-    let mut tx_eth_buff = vec![0u8; size];
+    let mut tx_perf_buff = vec![0u8; args.size - 14];
+    let mut tx_eth_buff = vec![0u8; args.size];
 
     let mut perf_pkt = MutablePerfPacket::new(&mut tx_perf_buff).unwrap();
 
     let mut eth_pkt = MutableEthernetPacket::new(&mut tx_eth_buff).unwrap();
 
-    eth_pkt.set_destination(target);
+    eth_pkt.set_destination(args.target);
     eth_pkt.set_source(my_mac);
     eth_pkt.set_ethertype(EtherType(ETHERTYPE_PERF));
 
@@ -299,7 +338,7 @@ fn do_client(
         iov_base: rx_eth_buff.as_mut_ptr() as *mut libc::c_void,
         iov_len: rx_eth_buff.len(),
     };
-    let msg: Option<msghdr> = match oneway {
+    let msg: Option<msghdr> = match args.oneway {
         true => None,
         false => match enable_rx_timestamp(&sock, &mut iov) {
             Ok(msg) => {
@@ -313,16 +352,16 @@ fn do_client(
         },
     };
 
-    for id in 1..=count {
+    for id in 1..=args.count {
         perf_pkt.set_id(id as u32);
         let now;
-        if oneway {
+        if args.oneway {
             perf_pkt.set_op(PerfOp::Tx as u8);
         } else {
             perf_pkt.set_op(PerfOp::Ping as u8);
         }
         eth_pkt.set_payload(perf_pkt.packet());
-        if precise {
+        if args.precise {
             now = SystemTime::now();
             let duration = now.duration_since(UNIX_EPOCH).unwrap();
             tsn_time_sleep_until(&Duration::new(duration.as_secs() + 1, 0))
@@ -345,7 +384,7 @@ fn do_client(
                 }
             }
         }
-        if oneway {
+        if args.oneway {
             perf_pkt.set_tv_sec(tx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_secs() as u32);
             perf_pkt.set_tv_nsec(
                 tx_timestamp
@@ -397,20 +436,29 @@ fn do_client(
                 if id != rcv_id {
                     break;
                 }
-                let elapsed = rx_timestamp.duration_since(tx_timestamp).unwrap();
+
+                // elapsed could be negative for some reason
+                let elapsed_ns = rx_timestamp
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos() as i128
+                    - tx_timestamp
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_nanos() as i128;
                 println!(
                     "{}: {}.{:09} s",
                     id,
-                    elapsed.as_secs(),
-                    elapsed.subsec_nanos()
+                    elapsed_ns / 1_000_000_000,
+                    elapsed_ns % 1_000_000_000
                 );
                 break;
             }
         }
 
-        if !precise {
-            let sleep_duration = Duration::from_millis(700)
-                + Duration::from_nanos(rand::thread_rng().gen_range(0..10_000_000));
+        if !args.precise {
+            let sleep_duration = Duration::from_nanos(args.interval)
+                + Duration::from_nanos(rand::thread_rng().gen_range(0..args.jitter));
 
             thread::sleep(sleep_duration);
         }
