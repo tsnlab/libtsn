@@ -74,36 +74,44 @@ fn main() {
     let client_command = Command::new("client")
         .about("Client mode")
         .short_flag('c')
-        .arg(arg!(-i --interface <interface> "Interface to use")
-            .value_parser(value_parser!(String))
-            .required(true))
-        .arg(arg!(-t --target <target> "Target MAC address")
-            .value_parser(value_parser!(MacAddr))
-            .required(true))
+        .arg(
+            arg!(-i --interface <interface> "Interface to use")
+                .value_parser(value_parser!(String))
+                .required(true),
+        )
+        .arg(
+            arg!(-t --target <target> "Target MAC address")
+                .value_parser(value_parser!(MacAddr))
+                .required(true),
+        )
         .arg(arg!(-'1' - -oneway).required(false))
-        .arg(arg!(-s --size <size>)
-            .value_parser(value_parser!(usize))
-            .default_value("64")
-            .required(false)
+        .arg(
+            arg!(-s --size <size>)
+                .value_parser(value_parser!(usize))
+                .default_value("64")
+                .required(false),
         )
-        .arg(arg!(-c --count <count> "How many send packets")
-            .value_parser(value_parser!(usize))
-            .default_value("100")
-            .required(false)
+        .arg(
+            arg!(-c --count <count> "How many send packets")
+                .value_parser(value_parser!(usize))
+                .default_value("100")
+                .required(false),
         )
-        .arg(arg!(-I --interval <interval> "Interval between test packets (nanoseconds)")
-            .value_parser(value_parser!(u64))
-            .default_value("700000")
-            .required(false)
+        .arg(
+            arg!(-I --interval <interval> "Interval between test packets (nanoseconds)")
+                .value_parser(value_parser!(u64))
+                .default_value("700000")
+                .required(false),
         )
-        .arg(arg!(-j --jitter <jitter> "Jitter for interval")
-            .value_parser(value_parser!(u64))
-            .default_value("0")
-            .required(false)
+        .arg(
+            arg!(-j --jitter <jitter> "Jitter for interval")
+                .value_parser(value_parser!(u64))
+                .default_value("0")
+                .required(false),
         )
-        .arg(arg!(-p --precise "Precise mode")
-            .long_help("TX packets would go on every X.000000000s. Interval and Jitter will be ignored.")
-        );
+        .arg(arg!(-p --precise "Precise mode").long_help(
+            "TX packets would go on every X.000000000s. Interval and Jitter will be ignored.",
+        ));
 
     let matched_command = Command::new("latency")
         .author(crate_authors!())
@@ -121,7 +129,10 @@ fn main() {
             do_server(iface)
         }
         Some(("client", sub_matches)) => {
-            let interface = sub_matches.get_one::<String>("interface").unwrap().to_string();
+            let interface = sub_matches
+                .get_one::<String>("interface")
+                .unwrap()
+                .to_string();
             let target = *sub_matches.get_one("target").unwrap();
             let oneway: bool = sub_matches.is_present("oneway");
             let size: usize = *sub_matches.get_one("size").unwrap();
@@ -130,7 +141,7 @@ fn main() {
             let jitter = *sub_matches.get_one("jitter").unwrap();
             let precise = sub_matches.is_present("precise");
 
-            let client_args = ClientArgs{
+            let client_args = ClientArgs {
                 interface,
                 target,
                 size,
@@ -280,10 +291,13 @@ fn do_server(iface_name: String) {
 fn do_client(args: ClientArgs) {
     let interface_name_match = |iface: &NetworkInterface| iface.name == args.interface;
     let interfaces = datalink::interfaces();
-    let interface = interfaces.into_iter().find(interface_name_match).unwrap_or_else(|| {
-        eprintln!("Interface not found: {}", args.interface);
-        std::process::exit(1);
-    });
+    let interface = interfaces
+        .into_iter()
+        .find(interface_name_match)
+        .unwrap_or_else(|| {
+            eprintln!("Interface not found: {}", args.interface);
+            std::process::exit(1);
+        });
     let my_mac = interface.mac.expect("Failed to get MAC address");
 
     if args.precise {
@@ -438,14 +452,9 @@ fn do_client(args: ClientArgs) {
                 }
 
                 // elapsed could be negative for some reason
-                let elapsed_ns = rx_timestamp
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_nanos() as i128
-                    - tx_timestamp
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap()
-                        .as_nanos() as i128;
+                let elapsed_ns = rx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_nanos()
+                    as i128
+                    - tx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_nanos() as i128;
                 println!(
                     "{}: {}.{:09} s",
                     id,
