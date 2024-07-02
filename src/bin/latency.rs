@@ -466,8 +466,11 @@ fn do_client(args: ClientArgs) {
         }
 
         if !args.precise {
-            let sleep_duration = Duration::from_nanos(args.interval)
-                + Duration::from_nanos(rand::thread_rng().gen_range(0..args.jitter));
+            let jitter = match args.jitter {
+                0 => 0,
+                _ => rand::thread_rng().gen_range(0..args.jitter),
+            };
+            let sleep_duration = Duration::from_nanos(args.interval + jitter);
 
             thread::sleep(sleep_duration);
         }
