@@ -365,6 +365,7 @@ fn do_client(args: ClientArgs) {
             }
         },
     };
+    let is_rx_ts_enabled = msg.is_some();
 
     for id in 1..=args.count {
         perf_pkt.set_id(id as u32);
@@ -422,17 +423,22 @@ fn do_client(args: ClientArgs) {
             let retry_start = Instant::now();
             let mut rx_timestamp;
             while retry_start.elapsed().as_secs() < TIMEOUT_SEC {
-                match msg {
-                    Some(mut msg) => {
-                        if unsafe { libc::recvmsg(sock.fd, &mut msg, 0) } < 0 {
+                match is_rx_ts_enabled {
+                    true => {
+                        if unsafe { libc::recvmsg(sock.fd, &mut msg.unwrap(), 0) } < 0 {
                             continue;
                         }
                         rx_timestamp = SystemTime::now();
-                        if let Ok(ts) = get_rx_timestamp(msg) {
-                            rx_timestamp = ts;
+                        match get_rx_timestamp(msg.unwrap()) {
+                            Ok(ts) => {
+                                rx_timestamp = ts;
+                            }
+                            Err(_) => {
+                                eprintln!("Failed to get RX timestamp");
+                            }
                         }
                     }
-                    None => {
+                    false => {
                         if sock.recv(&mut rx_eth_buff).is_err() {
                             continue;
                         }
