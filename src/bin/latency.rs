@@ -451,10 +451,10 @@ fn do_client(args: ClientArgs) {
                     continue;
                 }
 
-                let perf_pkt = PerfPacket::new(rx_eth_pkt.payload()).unwrap();
-                let rcv_id = perf_pkt.get_id() as usize;
-                if id != rcv_id {
-                    break;
+                let pong_pkt = PerfPacket::new(rx_eth_pkt.payload()).unwrap();
+                let pong_id = pong_pkt.get_id() as usize;
+                if pong_id != id {
+                    continue; // Ignore packet shuffle
                 }
 
                 // elapsed could be negative for some reason
