@@ -422,7 +422,8 @@ fn do_client(args: ClientArgs) {
         } else {
             let retry_start = Instant::now();
             let mut rx_timestamp;
-            while retry_start.elapsed().as_secs() < TIMEOUT_SEC {
+
+            loop {
                 match is_rx_ts_enabled {
                     true => {
                         if unsafe { libc::recvmsg(sock.fd, &mut msg.unwrap(), 0) } < 0 {
@@ -446,6 +447,18 @@ fn do_client(args: ClientArgs) {
                     }
                 }
 
+                let logging_timestamp = rx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_nanos();
+                let logging_sec = logging_timestamp / 1_000_000_000;
+                let logging_nano = logging_timestamp % 1_000_000_000;
+
+                if retry_start.elapsed().as_secs() > TIMEOUT_SEC {
+                    println!(
+                        "[{}.{:09}] TIMEOUT {} idx packet",
+                        logging_sec, logging_nano, id
+                    );
+                    break;
+                }
+
                 let rx_eth_pkt = EthernetPacket::new(&rx_eth_buff).unwrap();
                 if rx_eth_pkt.get_ethertype() != EtherType(ETHERTYPE_PERF) {
                     continue;
@@ -454,6 +467,10 @@ fn do_client(args: ClientArgs) {
                 let pong_pkt = PerfPacket::new(rx_eth_pkt.payload()).unwrap();
                 let pong_id = pong_pkt.get_id() as usize;
                 if pong_id != id {
+                    println!(
+                        "[{}.{:09}] SHUFFLED {} != {}",
+                        logging_sec, logging_nano, id, pong_id,
+                    );
                     continue; // Ignore packet shuffle
                 }
 
@@ -462,7 +479,9 @@ fn do_client(args: ClientArgs) {
                     as i128
                     - tx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_nanos() as i128;
                 println!(
-                    "{}: {}.{:09} s",
+                    "[{}.{:09}] {}: {}.{:09} s",
+                    logging_sec,
+                    logging_nano,
                     id,
                     elapsed_ns / 1_000_000_000,
                     elapsed_ns % 1_000_000_000
