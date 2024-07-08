@@ -100,7 +100,7 @@ fn main() {
         .arg(
             arg!(-I --interval <interval> "Interval between test packets (nanoseconds)")
                 .value_parser(value_parser!(u64))
-                .default_value("700000")
+                .default_value("700000000") // default 700ms
                 .required(false),
         )
         .arg(
