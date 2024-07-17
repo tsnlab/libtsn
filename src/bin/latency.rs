@@ -250,26 +250,28 @@ fn do_server(iface_name: String) {
                 last_rx_ts = rx_timestamp;
             }
             Some(PerfOp::Sync) => {
-                if last_rx_id == perf_pkt.get_id() {
-                    let rx_timestamp = last_rx_ts;
-                    let tx_timestamp =
-                        Duration::new(perf_pkt.get_tv_sec().into(), perf_pkt.get_tv_nsec());
-                    if tx_timestamp.is_zero() {
-                        continue;
-                    }
-                    let rx_timestamp = rx_timestamp.duration_since(UNIX_EPOCH).unwrap();
-                    let elapsed_ns =
-                        rx_timestamp.as_nanos() as i128 - tx_timestamp.as_nanos() as i128;
-                    println!(
-                        "{}: {}.{:09} -> {}.{:09} = {} ns",
-                        perf_pkt.get_id(),
-                        tx_timestamp.as_secs(),
-                        tx_timestamp.subsec_nanos(),
-                        rx_timestamp.as_secs(),
-                        rx_timestamp.subsec_nanos(),
-                        elapsed_ns
-                    );
+                let sync_id = perf_pkt.get_id();
+                if sync_id != last_rx_id {
+                    eprintln!("Sync ID mismatch: (Got {}, expect {})", sync_id, last_rx_id);
+                    continue;
                 }
+                let rx_timestamp = last_rx_ts;
+                let tx_timestamp =
+                    Duration::new(perf_pkt.get_tv_sec().into(), perf_pkt.get_tv_nsec());
+                if tx_timestamp.is_zero() {
+                    continue;
+                }
+                let rx_timestamp = rx_timestamp.duration_since(UNIX_EPOCH).unwrap();
+                let elapsed_ns = rx_timestamp.as_nanos() as i128 - tx_timestamp.as_nanos() as i128;
+                println!(
+                    "{}: {}.{:09} -> {}.{:09} = {} ns",
+                    sync_id,
+                    tx_timestamp.as_secs(),
+                    tx_timestamp.subsec_nanos(),
+                    rx_timestamp.as_secs(),
+                    rx_timestamp.subsec_nanos(),
+                    elapsed_ns
+                );
             }
             Some(PerfOp::Ping) => {
                 perf_pkt.set_op(PerfOp::Pong as u8);
