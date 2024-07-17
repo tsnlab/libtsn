@@ -262,8 +262,7 @@ fn do_server(iface_name: String) {
                     continue;
                 }
                 let rx_timestamp = rx_timestamp.duration_since(UNIX_EPOCH).unwrap();
-                let elapsed_ns =
-                    rx_timestamp.as_nanos() as i128 - tx_timestamp.as_nanos() as i128;
+                let elapsed_ns = rx_timestamp.as_nanos() as i128 - tx_timestamp.as_nanos() as i128;
                 println!(
                     "{}: {}.{:09} -> {}.{:09} = {} ns",
                     sync_id,
