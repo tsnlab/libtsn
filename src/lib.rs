@@ -310,7 +310,7 @@ pub fn enable_tx_timestamp(sock: &TsnSocket) -> Result<(), Error> {
     // ioctl
     let mut ts_cfg = libc::hwtstamp_config {
         tx_type: libc::HWTSTAMP_TX_ON as i32,
-        rx_filter: libc::HWTSTAMP_FILTER_NONE as i32,
+        rx_filter: libc::HWTSTAMP_FILTER_ALL as i32,
         flags: 0,
     };
 
