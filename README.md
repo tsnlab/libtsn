@@ -36,7 +36,7 @@ sudo ./target/release/latency client help
 #Server
 sudo ./target/release/throughput -s -i <interface>
 #Client
-sudo ./target/release/latency -c -i <interface> -t <target MAC address>
+sudo ./target/release/throughput -c -i <interface> -t <target MAC address>
 
 #To see more options
 sudo ./target/release/throughput --help
