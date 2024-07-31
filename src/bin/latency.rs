@@ -492,33 +492,36 @@ fn recv_perf_packet<'a>(is_rx_ts_enabled: bool, sock: &'a tsn::TsnSocket, msg: O
     let mut rx_timestamp;
     let retry_start = Instant::now();
     while retry_start.elapsed().as_secs() < TIMEOUT_SEC {
-        match is_rx_ts_enabled {
-            true => {
-                if unsafe { libc::recvmsg(sock.fd, &mut msg.unwrap(), 0) } < 0 {
-                    continue;
+        let recv_bytes = {
+            match (is_rx_ts_enabled, msg) {
+                (true, Some(mut msg)) => {
+                    let res = unsafe { libc::recvmsg(sock.fd, &mut msg, 0) };
+                    rx_timestamp = SystemTime::now();
+                    if res == -1 {
+                        continue;
+                    } else if res == 0 {
+                        eprintln!("????");
+                        continue;
+                    }
+                    res
                 }
-                rx_timestamp = SystemTime::now();
-                match get_rx_timestamp(msg.unwrap()) {
-                    Ok(ts) => {
-                        rx_timestamp = ts;
+                _ => match sock.recv(rx_eth_buff) {
+                    Ok(size) => {
+                        rx_timestamp = SystemTime::now();
+                        size
                     }
                     Err(_) => {
-                        eprintln!("Failed to get RX timestamp");
+                        continue;
                     }
-                }
+                },
             }
-            false => {
-                if sock.recv(rx_eth_buff).is_err() {
-                    continue;
-                }
-                rx_timestamp = SystemTime::now();
-            }
-        }
+        };
         let rx_eth_pkt = EthernetPacket::new(&*rx_eth_buff).unwrap();
         if rx_eth_pkt.get_ethertype() != EtherType(ETHERTYPE_PERF) {
             continue;
         }
-        let eth_pkt = EthernetPacket::new(&*rx_eth_buff)?;
+        let rx_packet = rx_eth_buff.split_at(recv_bytes as usize).0;
+        let eth_pkt = EthernetPacket::new(&rx_packet)?;
         return Some((rx_timestamp, eth_pkt));
     }
 
