@@ -428,35 +428,11 @@ fn do_client(args: ClientArgs) {
         } else {
             timestamps.insert(ping_id as u32, tx_timestamp);
             let retry_start = Instant::now();
-            let mut rx_timestamp;
             while retry_start.elapsed().as_secs() < TIMEOUT_SEC {
-                match is_rx_ts_enabled {
-                    true => {
-                        if unsafe { libc::recvmsg(sock.fd, &mut msg.unwrap(), 0) } < 0 {
-                            continue;
-                        }
-                        rx_timestamp = SystemTime::now();
-                        match get_rx_timestamp(msg.unwrap()) {
-                            Ok(ts) => {
-                                rx_timestamp = ts;
-                            }
-                            Err(_) => {
-                                eprintln!("Failed to get RX timestamp");
-                            }
-                        }
-                    }
-                    false => {
-                        if sock.recv(&mut rx_eth_buff).is_err() {
-                            continue;
-                        }
-                        rx_timestamp = SystemTime::now();
-                    }
-                }
-
-                let rx_eth_pkt = EthernetPacket::new(&rx_eth_buff).unwrap();
-                if rx_eth_pkt.get_ethertype() != EtherType(ETHERTYPE_PERF) {
-                    continue;
-                }
+                let (rx_timestamp, rx_eth_pkt) = match recv_perf_packet(is_rx_ts_enabled, &sock, msg, &mut rx_eth_buff) {
+                    Some(value) => value,
+                    None => continue,
+                };
 
                 let pong_pkt = PerfPacket::new(rx_eth_pkt.payload()).unwrap();
                 let pong_id = pong_pkt.get_id() as usize;
@@ -491,6 +467,37 @@ fn do_client(args: ClientArgs) {
     if sock.close().is_err() {
         eprintln!("Failed to close socket");
     }
+}
+
+fn recv_perf_packet<'a>(is_rx_ts_enabled: bool, sock: &'a tsn::TsnSocket, msg: Option<msghdr>, rx_eth_buff: &'a mut [u8; 1514]) -> Option<(SystemTime, EthernetPacket<'a>)> {
+    let mut rx_timestamp;
+    match is_rx_ts_enabled {
+        true => {
+            if unsafe { libc::recvmsg(sock.fd, &mut msg.unwrap(), 0) } < 0 {
+                return None;
+            }
+            rx_timestamp = SystemTime::now();
+            match get_rx_timestamp(msg.unwrap()) {
+                Ok(ts) => {
+                    rx_timestamp = ts;
+                }
+                Err(_) => {
+                    eprintln!("Failed to get RX timestamp");
+                }
+            }
+        }
+        false => {
+            if sock.recv(rx_eth_buff).is_err() {
+                return None;
+            }
+            rx_timestamp = SystemTime::now();
+        }
+    }
+    let rx_eth_pkt = EthernetPacket::new(&*rx_eth_buff).unwrap();
+    if rx_eth_pkt.get_ethertype() != EtherType(ETHERTYPE_PERF) {
+        return None;
+    }
+    Some((rx_timestamp, rx_eth_pkt))
 }
 
 fn print_latency(id: usize, rx_timestamp: SystemTime, tx_timestamp: SystemTime) {
