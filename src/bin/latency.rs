@@ -460,6 +460,29 @@ fn do_client(args: ClientArgs) {
         }
     }
 
+    // Wait for possible remaining packets
+
+    let wait_start = Instant::now();
+    while !timestamps.is_empty() && wait_start.elapsed().as_secs() < TIMEOUT_SEC {
+        let (rx_timestamp, rx_eth_pkt) = match recv_perf_packet(is_rx_ts_enabled, &sock, msg, &mut rx_eth_buff) {
+            Some(value) => value,
+            None => continue,
+        };
+
+        let pong_pkt = PerfPacket::new(rx_eth_pkt.payload()).unwrap();
+        let pong_id = pong_pkt.get_id() as usize;
+
+        let tx_timestamp = match timestamps.remove(&(pong_id as u32)) {
+            Some(ts) => ts,
+            None => {
+                eprintln!("ERROR: Ping ID not found: {}", pong_id);
+                continue;
+            }
+        };
+
+        print_latency(pong_id, rx_timestamp, tx_timestamp);
+    }
+
     if sock.close().is_err() {
         eprintln!("Failed to close socket");
     }
