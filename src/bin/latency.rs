@@ -469,16 +469,7 @@ fn do_client(args: ClientArgs) {
                     }
                 };
 
-                // elapsed could be negative for some reason
-                let elapsed_ns = rx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_nanos()
-                    as i128
-                    - tx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_nanos() as i128;
-                println!(
-                    "{}: {}.{:09} s",
-                    pong_id,
-                    elapsed_ns / 1_000_000_000,
-                    elapsed_ns % 1_000_000_000
-                );
+                print_latency(pong_id, rx_timestamp, tx_timestamp);
                 break;
             }
         }
@@ -500,6 +491,19 @@ fn do_client(args: ClientArgs) {
     if sock.close().is_err() {
         eprintln!("Failed to close socket");
     }
+}
+
+fn print_latency(id: usize, rx_timestamp: SystemTime, tx_timestamp: SystemTime) {
+    // elapsed could be negative for some reason
+    let elapsed_ns = rx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_nanos()
+        as i128
+        - tx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_nanos() as i128;
+    println!(
+        "{}: {}.{:09} s",
+        id,
+        elapsed_ns / 1_000_000_000,
+        elapsed_ns % 1_000_000_000
+    );
 }
 
 fn enable_rx_timestamp(sock: &tsn::TsnSocket, iov: &mut libc::iovec) -> Result<msghdr, String> {
