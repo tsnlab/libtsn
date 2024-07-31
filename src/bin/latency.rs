@@ -427,27 +427,23 @@ fn do_client(args: ClientArgs) {
             }
         } else {
             timestamps.insert(ping_id as u32, tx_timestamp);
-            let retry_start = Instant::now();
-            while retry_start.elapsed().as_secs() < TIMEOUT_SEC {
-                let (rx_timestamp, rx_eth_pkt) = match recv_perf_packet(is_rx_ts_enabled, &sock, msg, &mut rx_eth_buff) {
-                    Some(value) => value,
-                    None => continue,
-                };
+            let (rx_timestamp, rx_eth_pkt) = match recv_perf_packet(is_rx_ts_enabled, &sock, msg, &mut rx_eth_buff) {
+                Some(value) => value,
+                None => continue,
+            };
 
-                let pong_pkt = PerfPacket::new(rx_eth_pkt.payload()).unwrap();
-                let pong_id = pong_pkt.get_id() as usize;
+            let pong_pkt = PerfPacket::new(rx_eth_pkt.payload()).unwrap();
+            let pong_id = pong_pkt.get_id() as usize;
 
-                let tx_timestamp = match timestamps.remove(&(pong_id as u32)) {
-                    Some(ts) => ts,
-                    None => {
-                        eprintln!("ERROR: Ping ID not found: {}", pong_id);
-                        continue;
-                    }
-                };
+            let tx_timestamp = match timestamps.remove(&(pong_id as u32)) {
+                Some(ts) => ts,
+                None => {
+                    eprintln!("ERROR: Ping ID not found: {}", pong_id);
+                    continue;
+                }
+            };
 
-                print_latency(pong_id, rx_timestamp, tx_timestamp);
-                break;
-            }
+            print_latency(pong_id, rx_timestamp, tx_timestamp);
         }
 
         if !args.precise {
@@ -471,33 +467,39 @@ fn do_client(args: ClientArgs) {
 
 fn recv_perf_packet<'a>(is_rx_ts_enabled: bool, sock: &'a tsn::TsnSocket, msg: Option<msghdr>, rx_eth_buff: &'a mut [u8; 1514]) -> Option<(SystemTime, EthernetPacket<'a>)> {
     let mut rx_timestamp;
-    match is_rx_ts_enabled {
-        true => {
-            if unsafe { libc::recvmsg(sock.fd, &mut msg.unwrap(), 0) } < 0 {
-                return None;
+    let retry_start = Instant::now();
+    while retry_start.elapsed().as_secs() < TIMEOUT_SEC {
+        match is_rx_ts_enabled {
+            true => {
+                if unsafe { libc::recvmsg(sock.fd, &mut msg.unwrap(), 0) } < 0 {
+                    continue;
+                }
+                rx_timestamp = SystemTime::now();
+                match get_rx_timestamp(msg.unwrap()) {
+                    Ok(ts) => {
+                        rx_timestamp = ts;
+                    }
+                    Err(_) => {
+                        eprintln!("Failed to get RX timestamp");
+                    }
+                }
             }
-            rx_timestamp = SystemTime::now();
-            match get_rx_timestamp(msg.unwrap()) {
-                Ok(ts) => {
-                    rx_timestamp = ts;
+            false => {
+                if sock.recv(rx_eth_buff).is_err() {
+                    continue;
                 }
-                Err(_) => {
-                    eprintln!("Failed to get RX timestamp");
-                }
+                rx_timestamp = SystemTime::now();
             }
         }
-        false => {
-            if sock.recv(rx_eth_buff).is_err() {
-                return None;
-            }
-            rx_timestamp = SystemTime::now();
+        let rx_eth_pkt = EthernetPacket::new(&*rx_eth_buff).unwrap();
+        if rx_eth_pkt.get_ethertype() != EtherType(ETHERTYPE_PERF) {
+            continue;
         }
+        let eth_pkt = EthernetPacket::new(&*rx_eth_buff)?;
+        return Some((rx_timestamp, eth_pkt));
     }
-    let rx_eth_pkt = EthernetPacket::new(&*rx_eth_buff).unwrap();
-    if rx_eth_pkt.get_ethertype() != EtherType(ETHERTYPE_PERF) {
-        return None;
-    }
-    Some((rx_timestamp, rx_eth_pkt))
+
+    None
 }
 
 fn print_latency(id: usize, rx_timestamp: SystemTime, tx_timestamp: SystemTime) {
