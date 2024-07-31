@@ -373,8 +373,8 @@ fn do_client(args: ClientArgs) {
     let is_rx_ts_enabled = msg.is_some();
     let mut timestamps: HashMap<u32 /* id */, SystemTime /* ts */> = HashMap::new();
 
-    for id in 1..=args.count {
-        perf_pkt.set_id(id as u32);
+    for ping_id in 1..=args.count {
+        perf_pkt.set_id(ping_id as u32);
         let now;
         if args.oneway {
             perf_pkt.set_op(PerfOp::Tx as u8);
@@ -426,7 +426,7 @@ fn do_client(args: ClientArgs) {
                 let _ = sock.get_tx_timestamp();
             }
         } else {
-            timestamps.insert(id as u32, tx_timestamp);
+            timestamps.insert(ping_id as u32, tx_timestamp);
             let retry_start = Instant::now();
             let mut rx_timestamp;
             while retry_start.elapsed().as_secs() < TIMEOUT_SEC {
@@ -475,7 +475,7 @@ fn do_client(args: ClientArgs) {
                     - tx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_nanos() as i128;
                 println!(
                     "{}: {}.{:09} s",
-                    id,
+                    pong_id,
                     elapsed_ns / 1_000_000_000,
                     elapsed_ns % 1_000_000_000
                 );
