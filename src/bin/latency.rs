@@ -203,7 +203,7 @@ fn do_server(iface_name: String) {
         }
     };
     let is_rx_ts_enabled = msg.is_some();
-    let mut timestamps : HashMap<u32/* id */, SystemTime/* ts */> = HashMap::new();
+    let mut timestamps: HashMap<u32 /* id */, SystemTime /* ts */> = HashMap::new();
     while unsafe { RUNNING } {
         // TODO: Cleanup this code
         let mut rx_timestamp; // Posibble TODO: Cleanup timestamps if it is too old
@@ -371,7 +371,7 @@ fn do_client(args: ClientArgs) {
         },
     };
     let is_rx_ts_enabled = msg.is_some();
-    let mut timestamps : HashMap<u32/* id */, SystemTime/* ts */> = HashMap::new();
+    let mut timestamps: HashMap<u32 /* id */, SystemTime /* ts */> = HashMap::new();
 
     for id in 1..=args.count {
         perf_pkt.set_id(id as u32);
