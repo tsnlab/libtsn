@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::io::Error;
 use std::mem;
 use std::option::Option;
@@ -202,11 +203,10 @@ fn do_server(iface_name: String) {
         }
     };
     let is_rx_ts_enabled = msg.is_some();
-    let mut last_rx_id: u32 = 0;
-    let mut last_rx_ts: SystemTime = UNIX_EPOCH;
+    let mut timestamps : HashMap<u32/* id */, SystemTime/* ts */> = HashMap::new();
     while unsafe { RUNNING } {
         // TODO: Cleanup this code
-        let mut rx_timestamp;
+        let mut rx_timestamp; // Posibble TODO: Cleanup timestamps if it is too old
         let recv_bytes = {
             match (is_rx_ts_enabled, msg) {
                 (true, Some(mut msg)) => {
@@ -246,19 +246,22 @@ fn do_server(iface_name: String) {
                         rx_timestamp = ts;
                     }
                 }
-                last_rx_id = perf_pkt.get_id();
-                last_rx_ts = rx_timestamp;
+                let tx_id = perf_pkt.get_id();
+                timestamps.insert(tx_id, rx_timestamp);
             }
             Some(PerfOp::Sync) => {
                 let sync_id = perf_pkt.get_id();
-                if sync_id != last_rx_id {
-                    eprintln!("Sync ID mismatch: (Got {}, expect {})", sync_id, last_rx_id);
-                    continue;
-                }
-                let rx_timestamp = last_rx_ts;
+                let rx_timestamp = match timestamps.remove(&sync_id) {
+                    Some(ts) => ts,
+                    None => {
+                        eprintln!("ERROR: TX ID not found: {}", sync_id);
+                        continue;
+                    }
+                };
                 let tx_timestamp =
                     Duration::new(perf_pkt.get_tv_sec().into(), perf_pkt.get_tv_nsec());
                 if tx_timestamp.is_zero() {
+                    eprintln!("ERROR: TX timestamp is zero: {}", sync_id);
                     continue;
                 }
                 let rx_timestamp = rx_timestamp.duration_since(UNIX_EPOCH).unwrap();
@@ -368,6 +371,7 @@ fn do_client(args: ClientArgs) {
         },
     };
     let is_rx_ts_enabled = msg.is_some();
+    let mut timestamps : HashMap<u32/* id */, SystemTime/* ts */> = HashMap::new();
 
     for id in 1..=args.count {
         perf_pkt.set_id(id as u32);
@@ -422,6 +426,7 @@ fn do_client(args: ClientArgs) {
                 let _ = sock.get_tx_timestamp();
             }
         } else {
+            timestamps.insert(id as u32, tx_timestamp);
             let retry_start = Instant::now();
             let mut rx_timestamp;
             while retry_start.elapsed().as_secs() < TIMEOUT_SEC {
@@ -455,9 +460,14 @@ fn do_client(args: ClientArgs) {
 
                 let pong_pkt = PerfPacket::new(rx_eth_pkt.payload()).unwrap();
                 let pong_id = pong_pkt.get_id() as usize;
-                if pong_id != id {
-                    continue; // Ignore packet shuffle
-                }
+
+                let tx_timestamp = match timestamps.remove(&(pong_id as u32)) {
+                    Some(ts) => ts,
+                    None => {
+                        eprintln!("ERROR: Ping ID not found: {}", pong_id);
+                        continue;
+                    }
+                };
 
                 // elapsed could be negative for some reason
                 let elapsed_ns = rx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_nanos()
