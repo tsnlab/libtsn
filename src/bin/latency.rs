@@ -202,41 +202,13 @@ fn do_server(iface_name: String) {
             None
         }
     };
-    let is_rx_ts_enabled = msg.is_some();
     let mut timestamps: HashMap<u32 /* id */, SystemTime /* ts */> = HashMap::new();
     while unsafe { RUNNING } {
         // TODO: Cleanup this code
-        let mut rx_timestamp; // Posibble TODO: Cleanup timestamps if it is too old
-        let recv_bytes = {
-            match (is_rx_ts_enabled, msg) {
-                (true, Some(mut msg)) => {
-                    let res = unsafe { libc::recvmsg(sock.fd, &mut msg, 0) };
-                    rx_timestamp = SystemTime::now();
-                    if res == -1 {
-                        continue;
-                    } else if res == 0 {
-                        eprintln!("????");
-                        continue;
-                    }
-                    res
-                }
-                _ => match sock.recv(&mut packet) {
-                    Ok(size) => {
-                        rx_timestamp = SystemTime::now();
-                        size
-                    }
-                    Err(_) => {
-                        continue;
-                    }
-                },
-            }
+        let (mut rx_timestamp, mut eth_pkt) = match recv_perf_packet(&sock, msg, &mut packet) {
+            Some(value) => value,
+            None => continue,
         };
-        // Match packet size
-        let mut rx_packet = packet.split_at(recv_bytes as usize).0.to_owned();
-        let mut eth_pkt = MutableEthernetPacket::new(&mut rx_packet).unwrap();
-        if eth_pkt.get_ethertype() != EtherType(ETHERTYPE_PERF) {
-            continue;
-        }
         let mut perf_pkt = MutablePerfPacket::new(eth_pkt.payload_mut()).unwrap();
 
         match PerfOp::from_u8(perf_pkt.get_op()) {
@@ -258,23 +230,9 @@ fn do_server(iface_name: String) {
                         continue;
                     }
                 };
-                let tx_timestamp =
-                    Duration::new(perf_pkt.get_tv_sec().into(), perf_pkt.get_tv_nsec());
-                if tx_timestamp.is_zero() {
-                    eprintln!("ERROR: TX timestamp is zero: {}", sync_id);
-                    continue;
-                }
-                let rx_timestamp = rx_timestamp.duration_since(UNIX_EPOCH).unwrap();
-                let elapsed_ns = rx_timestamp.as_nanos() as i128 - tx_timestamp.as_nanos() as i128;
-                println!(
-                    "{}: {}.{:09} -> {}.{:09} = {} ns",
-                    sync_id,
-                    tx_timestamp.as_secs(),
-                    tx_timestamp.subsec_nanos(),
-                    rx_timestamp.as_secs(),
-                    rx_timestamp.subsec_nanos(),
-                    elapsed_ns
-                );
+                let tx_timestamp = UNIX_EPOCH
+                    + Duration::new(perf_pkt.get_tv_sec().into(), perf_pkt.get_tv_nsec());
+                print_latency(sync_id as usize, rx_timestamp, tx_timestamp);
             }
             Some(PerfOp::Ping) => {
                 perf_pkt.set_op(PerfOp::Pong as u8);
@@ -370,7 +328,6 @@ fn do_client(args: ClientArgs) {
             }
         },
     };
-    let is_rx_ts_enabled = msg.is_some();
     let mut timestamps: HashMap<u32 /* id */, SystemTime /* ts */> = HashMap::new();
 
     for ping_id in 1..=args.count {
@@ -427,60 +384,23 @@ fn do_client(args: ClientArgs) {
             }
         } else {
             timestamps.insert(ping_id as u32, tx_timestamp);
-            let retry_start = Instant::now();
-            let mut rx_timestamp;
-            while retry_start.elapsed().as_secs() < TIMEOUT_SEC {
-                match is_rx_ts_enabled {
-                    true => {
-                        if unsafe { libc::recvmsg(sock.fd, &mut msg.unwrap(), 0) } < 0 {
-                            continue;
-                        }
-                        rx_timestamp = SystemTime::now();
-                        match get_rx_timestamp(msg.unwrap()) {
-                            Ok(ts) => {
-                                rx_timestamp = ts;
-                            }
-                            Err(_) => {
-                                eprintln!("Failed to get RX timestamp");
-                            }
-                        }
-                    }
-                    false => {
-                        if sock.recv(&mut rx_eth_buff).is_err() {
-                            continue;
-                        }
-                        rx_timestamp = SystemTime::now();
-                    }
-                }
+            let (rx_timestamp, rx_eth_pkt) = match recv_perf_packet(&sock, msg, &mut rx_eth_buff) {
+                Some(value) => value,
+                None => continue,
+            };
 
-                let rx_eth_pkt = EthernetPacket::new(&rx_eth_buff).unwrap();
-                if rx_eth_pkt.get_ethertype() != EtherType(ETHERTYPE_PERF) {
+            let pong_pkt = PerfPacket::new(rx_eth_pkt.payload()).unwrap();
+            let pong_id = pong_pkt.get_id() as usize;
+
+            let tx_timestamp = match timestamps.remove(&(pong_id as u32)) {
+                Some(ts) => ts,
+                None => {
+                    eprintln!("ERROR: Ping ID not found: {}", pong_id);
                     continue;
                 }
+            };
 
-                let pong_pkt = PerfPacket::new(rx_eth_pkt.payload()).unwrap();
-                let pong_id = pong_pkt.get_id() as usize;
-
-                let tx_timestamp = match timestamps.remove(&(pong_id as u32)) {
-                    Some(ts) => ts,
-                    None => {
-                        eprintln!("ERROR: Ping ID not found: {}", pong_id);
-                        continue;
-                    }
-                };
-
-                // elapsed could be negative for some reason
-                let elapsed_ns = rx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_nanos()
-                    as i128
-                    - tx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_nanos() as i128;
-                println!(
-                    "{}: {}.{:09} s",
-                    pong_id,
-                    elapsed_ns / 1_000_000_000,
-                    elapsed_ns % 1_000_000_000
-                );
-                break;
-            }
+            print_latency(pong_id, rx_timestamp, tx_timestamp);
         }
 
         if !args.precise {
@@ -497,9 +417,96 @@ fn do_client(args: ClientArgs) {
         }
     }
 
+    // Wait for possible remaining packets
+
+    let wait_start = Instant::now();
+    while !timestamps.is_empty() && wait_start.elapsed().as_secs() < TIMEOUT_SEC {
+        let (rx_timestamp, rx_eth_pkt) = match recv_perf_packet(&sock, msg, &mut rx_eth_buff) {
+            Some(value) => value,
+            None => continue,
+        };
+
+        let pong_pkt = PerfPacket::new(rx_eth_pkt.payload()).unwrap();
+        let pong_id = pong_pkt.get_id() as usize;
+
+        let tx_timestamp = match timestamps.remove(&(pong_id as u32)) {
+            Some(ts) => ts,
+            None => {
+                eprintln!("ERROR: Ping ID not found: {}", pong_id);
+                continue;
+            }
+        };
+
+        print_latency(pong_id, rx_timestamp, tx_timestamp);
+    }
+
     if sock.close().is_err() {
         eprintln!("Failed to close socket");
     }
+}
+
+fn recv_perf_packet<'a>(
+    sock: &tsn::TsnSocket,
+    msg: Option<msghdr>,
+    packet: &'a mut [u8; 1514],
+) -> Option<(SystemTime, MutableEthernetPacket<'a>)> {
+    let start = Instant::now();
+    while start.elapsed().as_secs() < TIMEOUT_SEC {
+        let mut rx_timestamp;
+        let recv_bytes = {
+            match msg {
+                Some(mut msg) => {
+                    let res = unsafe { libc::recvmsg(sock.fd, &mut msg, 0) };
+                    rx_timestamp = SystemTime::now(); // Fallback default value
+                    if res == -1 {
+                        continue;
+                    } else if res == 0 {
+                        eprintln!("????");
+                        continue;
+                    }
+                    match get_rx_timestamp(msg) {
+                        Ok(ts) => rx_timestamp = ts,
+                        Err(_) => {
+                            eprintln!("Failed to get RX timestamp");
+                        }
+                    }
+                    res as usize
+                }
+                _ => match sock.recv(packet) {
+                    Ok(size) => {
+                        rx_timestamp = SystemTime::now();
+                        size as usize
+                    }
+                    Err(_) => {
+                        continue;
+                    }
+                },
+            }
+        };
+
+        let bytes = &packet[..recv_bytes];
+        let eth = EthernetPacket::new(bytes).unwrap();
+        if eth.get_ethertype() != EtherType(ETHERTYPE_PERF) {
+            continue;
+        }
+
+        let eth_pkt = MutableEthernetPacket::new(&mut packet[..recv_bytes]).unwrap();
+        return Some((rx_timestamp, eth_pkt));
+    }
+
+    None
+}
+
+fn print_latency(id: usize, rx_timestamp: SystemTime, tx_timestamp: SystemTime) {
+    // elapsed could be negative for some reason
+    let elapsed_ns = rx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_nanos() as i128
+        - tx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_nanos() as i128;
+    println!(
+        "{}: {}.{:09} s",
+        id,
+        elapsed_ns / 1_000_000_000,
+        elapsed_ns % 1_000_000_000
+    );
 }
 
 fn enable_rx_timestamp(sock: &tsn::TsnSocket, iov: &mut libc::iovec) -> Result<msghdr, String> {
