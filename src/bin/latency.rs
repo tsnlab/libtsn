@@ -230,8 +230,8 @@ fn do_server(iface_name: String) {
                         continue;
                     }
                 };
-                let tx_timestamp =
-                    UNIX_EPOCH + Duration::new(perf_pkt.get_tv_sec().into(), perf_pkt.get_tv_nsec());
+                let tx_timestamp = UNIX_EPOCH
+                    + Duration::new(perf_pkt.get_tv_sec().into(), perf_pkt.get_tv_nsec());
                 print_latency(sync_id as usize, rx_timestamp, tx_timestamp);
             }
             Some(PerfOp::Ping) => {
@@ -249,39 +249,6 @@ fn do_server(iface_name: String) {
     if sock.close().is_err() {
         eprintln!("Failed to close socket");
     }
-}
-
-fn recv_perf_packet<'a>(sock: &tsn::TsnSocket, msg: Option<msghdr>, packet: &'a mut [u8; 1514]) -> Option<(SystemTime, MutableEthernetPacket<'a>)> {
-    let rx_timestamp;
-    let recv_bytes = {
-        match msg {
-            Some(mut msg) => {
-                let res = unsafe { libc::recvmsg(sock.fd, &mut msg, 0) };
-                rx_timestamp = SystemTime::now();
-                if res == -1 {
-                    return None;
-                } else if res == 0 {
-                    eprintln!("????");
-                    return None;
-                }
-                res as usize
-            }
-            _ => match sock.recv(packet) {
-                Ok(size) => {
-                    rx_timestamp = SystemTime::now();
-                    size as usize
-                }
-                Err(_) => {
-                    return None;
-                }
-            },
-        }
-    };
-    let eth_pkt = MutableEthernetPacket::new(&mut packet[..recv_bytes]).unwrap();
-    if eth_pkt.get_ethertype() != EtherType(ETHERTYPE_PERF) {
-        return None;
-    }
-    Some((rx_timestamp, eth_pkt))
 }
 
 fn do_client(args: ClientArgs) {
@@ -478,10 +445,46 @@ fn do_client(args: ClientArgs) {
     }
 }
 
+fn recv_perf_packet<'a>(
+    sock: &tsn::TsnSocket,
+    msg: Option<msghdr>,
+    packet: &'a mut [u8; 1514],
+) -> Option<(SystemTime, MutableEthernetPacket<'a>)> {
+    let rx_timestamp;
+    let recv_bytes = {
+        match msg {
+            Some(mut msg) => {
+                let res = unsafe { libc::recvmsg(sock.fd, &mut msg, 0) };
+                rx_timestamp = SystemTime::now();
+                if res == -1 {
+                    return None;
+                } else if res == 0 {
+                    eprintln!("????");
+                    return None;
+                }
+                res as usize
+            }
+            _ => match sock.recv(packet) {
+                Ok(size) => {
+                    rx_timestamp = SystemTime::now();
+                    size as usize
+                }
+                Err(_) => {
+                    return None;
+                }
+            },
+        }
+    };
+    let eth_pkt = MutableEthernetPacket::new(&mut packet[..recv_bytes]).unwrap();
+    if eth_pkt.get_ethertype() != EtherType(ETHERTYPE_PERF) {
+        return None;
+    }
+    Some((rx_timestamp, eth_pkt))
+}
+
 fn print_latency(id: usize, rx_timestamp: SystemTime, tx_timestamp: SystemTime) {
     // elapsed could be negative for some reason
-    let elapsed_ns = rx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_nanos()
-        as i128
+    let elapsed_ns = rx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_nanos() as i128
         - tx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_nanos() as i128;
     println!(
         "{}: {}.{:09} s",
