@@ -452,17 +452,23 @@ fn recv_perf_packet<'a>(
 ) -> Option<(SystemTime, MutableEthernetPacket<'a>)> {
     let start = Instant::now();
     while start.elapsed().as_secs() < TIMEOUT_SEC {
-        let rx_timestamp;
+        let mut rx_timestamp;
         let recv_bytes = {
             match msg {
                 Some(mut msg) => {
                     let res = unsafe { libc::recvmsg(sock.fd, &mut msg, 0) };
-                    rx_timestamp = SystemTime::now();
+                    rx_timestamp = SystemTime::now(); // Fallback default value
                     if res == -1 {
                         continue;
                     } else if res == 0 {
                         eprintln!("????");
                         continue;
+                    }
+                    match get_rx_timestamp(msg) {
+                        Ok(ts) => rx_timestamp = ts,
+                        Err(_) => {
+                            eprintln!("Failed to get RX timestamp");
+                        }
                     }
                     res as usize
                 }
