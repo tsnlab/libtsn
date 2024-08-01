@@ -19,7 +19,7 @@ use pnet_macros_support::types::u32be;
 use pnet_packet::{MutablePacket, Packet};
 
 use pnet::datalink::{self, NetworkInterface};
-use pnet::packet::ethernet::{EtherType, EthernetPacket, MutableEthernetPacket};
+use pnet::packet::ethernet::{EtherType, MutableEthernetPacket};
 use pnet::util::MacAddr;
 use tsn::time::tsn_time_sleep_until;
 
@@ -202,41 +202,13 @@ fn do_server(iface_name: String) {
             None
         }
     };
-    let is_rx_ts_enabled = msg.is_some();
     let mut timestamps: HashMap<u32 /* id */, SystemTime /* ts */> = HashMap::new();
     while unsafe { RUNNING } {
         // TODO: Cleanup this code
-        let mut rx_timestamp; // Posibble TODO: Cleanup timestamps if it is too old
-        let recv_bytes = {
-            match (is_rx_ts_enabled, msg) {
-                (true, Some(mut msg)) => {
-                    let res = unsafe { libc::recvmsg(sock.fd, &mut msg, 0) };
-                    rx_timestamp = SystemTime::now();
-                    if res == -1 {
-                        continue;
-                    } else if res == 0 {
-                        eprintln!("????");
-                        continue;
-                    }
-                    res
-                }
-                _ => match sock.recv(&mut packet) {
-                    Ok(size) => {
-                        rx_timestamp = SystemTime::now();
-                        size
-                    }
-                    Err(_) => {
-                        continue;
-                    }
-                },
-            }
+        let (mut rx_timestamp, mut eth_pkt) = match recv_perf_packet(&sock, msg, &mut packet) {
+            Some(value) => value,
+            None => continue,
         };
-        // Match packet size
-        let mut rx_packet = packet.split_at(recv_bytes as usize).0.to_owned();
-        let mut eth_pkt = MutableEthernetPacket::new(&mut rx_packet).unwrap();
-        if eth_pkt.get_ethertype() != EtherType(ETHERTYPE_PERF) {
-            continue;
-        }
         let mut perf_pkt = MutablePerfPacket::new(eth_pkt.payload_mut()).unwrap();
 
         match PerfOp::from_u8(perf_pkt.get_op()) {
@@ -277,6 +249,39 @@ fn do_server(iface_name: String) {
     if sock.close().is_err() {
         eprintln!("Failed to close socket");
     }
+}
+
+fn recv_perf_packet<'a>(sock: &tsn::TsnSocket, msg: Option<msghdr>, packet: &'a mut [u8; 1514]) -> Option<(SystemTime, MutableEthernetPacket<'a>)> {
+    let rx_timestamp;
+    let recv_bytes = {
+        match msg {
+            Some(mut msg) => {
+                let res = unsafe { libc::recvmsg(sock.fd, &mut msg, 0) };
+                rx_timestamp = SystemTime::now();
+                if res == -1 {
+                    return None;
+                } else if res == 0 {
+                    eprintln!("????");
+                    return None;
+                }
+                res as usize
+            }
+            _ => match sock.recv(packet) {
+                Ok(size) => {
+                    rx_timestamp = SystemTime::now();
+                    size as usize
+                }
+                Err(_) => {
+                    return None;
+                }
+            },
+        }
+    };
+    let eth_pkt = MutableEthernetPacket::new(&mut packet[..recv_bytes]).unwrap();
+    if eth_pkt.get_ethertype() != EtherType(ETHERTYPE_PERF) {
+        return None;
+    }
+    Some((rx_timestamp, eth_pkt))
 }
 
 fn do_client(args: ClientArgs) {
@@ -356,7 +361,6 @@ fn do_client(args: ClientArgs) {
             }
         },
     };
-    let is_rx_ts_enabled = msg.is_some();
     let mut timestamps: HashMap<u32 /* id */, SystemTime /* ts */> = HashMap::new();
 
     for ping_id in 1..=args.count {
@@ -413,7 +417,7 @@ fn do_client(args: ClientArgs) {
             }
         } else {
             timestamps.insert(ping_id as u32, tx_timestamp);
-            let (rx_timestamp, rx_eth_pkt) = match recv_perf_packet(is_rx_ts_enabled, &sock, msg, &mut rx_eth_buff) {
+            let (rx_timestamp, rx_eth_pkt) = match recv_perf_packet(&sock, msg, &mut rx_eth_buff) {
                 Some(value) => value,
                 None => continue,
             };
@@ -472,46 +476,6 @@ fn do_client(args: ClientArgs) {
     if sock.close().is_err() {
         eprintln!("Failed to close socket");
     }
-}
-
-fn recv_perf_packet<'a>(sock: &'a tsn::TsnSocket, msg: Option<msghdr>, rx_eth_buff: &'a mut [u8; 1514]) -> Option<(SystemTime, EthernetPacket<'a>)> {
-    let mut rx_timestamp;
-    let retry_start = Instant::now();
-    while retry_start.elapsed().as_secs() < TIMEOUT_SEC {
-        let recv_bytes = {
-            match msg {
-                Some(mut msg) => {
-                    let res = unsafe { libc::recvmsg(sock.fd, &mut msg, 0) };
-                    rx_timestamp = SystemTime::now();
-                    if res == -1 {
-                        continue;
-                    } else if res == 0 {
-                        eprintln!("????");
-                        continue;
-                    }
-                    res
-                }
-                _ => match sock.recv(rx_eth_buff) {
-                    Ok(size) => {
-                        rx_timestamp = SystemTime::now();
-                        size
-                    }
-                    Err(_) => {
-                        continue;
-                    }
-                },
-            }
-        };
-        let rx_eth_pkt = EthernetPacket::new(&*rx_eth_buff).unwrap();
-        if rx_eth_pkt.get_ethertype() != EtherType(ETHERTYPE_PERF) {
-            continue;
-        }
-        let rx_packet = rx_eth_buff.split_at(recv_bytes as usize).0;
-        let eth_pkt = EthernetPacket::new(&rx_packet)?;
-        return Some((rx_timestamp, eth_pkt));
-    }
-
-    None
 }
 
 fn print_latency(id: usize, rx_timestamp: SystemTime, tx_timestamp: SystemTime) {
