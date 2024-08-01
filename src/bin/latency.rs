@@ -19,7 +19,7 @@ use pnet_macros_support::types::u32be;
 use pnet_packet::{MutablePacket, Packet};
 
 use pnet::datalink::{self, NetworkInterface};
-use pnet::packet::ethernet::{EtherType, MutableEthernetPacket};
+use pnet::packet::ethernet::{EtherType, EthernetPacket, MutableEthernetPacket};
 use pnet::util::MacAddr;
 use tsn::time::tsn_time_sleep_until;
 
@@ -450,36 +450,45 @@ fn recv_perf_packet<'a>(
     msg: Option<msghdr>,
     packet: &'a mut [u8; 1514],
 ) -> Option<(SystemTime, MutableEthernetPacket<'a>)> {
-    let rx_timestamp;
-    let recv_bytes = {
-        match msg {
-            Some(mut msg) => {
-                let res = unsafe { libc::recvmsg(sock.fd, &mut msg, 0) };
-                rx_timestamp = SystemTime::now();
-                if res == -1 {
-                    return None;
-                } else if res == 0 {
-                    eprintln!("????");
-                    return None;
-                }
-                res as usize
-            }
-            _ => match sock.recv(packet) {
-                Ok(size) => {
+    let start = Instant::now();
+    while start.elapsed().as_secs() < TIMEOUT_SEC {
+        let rx_timestamp;
+        let recv_bytes = {
+            match msg {
+                Some(mut msg) => {
+                    let res = unsafe { libc::recvmsg(sock.fd, &mut msg, 0) };
                     rx_timestamp = SystemTime::now();
-                    size as usize
+                    if res == -1 {
+                        continue;
+                    } else if res == 0 {
+                        eprintln!("????");
+                        continue;
+                    }
+                    res as usize
                 }
-                Err(_) => {
-                    return None;
-                }
-            },
+                _ => match sock.recv(packet) {
+                    Ok(size) => {
+                        rx_timestamp = SystemTime::now();
+                        size as usize
+                    }
+                    Err(_) => {
+                        continue;
+                    }
+                },
+            }
+        };
+
+        let bytes = &packet[..recv_bytes];
+        let eth = EthernetPacket::new(bytes).unwrap();
+        if eth.get_ethertype() != EtherType(ETHERTYPE_PERF) {
+            continue;
         }
-    };
-    let eth_pkt = MutableEthernetPacket::new(&mut packet[..recv_bytes]).unwrap();
-    if eth_pkt.get_ethertype() != EtherType(ETHERTYPE_PERF) {
-        return None;
+
+        let eth_pkt = MutableEthernetPacket::new(&mut packet[..recv_bytes]).unwrap();
+        return Some((rx_timestamp, eth_pkt));
     }
-    Some((rx_timestamp, eth_pkt))
+
+    None
 }
 
 fn print_latency(id: usize, rx_timestamp: SystemTime, tx_timestamp: SystemTime) {
