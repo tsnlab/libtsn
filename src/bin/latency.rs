@@ -450,7 +450,7 @@ fn do_client(args: ClientArgs) {
 
     let wait_start = Instant::now();
     while !timestamps.is_empty() && wait_start.elapsed().as_secs() < TIMEOUT_SEC {
-        let (rx_timestamp, rx_eth_pkt) = match recv_perf_packet(is_rx_ts_enabled, &sock, msg, &mut rx_eth_buff) {
+        let (rx_timestamp, rx_eth_pkt) = match recv_perf_packet(&sock, msg, &mut rx_eth_buff) {
             Some(value) => value,
             None => continue,
         };
@@ -474,13 +474,13 @@ fn do_client(args: ClientArgs) {
     }
 }
 
-fn recv_perf_packet<'a>(is_rx_ts_enabled: bool, sock: &'a tsn::TsnSocket, msg: Option<msghdr>, rx_eth_buff: &'a mut [u8; 1514]) -> Option<(SystemTime, EthernetPacket<'a>)> {
+fn recv_perf_packet<'a>(sock: &'a tsn::TsnSocket, msg: Option<msghdr>, rx_eth_buff: &'a mut [u8; 1514]) -> Option<(SystemTime, EthernetPacket<'a>)> {
     let mut rx_timestamp;
     let retry_start = Instant::now();
     while retry_start.elapsed().as_secs() < TIMEOUT_SEC {
         let recv_bytes = {
-            match (is_rx_ts_enabled, msg) {
-                (true, Some(mut msg)) => {
+            match msg {
+                Some(mut msg) => {
                     let res = unsafe { libc::recvmsg(sock.fd, &mut msg, 0) };
                     rx_timestamp = SystemTime::now();
                     if res == -1 {
