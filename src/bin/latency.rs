@@ -499,13 +499,17 @@ fn recv_perf_packet<'a>(
 
 fn print_latency(id: usize, rx_timestamp: SystemTime, tx_timestamp: SystemTime) {
     // elapsed could be negative for some reason
-    let elapsed_ns = rx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_nanos() as i128
-        - tx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_nanos() as i128;
+    let tx_ns = tx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_nanos();
+    let rx_ns = rx_timestamp.duration_since(UNIX_EPOCH).unwrap().as_nanos();
+    let elapsed_ns = rx_ns as i128 - tx_ns as i128;
     println!(
-        "{}: {}.{:09} s",
+        "{}: {}.{:09} -> {}.{:09} = {} ns",
         id,
-        elapsed_ns / 1_000_000_000,
-        elapsed_ns % 1_000_000_000
+        tx_ns / 1_000_000_000,
+        tx_ns % 1_000_000_000,
+        rx_ns / 1_000_000_000,
+        rx_ns % 1_000_000_000,
+        elapsed_ns
     );
 }
 
