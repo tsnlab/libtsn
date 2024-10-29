@@ -88,11 +88,10 @@ pub fn normalise_tas(config: &Value) -> Result<TasConfig, String> {
         }
         sched_entries.push(format!("S {} {}", sum, sch.time));
     }
-    let txtime_delay = to_ns(
-        config
-            .get(&Value::String("txtime_delay".to_string()))
-            .unwrap(),
-    )?;
+    let txtime_delay = match config.get(&Value::String("txtime_delay".to_string())) {
+        Some(val) => to_ns(val).unwrap_or(0),
+        None => 0,
+    };
     Ok(TasConfig {
         txtime_delay,
         schedule: tas_schedule,
