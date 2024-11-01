@@ -61,7 +61,11 @@ pub fn normalise_tas(config: &Value) -> Result<TasConfig, String> {
                 tc_map.insert(prio.clone(), tc_map.len() as i64);
             }
         }
-        let time = to_ns(schedule.get(&Value::String("time".to_string())).expect("schedule must have 'time'"))?;
+        let time = to_ns(
+            schedule
+                .get(&Value::String("time".to_string()))
+                .expect("schedule must have 'time'"),
+        )?;
         tas_schedule.push(TasSchedule { time, prio: v });
     }
 

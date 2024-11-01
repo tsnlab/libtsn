@@ -50,7 +50,9 @@ pub fn read_config(config_path: &str) -> Result<HashMap<String, Config>, i64> {
     let mut ret = HashMap::new();
     for (key, value) in config {
         let mut info = Config::new(HashMap::new());
-        let value = value.as_mapping().expect("config value should be a dictionary");
+        let value = value
+            .as_mapping()
+            .expect("config value should be a dictionary");
         ifname = key.as_str().unwrap();
         if value.contains_key(&Value::String("egress-qos-map".to_string())) {
             info.egress_qos_map = normalise_vlan(
@@ -60,7 +62,11 @@ pub fn read_config(config_path: &str) -> Result<HashMap<String, Config>, i64> {
             );
         }
         if value.contains_key(&Value::String("tas".to_string())) {
-            match normalise_tas(value.get(&Value::String("tas".to_string())).expect("tas should be a dictionary")) {
+            match normalise_tas(
+                value
+                    .get(&Value::String("tas".to_string()))
+                    .expect("tas should be a dictionary"),
+            ) {
                 Ok(tas) => info.tas = Some(tas),
                 Err(e) => {
                     eprintln!("{}", e);
@@ -71,7 +77,9 @@ pub fn read_config(config_path: &str) -> Result<HashMap<String, Config>, i64> {
         if value.contains_key(&Value::String("cbs".to_string())) {
             match normalise_cbs(
                 ifname,
-                value.get(&Value::String("cbs".to_string())).expect("cbs should be a dictionary"),
+                value
+                    .get(&Value::String("cbs".to_string()))
+                    .expect("cbs should be a dictionary"),
             ) {
                 Ok(cbs) => info.cbs = Some(cbs),
                 Err(e) => {
