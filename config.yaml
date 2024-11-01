@@ -9,7 +9,6 @@ nics:
         2: 2
         3: 3  # For perf test
     tas:
-      txtime_delay: 500000
       schedule:
         - time: 300us
           prio: [ 5 ]

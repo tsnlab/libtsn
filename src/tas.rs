@@ -35,7 +35,7 @@ pub fn to_ns(input: &Value) -> Result<i64, String> {
             }
         };
     }
-    Ok(input.as_i64().unwrap())
+    Ok(input.as_i64().expect("Cannot convert input to i64"))
 }
 pub fn normalise_tas(config: &Value) -> Result<TasConfig, String> {
     let mut tas_schedule: Vec<TasSchedule> = Vec::new();
@@ -43,24 +43,29 @@ pub fn normalise_tas(config: &Value) -> Result<TasConfig, String> {
     let mut ret_map = HashMap::new();
     let schedules = config
         .get(&Value::String("schedule".to_string()))
-        .unwrap()
+        .expect("tas should have a schedule")
         .as_sequence()
-        .unwrap();
+        .expect("schedule should be a list");
     for schedule in schedules {
         let mut v = Vec::new();
 
         for prio in schedule
             .get(&Value::String("prio".to_string()))
-            .unwrap()
+            .expect("schedule should have a prio")
             .as_sequence()
-            .unwrap()
+            .expect("prio should be a list")
         {
-            v.push(prio.as_i64().unwrap());
-            if prio.as_i64().unwrap() > 0 && !tc_map.contains_key(&prio.as_i64().unwrap()) {
-                tc_map.insert(prio.as_i64().unwrap(), tc_map.len() as i64);
+            let prio = prio.as_i64().expect("prio should be an integer");
+            v.push(prio.clone());
+            if prio > 0 && !tc_map.contains_key(&prio) {
+                tc_map.insert(prio.clone(), tc_map.len() as i64);
             }
         }
-        let time = to_ns(schedule.get(&Value::String("time".to_string())).unwrap())?;
+        let time = to_ns(
+            schedule
+                .get(&Value::String("time".to_string()))
+                .expect("schedule must have 'time'"),
+        )?;
         tas_schedule.push(TasSchedule { time, prio: v });
     }
 
@@ -76,8 +81,8 @@ pub fn normalise_tas(config: &Value) -> Result<TasConfig, String> {
     }
 
     let mut queues = Vec::new();
-    (0..num_tc).for_each(|_i| {
-        queues.push("1@0".to_string());
+    (0..num_tc).for_each(|i| {
+        queues.push(format!("1@{}", i));
     });
     let mut sched_entries = Vec::new();
 
@@ -88,11 +93,10 @@ pub fn normalise_tas(config: &Value) -> Result<TasConfig, String> {
         }
         sched_entries.push(format!("S {} {}", sum, sch.time));
     }
-    let txtime_delay = to_ns(
-        config
-            .get(&Value::String("txtime_delay".to_string()))
-            .unwrap(),
-    )?;
+    let txtime_delay = match config.get(&Value::String("txtime_delay".to_string())) {
+        Some(val) => to_ns(val).unwrap_or(0),
+        None => 0,
+    };
     Ok(TasConfig {
         txtime_delay,
         schedule: tas_schedule,

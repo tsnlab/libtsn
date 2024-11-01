@@ -32,7 +32,9 @@ pub fn get_linkspeed(ifname: &str) -> Result<String, String> {
         Ok(output) => {
             let out = str::from_utf8(&output.stdout).unwrap();
             let pattern = regex::Regex::new(r"Speed: (?P<speed>\d+(?:|k|M|G)b[p/]?s)").unwrap();
-            let matched = pattern.captures(out).unwrap();
+            let matched = pattern
+                .captures(out)
+                .expect(format!("Speed cannot be found for {}", ifname).as_str());
             Ok(matched.name("speed").unwrap().as_str().to_string())
         }
         Err(e) => Err(e.to_string()),
@@ -153,23 +155,26 @@ pub fn normalise_cbs(ifname: &str, config: &Value) -> Result<CbsConfig, String> 
             max_frame: to_bits(
                 priomap
                     .get(&Value::String("max_frame".to_string()))
-                    .unwrap(),
+                    .expect("max_frame should be present"),
             )?,
             bandwidth: to_bps(
                 priomap
                     .get(&Value::String("bandwidth".to_string()))
-                    .unwrap(),
+                    .expect("bandwidth should be present"),
             )?,
         };
         let index = priomap
             .get(Value::String("class".to_string()).as_str().unwrap())
-            .unwrap()
+            .expect("class should be present")
             .as_str()
-            .unwrap()
+            .expect("class should be a string")
             .chars()
             .next()
-            .unwrap();
-        streams.get_mut(&index).unwrap().push(child);
+            .expect("Cannot parse class");
+        streams
+            .get_mut(&index)
+            .expect("Cannot parse cbs class")
+            .push(child);
     }
     tc_map.insert(-1, tc_map.len() as i64);
     let num_tc = tc_map.len() as i64;
