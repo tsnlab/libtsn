@@ -37,6 +37,10 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
       - name: shellcheck
         uses: ludeeus/action-shellcheck@master
+        with:
+          ignore_paths: >-
+            driver/QDMA/linux-kernel/scripts
+            driver/XDMA/linux-kernel/tests
       - name: Final newline
         uses: Logerfo/newline-action@0.0.4
         with:
