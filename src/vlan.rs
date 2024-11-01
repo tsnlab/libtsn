@@ -36,17 +36,20 @@ pub fn setup_tas(ifname: &str, config: &TasConfig) -> Result<i32, String> {
         sched_entries.push_str(&format!(" sched-entry {}", entry));
     }
     let cmd = format!(
-        "tc qdisc replace dev {} parent root handle {} taprio num_tc {} map{}
-         queues{} base-time {}{} flags 0x2 txtime-delay {} clockid CLOCK_TAI",
+        "tc qdisc replace dev {} parent root handle {} taprio num_tc {} map{} \
+         queues{} base-time {}{} flags 0x2 txtime-delay {}",
         ifname, handle, num_tc, priomap, queues, base_time, sched_entries, txtime_delay
     );
     run_cmd(&cmd)?;
+    // TSN NIC does not support ETF for now
+    /*
     let cmd = format!(
-        "tc qdisc replace dev {} parent {}:1 etf clockid
-     CLOCK_TAI delta {} offload skip_sock_check",
+        "tc qdisc replace dev {} parent {}:1 etf clockid \
+         CLOCK_TAI delta {} offload skip_sock_check",
         ifname, handle, txtime_delay
     );
     run_cmd(&cmd)?;
+    */
     Ok(0)
 }
 
@@ -62,8 +65,8 @@ pub fn setup_cbs(ifname: &str, config: &CbsConfig) -> Result<i32, String> {
         queues.push_str(&format!("{} ", s));
     }
     let cmd = format!(
-        "tc qdisc add dev {} parent root handle {} mqprio num_tc {} map\
-        {} queues {}hw 0",
+        "tc qdisc add dev {} parent root handle {} mqprio num_tc {} map \
+         {} queues {} hw 0",
         ifname, root_handle, num_tc, priomap, queues
     );
     run_cmd(&cmd)?;
@@ -76,7 +79,7 @@ pub fn setup_cbs(ifname: &str, config: &CbsConfig) -> Result<i32, String> {
         let locredit = val.locredit;
         let cmd = format!(
             "tc qdisc replace dev {} parent {}:{} handle {} \
-            cbs idleslope {} sendslope {} hicredit {} locredit {} offload 1",
+             cbs idleslope {} sendslope {} hicredit {} locredit {} offload 1",
             ifname, root_handle, qid, handle, idleslope, sendslope, hicredit, locredit
         );
         run_cmd(&cmd)?;

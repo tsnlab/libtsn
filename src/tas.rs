@@ -81,8 +81,8 @@ pub fn normalise_tas(config: &Value) -> Result<TasConfig, String> {
     }
 
     let mut queues = Vec::new();
-    (0..num_tc).for_each(|_i| {
-        queues.push("1@0".to_string());
+    (0..num_tc).for_each(|i| {
+        queues.push(format!("1@{}", i));
     });
     let mut sched_entries = Vec::new();
 
