@@ -65,8 +65,8 @@ pub fn setup_cbs(ifname: &str, config: &CbsConfig) -> Result<i32, String> {
         queues.push_str(&format!("{} ", s));
     }
     let cmd = format!(
-        "tc qdisc add dev {} parent root handle {} mqprio num_tc {} map \
-         {} queues {} hw 0",
+        "tc qdisc add dev {} parent root handle {} mqprio \
+         num_tc {} map{} queues {}hw 0",
         ifname, root_handle, num_tc, priomap, queues
     );
     run_cmd(&cmd)?;
