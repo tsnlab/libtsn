@@ -228,7 +228,11 @@ static const struct net_device_ops xdma_netdev_ops = {
 	.ndo_eth_ioctl = xdma_netdev_ioctl,
 };
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
+static int xdma_ethtool_get_ts_info(struct net_device * ndev, struct kernel_ethtool_ts_info * info) {
+#else
 static int xdma_ethtool_get_ts_info(struct net_device * ndev, struct ethtool_ts_info * info) {
+#endif
 	struct xdma_private *priv = netdev_priv(ndev);
 	struct xdma_pci_dev *xpdev = dev_get_drvdata(&priv->pdev->dev);
 
@@ -417,6 +421,7 @@ static int probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
 	/* Set the MAC address */
 	get_mac_address(mac_addr, xdev);
 	memcpy(ndev->dev_addr, mac_addr, ETH_ALEN);
+	memcpy(ndev->dev_addr_shadow, mac_addr, ETH_ALEN);
 
 	priv->rx_buffer = kmalloc(XDMA_BUFFER_SIZE, GFP_KERNEL);
 	if (!priv->rx_buffer) {
