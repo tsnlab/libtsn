@@ -1459,8 +1459,18 @@ static irqreturn_t xdma_isr(int irq, void *dev_id)
 #endif
 		spin_lock_irqsave(&priv->rx_lock, flag);
 		engine_status_read(engine, 1, 0);
-		// skb_len = rx_buffer->metadata.frame_length - CRC_LEN;
-		skb_len = result->length - RX_METADATA_SIZE - CRC_LEN;
+		skb_len = rx_buffer->metadata.frame_length - CRC_LEN;
+		// skb_len = result->length - RX_METADATA_SIZE - CRC_LEN;
+		if (result->length == 0 || rx_buffer->metadata.frame_length == 0) {
+			iowrite32(DMA_ENGINE_STOP, &engine->regs->control);
+			channel_interrupts_enable(engine->xdev, engine->irq_bitmask);
+			iowrite32(DMA_ENGINE_START, &engine->regs->control);
+			spin_unlock_irqrestore(&priv->rx_lock, flag);
+			pr_err("Failed to fetch packet\n");
+			pr_err("result->length: %lu, rx_buffer->metadata.frame_length: %lu\n", result->length, rx_buffer->metadata.frame_length);
+			return IRQ_NONE;
+		}
+
 		if (skb_len < 0) {
 			iowrite32(DMA_ENGINE_STOP, &engine->regs->control);
 			channel_interrupts_enable(engine->xdev, engine->irq_bitmask);
@@ -1469,6 +1479,8 @@ static irqreturn_t xdma_isr(int irq, void *dev_id)
 			pr_err("Invalid skb_len\n");
 			return IRQ_NONE;
 		}
+		pr_info("Fetched packet successfully\n");
+		pr_info("result->length: %lu, rx_buffer->metadata.frame_length: %lu\n", result->length, rx_buffer->metadata.frame_length);
 		skb = dev_alloc_skb(skb_len);
 		if (!skb) {
 			iowrite32(DMA_ENGINE_STOP, &engine->regs->control);
@@ -1490,6 +1502,8 @@ static irqreturn_t xdma_isr(int irq, void *dev_id)
 
 		/* Transfer the skb to the Linux network stack */
 		netif_rx(skb);
+		memset(priv->rx_buffer, 0, XDMA_BUFFER_SIZE);
+		result->length = 0;
 
 		/* Stop the engine */
 		iowrite32(DMA_ENGINE_STOP, &engine->regs->control);
