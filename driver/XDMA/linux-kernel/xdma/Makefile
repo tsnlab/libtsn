@@ -20,7 +20,7 @@ topdir := $(shell cd $(src)/.. && pwd)
 
 TARGET_MODULE:=xdma
 
-EXTRA_CFLAGS := -I$(topdir)/include $(XVC_FLAGS) -march=armv8-a+simd -mcpu=cortex-a76+crc+crypto
+EXTRA_CFLAGS := -I$(topdir)/include $(XVC_FLAGS) -march=armv8-a+simd
 ifeq ($(DEBUG),1)
 	EXTRA_CFLAGS += -D__LIBXDMA_DEBUG__
 endif
