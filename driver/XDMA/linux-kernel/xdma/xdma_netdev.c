@@ -140,7 +140,9 @@ netdev_tx_t xdma_netdev_start_xmit(struct sk_buff *skb,
 
         /* Add metadata to the skb */
         if (pskb_expand_head(skb, TX_METADATA_SIZE, 0, GFP_ATOMIC) != 0) {
+#ifdef __LIBXDMA_DEBUG__
                 pr_err("pskb_expand_head failed\n");
+#endif
                 netif_wake_queue(ndev);
                 dev_kfree_skb(skb);
                 return NETDEV_TX_OK;
