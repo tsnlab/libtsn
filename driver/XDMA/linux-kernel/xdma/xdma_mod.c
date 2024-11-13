@@ -414,7 +414,7 @@ static int probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
 	}
 
 	priv->res = dma_alloc_coherent(&pdev->dev, sizeof(struct xdma_result), &priv->res_dma_addr, GFP_KERNEL);
-	if (unlikely(dma_mapping_error(&pdev->dev, priv->res))) {
+	if (!priv->res) {
 		pr_err("res dma_alloc_coherent failed\n");
 		free_netdev(ndev);
 		rv = -ENOMEM;
@@ -430,7 +430,7 @@ static int probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
 	memcpy(ndev->dev_addr_shadow, mac_addr, ETH_ALEN);
 
 	priv->rx_buffer = dma_alloc_coherent(&pdev->dev, XDMA_BUFFER_SIZE, &priv->rx_dma_addr, GFP_KERNEL);
-	if (unlikely(dma_mapping_error(&pdev->dev, priv->rx_buffer))) {
+	if (!priv->rx_buffer) {
 		pr_err("buffer dma_alloc_coherent failed\n");
 		free_netdev(ndev);
 		rv = -ENOMEM;
