@@ -256,8 +256,14 @@ static int xdma_ethtool_get_ts_info(struct net_device * ndev, struct ethtool_ts_
 	return 0;
 }
 
+static int xdma_ethtool_get_link_ksettings(struct net_device *netdev, struct ethtool_link_ksettings *cmd) {
+	cmd->base.speed = 1000;
+	return 0;
+}
+
 static const struct ethtool_ops xdma_ethtool_ops = {
 	.get_ts_info = xdma_ethtool_get_ts_info,
+	.get_link_ksettings = xdma_ethtool_get_link_ksettings,
 };
 
 static int probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
