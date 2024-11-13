@@ -36,8 +36,8 @@ pub fn setup_tas(ifname: &str, config: &TasConfig) -> Result<i32, String> {
         sched_entries.push_str(&format!(" sched-entry {}", entry));
     }
     let cmd = format!(
-        "tc qdisc replace dev {} parent root handle {} taprio num_tc {} map{} \
-         queues{} base-time {}{} flags 0x2 txtime-delay {}",
+        "tc qdisc replace dev {} parent root handle {} taprio num_tc {} map {} \
+         queues {} base-time {}{} flags 0x2 txtime-delay {}",
         ifname, handle, num_tc, priomap, queues, base_time, sched_entries, txtime_delay
     );
     run_cmd(&cmd)?;
@@ -66,7 +66,7 @@ pub fn setup_cbs(ifname: &str, config: &CbsConfig) -> Result<i32, String> {
     }
     let cmd = format!(
         "tc qdisc add dev {} parent root handle {} mqprio \
-         num_tc {} map{} queues {}hw 0",
+         num_tc {} map {} queues {} hw 0",
         ifname, root_handle, num_tc, priomap, queues
     );
     run_cmd(&cmd)?;
