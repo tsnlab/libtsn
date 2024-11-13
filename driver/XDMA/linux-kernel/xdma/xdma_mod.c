@@ -426,8 +426,7 @@ static int probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	/* Set the MAC address */
 	get_mac_address(mac_addr, xdev);
-	memcpy(ndev->dev_addr, mac_addr, ETH_ALEN);
-	memcpy(ndev->dev_addr_shadow, mac_addr, ETH_ALEN);
+	dev_addr_set(ndev, mac_addr);
 
 	priv->rx_buffer = dma_alloc_coherent(&pdev->dev, XDMA_BUFFER_SIZE, &priv->rx_dma_addr, GFP_KERNEL);
 	if (!priv->rx_buffer) {
