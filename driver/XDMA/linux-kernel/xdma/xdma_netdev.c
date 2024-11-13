@@ -15,13 +15,13 @@
 
 #define WORKAROUND_PAD 5
 
-static bool is_troubled_size(size_t size) {
-	if ((size >= 95 && size <= 99)
-	 || (size >= 222 && size <= 225)
-	 || (size >= 351 && size <= 353)) {
-		return true;
-	}
-        return false;
+static size_t workaround_packet_size(size_t size) {
+#ifdef __LIBXDMA_RPI__
+        if (size >= 94 && ((size - 94) % 128) < 5) {
+                return size + WORKAOUND_PAD;
+        }
+#endif
+        return size;
 }
 
 static void tx_desc_set(struct xdma_desc *desc, dma_addr_t addr, u32 len)
@@ -113,16 +113,16 @@ netdev_tx_t xdma_netdev_start_xmit(struct sk_buff *skb,
         struct tx_buffer* tx_buffer;
         struct tx_metadata* tx_metadata;
         u32 to_value;
-        bool trouble_flag = false;
 
         /* Check desc count */
         netif_stop_queue(ndev);
         xdma_debug("xdma_netdev_start_xmit(skb->len : %d)\n", skb->len);
         skb->len = max((unsigned int)ETH_ZLEN, skb->len);
-        if (is_troubled_size(skb->len)) {
-                trouble_flag = true;
-                skb->len += WORKAROUND_PAD;
-        }
+
+        /* Store packet length */
+        frame_length = skb->len;
+        skb->len = workaround_packet_size(skb->len);
+
         if (skb_padto(skb, skb->len)) {
                 pr_err("skb_padto failed\n");
                 netif_wake_queue(ndev);
@@ -137,9 +137,6 @@ netdev_tx_t xdma_netdev_start_xmit(struct sk_buff *skb,
                 dev_kfree_skb(skb);
                 return NETDEV_TX_OK;
         }
-
-        /* Store packet length */
-        frame_length = skb->len - (trouble_flag ? WORKAROUND_PAD : 0);
 
         /* Add metadata to the skb */
         if (pskb_expand_head(skb, TX_METADATA_SIZE, 0, GFP_ATOMIC) != 0) {

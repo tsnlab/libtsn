@@ -22,7 +22,7 @@ TARGET_MODULE:=xdma
 
 EXTRA_CFLAGS := -I$(topdir)/include $(XVC_FLAGS)
 ifneq ($(findstring rpi,$(shell uname -r)),)
-	EXTRA_CFLAGS += -march=armv8-a+simd
+	EXTRA_CFLAGS += -march=armv8-a+simd -D__LIBXDMA_RPI__
 	KBUILD_CFLAGS := $(filter-out -mgeneral-regs-only, $(KBUILD_CFLAGS))
 	KBUILD_CFLAGS += -ffreestanding -isystem $(shell $(CC) -print-file-name=include)
 else
