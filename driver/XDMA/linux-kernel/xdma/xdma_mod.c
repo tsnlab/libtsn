@@ -257,6 +257,7 @@ static int xdma_ethtool_get_ts_info(struct net_device * ndev, struct ethtool_ts_
 }
 
 static int xdma_ethtool_get_link_ksettings(struct net_device *netdev, struct ethtool_link_ksettings *cmd) {
+	/* TODO: PHY also supports 100Mbps */
 	cmd->base.speed = 1000;
 	return 0;
 }
