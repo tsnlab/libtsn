@@ -315,7 +315,7 @@ static void do_tx_work(struct work_struct *work, u16 tstamp_id) {
                 if (++(priv->tstamp_retry[tstamp_id]) >= TX_TSTAMP_MAX_RETRY) {
                         /* TODO: track the number of skipped packets for ethtool stats */
                         pr_err("Failed to get timestamp: timestamp is only partially updated\n");
-			pr_err("%llx %llx %llu\n", now, tx_tstamp, now - tx_tstamp);
+                        pr_err("%llx %llx %llu\n", now, tx_tstamp, now - tx_tstamp);
                         goto return_error;
                 }
                 goto retry;
@@ -331,13 +331,13 @@ static void do_tx_work(struct work_struct *work, u16 tstamp_id) {
         return;
 
 return_error:
-	priv->tstamp_retry[tstamp_id] = 0;
-	clear_bit_unlock(tstamp_id, &priv->state);
-	return;
+        priv->tstamp_retry[tstamp_id] = 0;
+        clear_bit_unlock(tstamp_id, &priv->state);
+        return;
 
 retry:
-	schedule_work(&priv->tx_work[tstamp_id]);
-	return;
+        schedule_work(&priv->tx_work[tstamp_id]);
+        return;
 }
 
 #define DEFINE_TX_WORK(n) \
