@@ -27,15 +27,24 @@ pub struct CbsConfig {
 }
 
 pub fn get_linkspeed(ifname: &str) -> Result<String, String> {
+    let interface = interfaces::Interface::get_by_name(ifname);
+    if interface.is_err() || interface.unwrap().is_none() {
+        return Err(format!("Interface {} not found", ifname));
+    }
+
     let output = Command::new("ethtool").arg(ifname).output();
     match output {
         Ok(output) => {
             let out = str::from_utf8(&output.stdout).unwrap();
             let pattern = regex::Regex::new(r"Speed: (?P<speed>\d+(?:|k|M|G)b[p/]?s)").unwrap();
-            let matched = pattern
-                .captures(out)
-                .expect(format!("Speed cannot be found for {}", ifname).as_str());
-            Ok(matched.name("speed").unwrap().as_str().to_string())
+            match pattern.captures(out) {
+                Some(matched) => {
+                    return Ok(matched.name("speed").unwrap().as_str().to_string());
+                }
+                None => {
+                    return Err(format!("Speed cannot be found for {}", ifname));
+                }
+            }
         }
         Err(e) => Err(e.to_string()),
     }
