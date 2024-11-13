@@ -511,14 +511,32 @@ int tsn_set_qbv(struct pci_dev* pdev, struct tc_taprio_qopt_offload* offload) {
 	u32 i, j;
 	struct xdma_dev* xdev = xdev_find_by_pdev(pdev);
 	struct tsn_config* config = &xdev->tsn_config;
+	bool enabled = false;
 
 	if (offload->num_entries > MAX_QBV_SLOTS) {
 		return -EINVAL;
 	}
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 4, 0)
+	switch (offload->cmd) {
+	case TAPRIO_CMD_REPLACE:
+		config->qbv.enabled = true;
+		enabled = true;
+		break;
+	case TAPRIO_CMD_DESTROY:
+		config->qbv.enabled = false;
+		break;
+	default:
+		/* TAPRIO_CMD_STATS */
+		/* TAPRIO_CMD_QUEUE_STATS */
+		return -EOPNOTSUPP;
+	}
+#else
 	config->qbv.enabled = offload->enable;
+	enabled = config->qbv.enabled;
+#endif
 
-	if (offload->enable) {
+	if (enabled) {
 		config->qbv.start = offload->base_time;
 		config->qbv.slot_count = offload->num_entries;
 
