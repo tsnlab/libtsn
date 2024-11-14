@@ -99,7 +99,7 @@ fn main() {
         .arg(
             arg!(size: -p --size <size> "packet size")
                 .required(false)
-                .default_value("64"),
+                .default_value("1400"),
         )
         .arg(
             arg!(duration: -d --duration <duration>)
