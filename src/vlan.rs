@@ -80,7 +80,7 @@ pub fn setup_cbs(ifname: &str, config: &CbsConfig) -> Result<i32, String> {
         let cmd = format!(
             "tc qdisc replace dev {} parent {}:{} handle {} \
              cbs idleslope {} sendslope {} hicredit {} locredit {} offload 1",
-            ifname, root_handle, qid, handle, idleslope / 10000, sendslope / 10000, hicredit * 1000, locredit * 1000
+            ifname, root_handle, qid, handle, idleslope, sendslope, hicredit, locredit
         );
         run_cmd(&cmd)?;
     }
