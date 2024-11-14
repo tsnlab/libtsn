@@ -228,7 +228,11 @@ static const struct net_device_ops xdma_netdev_ops = {
 	.ndo_eth_ioctl = xdma_netdev_ioctl,
 };
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
+static int xdma_ethtool_get_ts_info(struct net_device * ndev, struct kernel_ethtool_ts_info * info) {
+#else
 static int xdma_ethtool_get_ts_info(struct net_device * ndev, struct ethtool_ts_info * info) {
+#endif
 	struct xdma_private *priv = netdev_priv(ndev);
 	struct xdma_pci_dev *xpdev = dev_get_drvdata(&priv->pdev->dev);
 
@@ -252,8 +256,15 @@ static int xdma_ethtool_get_ts_info(struct net_device * ndev, struct ethtool_ts_
 	return 0;
 }
 
+static int xdma_ethtool_get_link_ksettings(struct net_device *netdev, struct ethtool_link_ksettings *cmd) {
+	/* TODO: PHY also supports 100Mbps */
+	cmd->base.speed = 1000;
+	return 0;
+}
+
 static const struct ethtool_ops xdma_ethtool_ops = {
 	.get_ts_info = xdma_ethtool_get_ts_info,
+	.get_link_ksettings = xdma_ethtool_get_link_ksettings,
 };
 
 static int probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
@@ -403,9 +414,9 @@ static int probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto err_out;
 	}
 
-	priv->res = kmalloc(sizeof(struct xdma_result), GFP_KERNEL);
+	priv->res = dma_alloc_coherent(&pdev->dev, sizeof(struct xdma_result), &priv->res_dma_addr, GFP_KERNEL);
 	if (!priv->res) {
-		pr_err("res kmalloc failed\n");
+		pr_err("res dma_alloc_coherent failed\n");
 		free_netdev(ndev);
 		rv = -ENOMEM;
 		goto err_out;
@@ -416,20 +427,11 @@ static int probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	/* Set the MAC address */
 	get_mac_address(mac_addr, xdev);
-	memcpy(ndev->dev_addr, mac_addr, ETH_ALEN);
+	dev_addr_set(ndev, mac_addr);
 
-	priv->rx_buffer = kmalloc(XDMA_BUFFER_SIZE, GFP_KERNEL);
+	priv->rx_buffer = dma_alloc_coherent(&pdev->dev, XDMA_BUFFER_SIZE, &priv->rx_dma_addr, GFP_KERNEL);
 	if (!priv->rx_buffer) {
-		pr_err("Rx_buffer kmalloc failed\n");
-		free_netdev(ndev);
-		rv = -ENOMEM;
-		goto err_out;
-	}
-
-	priv->rx_dma_addr = dma_map_single(&pdev->dev, priv->rx_buffer, XDMA_BUFFER_SIZE, DMA_FROM_DEVICE);
-	if (unlikely(dma_mapping_error(&pdev->dev, priv->rx_dma_addr))) {
-		pr_err("dma_map_single failed\n");
-		kfree(priv->rx_buffer);
+		pr_err("buffer dma_alloc_coherent failed\n");
 		free_netdev(ndev);
 		rv = -ENOMEM;
 		goto err_out;
@@ -455,7 +457,6 @@ static int probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
 	rv = register_netdev(ndev);
 	if (rv < 0) {
 		free_netdev(ndev);
-		kfree(priv->rx_buffer);
 		pr_err("register_netdev failed\n");
 		goto err_out;
 	}
@@ -497,8 +498,8 @@ static void remove_one(struct pci_dev *pdev)
 	ptp_data = xpdev->ptp;
 	dma_free_coherent(&pdev->dev, sizeof(struct xdma_desc), priv->tx_desc, priv->tx_bus_addr);
 	dma_free_coherent(&pdev->dev, sizeof(struct xdma_desc), priv->rx_desc, priv->rx_bus_addr);
-	kfree(priv->rx_buffer);
-	kfree(priv->res);
+	dma_free_coherent(&pdev->dev, XDMA_BUFFER_SIZE, priv->rx_buffer, priv->rx_dma_addr);
+	dma_free_coherent(&pdev->dev, sizeof(struct xdma_result), priv->res, priv->res_dma_addr);
 	unregister_netdev(ndev);
 	ptp_device_destroy(ptp_data);
 	free_netdev(ndev);

@@ -13,6 +13,17 @@
 #define LOWER_29_BITS ((1ULL << 29) - 1)
 #define TX_WORK_OVERFLOW_MARGIN 100
 
+#define WORKAROUND_PAD 5
+
+static size_t workaround_packet_size(size_t size) {
+#ifdef __LIBXDMA_RPI__
+        if (size >= 95 && size <= 99) {
+                return size + WORKAROUND_PAD;
+        }
+#endif
+        return size;
+}
+
 static void tx_desc_set(struct xdma_desc *desc, dma_addr_t addr, u32 len)
 {
         u32 control_field;
@@ -52,7 +63,6 @@ void rx_desc_set(struct xdma_desc *desc, dma_addr_t addr, u32 len)
 int xdma_netdev_open(struct net_device *ndev)
 {
         struct xdma_private *priv = netdev_priv(ndev);
-        dma_addr_t dma_addr;
         u32 lo, hi;
         unsigned long flag;
 
@@ -60,13 +70,8 @@ int xdma_netdev_open(struct net_device *ndev)
         netif_start_queue(ndev);
 
         /* Set the RX descriptor */
-        dma_addr = dma_map_single(
-                        &priv->xdev->pdev->dev,
-                        priv->res,
-                        sizeof(struct xdma_result),
-                        DMA_FROM_DEVICE);
-        priv->rx_desc->src_addr_lo = cpu_to_le32(PCI_DMA_L(dma_addr));
-        priv->rx_desc->src_addr_hi = cpu_to_le32(PCI_DMA_H(dma_addr));
+        priv->rx_desc->src_addr_lo = cpu_to_le32(PCI_DMA_L(priv->res_dma_addr));
+        priv->rx_desc->src_addr_hi = cpu_to_le32(PCI_DMA_H(priv->res_dma_addr));
         rx_desc_set(priv->rx_desc, priv->rx_dma_addr, XDMA_BUFFER_SIZE);
         spin_lock_irqsave(&priv->rx_lock, flag);
         ioread32(&priv->rx_engine->regs->status_rc);
@@ -113,6 +118,11 @@ netdev_tx_t xdma_netdev_start_xmit(struct sk_buff *skb,
         netif_stop_queue(ndev);
         xdma_debug("xdma_netdev_start_xmit(skb->len : %d)\n", skb->len);
         skb->len = max((unsigned int)ETH_ZLEN, skb->len);
+
+        /* Store packet length */
+        frame_length = skb->len;
+        skb->len = workaround_packet_size(skb->len);
+
         if (skb_padto(skb, skb->len)) {
                 pr_err("skb_padto failed\n");
                 netif_wake_queue(ndev);
@@ -128,12 +138,11 @@ netdev_tx_t xdma_netdev_start_xmit(struct sk_buff *skb,
                 return NETDEV_TX_OK;
         }
 
-        /* Store packet length */
-        frame_length = skb->len;
-
         /* Add metadata to the skb */
         if (pskb_expand_head(skb, TX_METADATA_SIZE, 0, GFP_ATOMIC) != 0) {
+#ifdef __LIBXDMA_DEBUG__
                 pr_err("pskb_expand_head failed\n");
+#endif
                 netif_wake_queue(ndev);
                 dev_kfree_skb(skb);
                 return NETDEV_TX_OK;
@@ -321,7 +330,7 @@ static void do_tx_work(struct work_struct *work, u16 tstamp_id) {
                 if (++(priv->tstamp_retry[tstamp_id]) >= TX_TSTAMP_MAX_RETRY) {
                         /* TODO: track the number of skipped packets for ethtool stats */
                         pr_err("Failed to get timestamp: timestamp is only partially updated\n");
-			pr_err("%llx %llx %llu\n", now, tx_tstamp, now - tx_tstamp);
+                        pr_err("%llx %llx %llu\n", now, tx_tstamp, now - tx_tstamp);
                         goto return_error;
                 }
                 goto retry;
@@ -337,13 +346,13 @@ static void do_tx_work(struct work_struct *work, u16 tstamp_id) {
         return;
 
 return_error:
-	priv->tstamp_retry[tstamp_id] = 0;
-	clear_bit_unlock(tstamp_id, &priv->state);
-	return;
+        priv->tstamp_retry[tstamp_id] = 0;
+        clear_bit_unlock(tstamp_id, &priv->state);
+        return;
 
 retry:
-	schedule_work(&priv->tx_work[tstamp_id]);
-	return;
+        schedule_work(&priv->tx_work[tstamp_id]);
+        return;
 }
 
 #define DEFINE_TX_WORK(n) \

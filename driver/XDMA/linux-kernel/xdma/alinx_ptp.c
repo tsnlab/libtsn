@@ -224,7 +224,7 @@ exit:
         return 0;
 }
 
-struct ptp_clock_info ptp_clock_info_init(void) {
+static struct ptp_clock_info ptp_clock_info_init(void) {
         struct ptp_clock_info info = {
                 .owner = THIS_MODULE,
                 .name = "ptp",

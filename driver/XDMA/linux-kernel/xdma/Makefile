@@ -20,7 +20,17 @@ topdir := $(shell cd $(src)/.. && pwd)
 
 TARGET_MODULE:=xdma
 
-EXTRA_CFLAGS := -I$(topdir)/include $(XVC_FLAGS) -msse2
+uname_m := $(shell uname -m)
+
+EXTRA_CFLAGS := -I$(topdir)/include $(XVC_FLAGS)
+ifeq ($(uname_m),x86_64)
+	EXTRA_CFLAGS += -msse2
+else
+	EXTRA_CFLAGS += -march=armv8-a+simd -D__LIBXDMA_RPI__
+	KBUILD_CFLAGS := $(filter-out -mgeneral-regs-only, $(KBUILD_CFLAGS))
+	KBUILD_CFLAGS += -ffreestanding -isystem $(shell $(CC) -print-file-name=include)
+endif
+
 ifeq ($(DEBUG),1)
 	EXTRA_CFLAGS += -D__LIBXDMA_DEBUG__
 endif
