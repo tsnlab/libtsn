@@ -17,7 +17,9 @@
 
 static size_t workaround_packet_size(size_t size) {
 #ifdef __LIBXDMA_RPI__
-        if (size >= 94 && ((size - 94) % 128) < 5) {
+        if ((size >= 95 && size <= 99)
+	 || (size >= 222 && size <= 225)
+	 || (size >= 351 && size <= 353)) {
                 return size + WORKAROUND_PAD;
         }
 #endif
