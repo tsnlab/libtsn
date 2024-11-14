@@ -497,10 +497,10 @@ int tsn_set_qav(struct pci_dev* pdev, struct tc_cbs_qopt_offload* offload) {
 	}
 
 	config->qav[offload->queue].enabled = offload->enable;
-	config->qav[offload->queue].hi_credit = offload->hicredit;
-	config->qav[offload->queue].lo_credit = offload->locredit;
-	config->qav[offload->queue].idle_slope = offload->idleslope;
-	config->qav[offload->queue].send_slope = offload->sendslope;
+	config->qav[offload->queue].hi_credit = offload->hicredit * 1000;
+	config->qav[offload->queue].lo_credit = offload->locredit * 1000;
+	config->qav[offload->queue].idle_slope = offload->idleslope / 1000;
+	config->qav[offload->queue].send_slope = offload->sendslope / 1000;
 
 	bake_qos_config(config);
 
