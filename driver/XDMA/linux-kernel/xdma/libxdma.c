@@ -1505,6 +1505,8 @@ static irqreturn_t xdma_isr(int irq, void *dev_id)
 		dbg_info("xdma_isr h2c");
 		engine = &xdev->engine_h2c[0];
 
+		spin_lock_irqsave(&priv->tx_lock, flag);
+
 		engine_status_read(engine, 1, 0);
 
 		/* Free last resource */
@@ -1513,6 +1515,8 @@ static irqreturn_t xdma_isr(int irq, void *dev_id)
 		dma_unmap_single(&xdev->pdev->dev, priv->tx_dma_addr, priv->tx_skb->len, DMA_TO_DEVICE);
 		dev_kfree_skb_any(priv->tx_skb);
 		priv->tx_skb = NULL;
+
+		spin_unlock_irqrestore(&priv->tx_lock, flag);
 
 		netif_wake_queue(ndev);
 		channel_interrupts_enable(engine->xdev, engine->irq_bitmask);

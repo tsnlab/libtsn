@@ -113,6 +113,7 @@ netdev_tx_t xdma_netdev_start_xmit(struct sk_buff *skb,
         struct tx_buffer* tx_buffer;
         struct tx_metadata* tx_metadata;
         u32 to_value;
+        unsigned long flag;
 
         /* Check desc count */
         netif_stop_queue(ndev);
@@ -216,10 +217,12 @@ netdev_tx_t xdma_netdev_start_xmit(struct sk_buff *skb,
                 // TODO: track the number of skipped packets for ethtool stats
         }
 
+        spin_lock_irqsave(&priv->tx_lock, flag);
         /* netif_wake_queue() will be called in xdma_isr() */
         priv->tx_dma_addr = dma_addr;
         priv->tx_skb = skb;
         tx_desc_set(priv->tx_desc, dma_addr, skb->len);
+        spin_unlock_irqrestore(&priv->tx_lock, flag);
 
         w = cpu_to_le32(PCI_DMA_L(priv->tx_bus_addr));
         iowrite32(w, xdev->bar[1] + DESC_REG_LO);
