@@ -1508,11 +1508,12 @@ static irqreturn_t xdma_isr(int irq, void *dev_id)
 		engine_status_read(engine, 1, 0);
 
 		/* Free last resource */
+		iowrite32(DMA_ENGINE_STOP, &engine->regs->control);
+
 		dma_unmap_single(&xdev->pdev->dev, priv->tx_dma_addr, priv->tx_skb->len, DMA_TO_DEVICE);
 		dev_kfree_skb_any(priv->tx_skb);
 		priv->tx_skb = NULL;
 
-		iowrite32(DMA_ENGINE_STOP, &engine->regs->control);
 		netif_wake_queue(ndev);
 		channel_interrupts_enable(engine->xdev, engine->irq_bitmask);
 	}
