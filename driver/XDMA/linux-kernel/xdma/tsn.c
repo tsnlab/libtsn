@@ -552,6 +552,7 @@ int tsn_set_qbv(struct pci_dev* pdev, struct tc_taprio_qopt_offload* offload) {
 			printk("slot %d interval %u\n", i, offload->entries[i].interval);
 			for (j = 0; j < TC_COUNT; j++) {
 				config->qbv.slots[i].opened_prios[j] = (offload->entries[i].gate_mask & (1 << j));
+				printk("priority %d in slot %d is %s\n", j, i, config->qbv.slots[i].opened_prios[j] ? "open" : "closed");
 			}
 		}
 	}
