@@ -60,12 +60,13 @@ static bool is_gptp_packet(const uint8_t* payload) {
 }
 
 static void dump_baked(const struct qbv_baked_config* baked) {
+	int i, j;
 	printk("dump_baked\n");
 	printk("cycle_ns %llu\n", baked->cycle_ns);
-	for (int i = 0; i < TC_COUNT; i++) {
+	for (i = 0; i < TC_COUNT; i++) {
 		printk("prios %d\n", i);
 		printk("slot_count %ld\n", baked->prios[i].slot_count);
-		for (int j = 0; j < MAX_QBV_SLOTS; j++) {
+		for (j = 0; j < MAX_QBV_SLOTS; j++) {
 			printk("slot %d duration %llu %s\n", j, baked->prios[i].slots[j].duration_ns, baked->prios[i].slots[j].opened ? "open" : "closed");
 		}
 	}
