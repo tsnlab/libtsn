@@ -337,6 +337,7 @@ static bool get_timestamps(struct timestamps* timestamps, const struct tsn_confi
 	memset(timestamps, 0, sizeof(struct timestamps));
 
 	printk("qbv->enabled %d\n", qbv->enabled);
+	printk("tc_id %u\n", tc_id);
 
 	if (qbv->enabled == false) {
 		// No Qbv. Just return the current time
