@@ -321,6 +321,8 @@ static bool get_timestamps(struct timestamps* timestamps, const struct tsn_confi
 	const struct qbv_config* qbv = &tsn_config->qbv;
 	memset(timestamps, 0, sizeof(struct timestamps));
 
+	printk("qbv->enabled %d\n", qbv->enabled);
+
 	if (qbv->enabled == false) {
 		// No Qbv. Just return the current time
 		timestamps->from = from;
@@ -334,6 +336,9 @@ static bool get_timestamps(struct timestamps* timestamps, const struct tsn_confi
 	baked = &tsn_config->qbv_baked;
 	baked_prio = &baked->prios[tc_id];
 	sending_duration = bytes_to_ns(bytes);
+
+	printk("baked_prio->slots[0].opened %d\n", baked_prio->slots[0].opened);
+	printk("baked_prio->slots[0].duration %llu\n", baked_prio->slots[0].duration_ns);
 
 	// TODO: Need to check if the slot is big enough to fit the frame. But, That is a user fault. Don't mind for now
 	// But we still have to check if the first current slot's remaining time is enough to fit the frame
@@ -536,6 +541,7 @@ int tsn_set_qbv(struct pci_dev* pdev, struct tc_taprio_qopt_offload* offload) {
 	enabled = config->qbv.enabled;
 #endif
 
+	printk("set_qbv enabled %d\n", enabled);
 	if (enabled) {
 		config->qbv.start = offload->base_time;
 		config->qbv.slot_count = offload->num_entries;
