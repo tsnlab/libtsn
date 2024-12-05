@@ -86,6 +86,8 @@ int xdma_netdev_open(struct net_device *ndev)
         iowrite32(DMA_ENGINE_START, &priv->rx_engine->regs->control);
         spin_unlock_irqrestore(&priv->rx_lock, flag);
 
+        printk("driver update message"); /* Should be deleted */
+
         return 0;
 }
 
@@ -288,70 +290,24 @@ static void do_tx_work(struct work_struct *work, u16 tstamp_id) {
         struct skb_shared_hwtstamps shhwtstamps;
         struct xdma_private* priv = container_of(work - tstamp_id, struct xdma_private, tx_work[0]);
         struct sk_buff* skb = priv->tx_work_skb[tstamp_id];
-        sysclock_t now = alinx_get_sys_clock(priv->xdev->pdev);
-
+#ifdef __LIBXDMA_DEBUG__
         if (tstamp_id >= TSN_TIMESTAMP_ID_MAX) {
                 pr_err("Invalid timestamp ID\n");
                 return;
         }
-
+#endif
         if (!priv->tx_work_skb[tstamp_id]) {
-                goto return_error;
+                clear_bit_unlock(tstamp_id, &priv->state);
+                return;
         }
 
-        if (now < priv->tx_work_start_after[tstamp_id]) {
-                goto retry;
-        }
-        /*
-         * Read TX timestamp several times because
-         * 1. Reading and writing TX timestamp register are not atomic
-         * 2. The work thread might try to read TX timestamp before the register gets updated
-         */
         tx_tstamp = alinx_read_tx_timestamp(priv->pdev, tstamp_id);
-        if (tx_tstamp == priv->last_tx_tstamp[tstamp_id]) {
-                if (alinx_get_sys_clock(priv->xdev->pdev) < priv->tx_work_wait_until[tstamp_id]) {
-                        /* The packet might have not been sent yet */
-                        goto retry;
-                }
-                /*
-                 * Tx timestamp is not updated. Try again.
-                 * Waiting for it to be updated forever is not desirable,
-                 * so limit the number of retries
-                 */
-                if (++(priv->tstamp_retry[tstamp_id]) >= TX_TSTAMP_MAX_RETRY) {
-                        /* TODO: track the number of skipped packets for ethtool stats */
-                        pr_warn("Failed to get timestamp: timestamp is not getting updated, " \
-                                "the packet might have been dropped\n");
-                        goto return_error;
-                }
-                goto retry;
-        } else if (now - tx_tstamp > TX_TSTAMP_UPDATE_THRESHOLD) {
-                /* Tx timestamp is only partially updated */
-                if (++(priv->tstamp_retry[tstamp_id]) >= TX_TSTAMP_MAX_RETRY) {
-                        /* TODO: track the number of skipped packets for ethtool stats */
-                        pr_err("Failed to get timestamp: timestamp is only partially updated\n");
-                        pr_err("%llx %llx %llu\n", now, tx_tstamp, now - tx_tstamp);
-                        goto return_error;
-                }
-                goto retry;
-        }
-        priv->tstamp_retry[tstamp_id] = 0;
         shhwtstamps.hwtstamp = ns_to_ktime(alinx_sysclock_to_txtstamp(priv->pdev, tx_tstamp));
-        priv->last_tx_tstamp[tstamp_id] = tx_tstamp;
 
         priv->tx_work_skb[tstamp_id] = NULL;
         clear_bit_unlock(tstamp_id, &priv->state);
         skb_tstamp_tx(skb, &shhwtstamps);
         dev_kfree_skb_any(skb);
-        return;
-
-return_error:
-        priv->tstamp_retry[tstamp_id] = 0;
-        clear_bit_unlock(tstamp_id, &priv->state);
-        return;
-
-retry:
-        schedule_work(&priv->tx_work[tstamp_id]);
         return;
 }
 
