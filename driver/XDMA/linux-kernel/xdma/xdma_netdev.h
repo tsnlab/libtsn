@@ -67,6 +67,8 @@ struct xdma_private {
         sysclock_t tx_work_start_after[TSN_TIMESTAMP_ID_MAX];
         sysclock_t tx_work_wait_until[TSN_TIMESTAMP_ID_MAX];
         struct hwtstamp_config tstamp_config;
+        sysclock_t last_tx_tstamp[TSN_TIMESTAMP_ID_MAX];
+        int tstamp_retry[TSN_TIMESTAMP_ID_MAX];
 
         uint64_t total_tx_count;
         uint64_t total_tx_drop_count;
