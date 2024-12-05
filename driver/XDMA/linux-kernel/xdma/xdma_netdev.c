@@ -290,19 +290,15 @@ static void do_tx_work(struct work_struct *work, u16 tstamp_id) {
         struct skb_shared_hwtstamps shhwtstamps;
         struct xdma_private* priv = container_of(work - tstamp_id, struct xdma_private, tx_work[0]);
         struct sk_buff* skb = priv->tx_work_skb[tstamp_id];
-        sysclock_t now = alinx_get_sys_clock(priv->xdev->pdev);
-
+#ifdef __LIBXDMA_DEBUG__
         if (tstamp_id >= TSN_TIMESTAMP_ID_MAX) {
                 pr_err("Invalid timestamp ID\n");
                 return;
         }
-
+#endif
         if (!priv->tx_work_skb[tstamp_id]) {
-                goto return_error;
-        }
-
-        if (now < priv->tx_work_start_after[tstamp_id]) {
-                goto retry;
+                clear_bit_unlock(tstamp_id, &priv->state);
+                return;
         }
         /*
          * Read TX timestamp several times because 
@@ -331,21 +327,11 @@ static void do_tx_work(struct work_struct *work, u16 tstamp_id) {
 
         priv->tstamp_retry[tstamp_id] = 0;
         shhwtstamps.hwtstamp = ns_to_ktime(alinx_sysclock_to_txtstamp(priv->pdev, tx_tstamp));
-        priv->last_tx_tstamp[tstamp_id] = tx_tstamp;
 
         priv->tx_work_skb[tstamp_id] = NULL;
         clear_bit_unlock(tstamp_id, &priv->state);
         skb_tstamp_tx(skb, &shhwtstamps);
         dev_kfree_skb_any(skb);
-        return;
-
-return_error:
-        priv->tstamp_retry[tstamp_id] = 0;
-        clear_bit_unlock(tstamp_id, &priv->state);
-        return;
-
-retry:
-        schedule_work(&priv->tx_work[tstamp_id]);
         return;
 }
 
