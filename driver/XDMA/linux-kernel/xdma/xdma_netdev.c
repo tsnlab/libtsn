@@ -86,8 +86,6 @@ int xdma_netdev_open(struct net_device *ndev)
         iowrite32(DMA_ENGINE_START, &priv->rx_engine->regs->control);
         spin_unlock_irqrestore(&priv->rx_lock, flag);
 
-        printk("driver update message\n"); /* Should be deleted */
-
         return 0;
 }
 
