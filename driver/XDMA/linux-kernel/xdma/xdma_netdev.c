@@ -303,9 +303,9 @@ static void do_tx_work(struct work_struct *work, u16 tstamp_id) {
                 goto retry;
         }
         /*
-         * Read TX timestamp several times because
-         * 1. Reading and writing TX timestamp register are not atomic
-         * 2. The work thread might try to read TX timestamp before the register gets updated
+         * Read TX timestamp several times because 
+         * the work thread might try to read TX timestamp
+         * before the register gets updated
          */
         tx_tstamp = alinx_read_tx_timestamp(priv->pdev, tstamp_id);
         if (tx_tstamp == priv->last_tx_tstamp[tstamp_id]) {
@@ -325,16 +325,8 @@ static void do_tx_work(struct work_struct *work, u16 tstamp_id) {
                         goto return_error;
                 }
                 goto retry;
-        } else if (now - tx_tstamp > TX_TSTAMP_UPDATE_THRESHOLD) {
-                /* Tx timestamp is only partially updated */
-                if (++(priv->tstamp_retry[tstamp_id]) >= TX_TSTAMP_MAX_RETRY) {
-                        /* TODO: track the number of skipped packets for ethtool stats */
-                        pr_err("Failed to get timestamp: timestamp is only partially updated\n");
-                        pr_err("%llx %llx %llu\n", now, tx_tstamp, now - tx_tstamp);
-                        goto return_error;
-                }
-                goto retry;
         }
+
         priv->tstamp_retry[tstamp_id] = 0;
         shhwtstamps.hwtstamp = ns_to_ktime(alinx_sysclock_to_txtstamp(priv->pdev, tx_tstamp));
         priv->last_tx_tstamp[tstamp_id] = tx_tstamp;

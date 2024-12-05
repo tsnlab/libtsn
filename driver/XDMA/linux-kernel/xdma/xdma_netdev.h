@@ -28,15 +28,6 @@
 
 #define TX_TSTAMP_MAX_RETRY 5
 
-/**
- * This value is estimated by experiment.
- * There might be a delay greater than this,
- * or an error less than this.
- * But that's not detectable by SW, until
- * reading Tx timestamp becomes atomic.
- */
-#define TX_TSTAMP_UPDATE_THRESHOLD 0xFFFFF
-
 enum xdma_state_t {
         XDMA_TX1_IN_PROGRESS = 1,
         XDMA_TX2_IN_PROGRESS = 2,
