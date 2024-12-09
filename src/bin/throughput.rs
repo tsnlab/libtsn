@@ -311,16 +311,11 @@ fn do_client(iface_name: String, target: String, size: usize, duration: usize) {
     for _ in 0..3 {
         if let Err(e) = sock.send(eth_pkt.packet()) {
             eprintln!("Failed to send packet: {}", e)
-        } else {
-            eprintln!("debug: Sent ReqStart packet");
         }
 
         match wait_for_response(&mut sock, PerfOpFieldValues::ResStart) {
             Err(_) => eprintln!("No response, retrying..."),
-            Ok(_) => {
-                eprintln!("debug: Received ResStart packet");
-                break;
-            }
+            Ok(_) => break,
         }
     }
 
@@ -337,7 +332,7 @@ fn do_client(iface_name: String, target: String, size: usize, duration: usize) {
         }
     });
 
-    // Send data with rate limit
+    // Send data
     println!("Sending data");
     let mut perf_buffer = vec![0; 8 + size];
     let mut eth_buffer = vec![0; 14 + 8 + size];
@@ -348,10 +343,6 @@ fn do_client(iface_name: String, target: String, size: usize, duration: usize) {
 
     let now = Instant::now();
     let mut last_id = 0;
-    let target_bps = 500_000_000; // Maximum Bandwidth : 500 Mbps
-    let bits_per_packet = (8 + size + 14) * 8; // Packet size(eth.header + payload) into bits
-    let delay_per_packet = Duration::from_secs_f64(bits_per_packet as f64 / target_bps as f64);
-
     loop {
         let mut perf_pkt = MutablePerfPacket::new(&mut perf_buffer).unwrap();
         perf_pkt.set_id(last_id); // TODO: Randomize
@@ -361,8 +352,6 @@ fn do_client(iface_name: String, target: String, size: usize, duration: usize) {
         if sock.send(eth_pkt.packet()).is_err() {}
 
         last_id += 1;
-
-        thread::sleep(delay_per_packet); // Restricting the speed
 
         if now.elapsed().as_secs() > duration as u64 || !unsafe { RUNNING } {
             break;
@@ -387,15 +376,10 @@ fn do_client(iface_name: String, target: String, size: usize, duration: usize) {
     for _ in 0..3 {
         if let Err(e) = sock.send(eth_pkt.packet()) {
             eprintln!("Failed to send packet: {}", e);
-        } else {
-            eprintln!("debug: Sent ReqEnd packet");
         }
 
         match wait_for_response(&mut sock, PerfOpFieldValues::ResEnd) {
-            Ok(_) => {
-                eprintln!("debug: Received ResEnd packet");
-                break;
-            },
+            Ok(_) => break,
             Err(_) => eprintln!("No response, retrying..."),
         }
     }
