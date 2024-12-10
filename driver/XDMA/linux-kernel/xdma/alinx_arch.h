@@ -35,8 +35,8 @@ typedef uint32_t u32
 #define REG_TO_OVERFLOW_POPPED_COUNT 0x0420
 #define REG_TO_OVERFLOW_TIMEOUT_COUNT 0x0424
 
-#define TX_QUEUE_COUNT 3
-#define RX_QUEUE_COUNT 1
+#define TX_QUEUE_COUNT 8
+#define RX_QUEUE_COUNT 8
 
 /* 125 MHz */
 #define TICKS_SCALE 8.0

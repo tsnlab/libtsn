@@ -173,7 +173,7 @@ netdev_tx_t xdma_netdev_start_xmit(struct sk_buff *skb,
         }
 
         xdma_debug("0x%08x  0x%08x  0x%08x  %4d  %1d",
-                sys_count_low, tx_metadata->from.tick, tx_metadata->to.tick,
+                sys_count_lower, tx_metadata->from.tick, tx_metadata->to.tick,
                 tx_metadata->frame_length, tx_metadata->fail_policy);
         dump_buffer((unsigned char*)tx_metadata, (int)(sizeof(struct tx_metadata) + skb->len));
 
