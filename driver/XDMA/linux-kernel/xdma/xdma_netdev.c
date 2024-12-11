@@ -241,6 +241,10 @@ netdev_tx_t xdma_netdev_start_xmit(struct sk_buff *skb,
         return NETDEV_TX_OK;
 }
 
+u16 xdma_select_queue(struct net_device *ndev, struct sk_buff *skb, struct net_device *sb_dev) {
+	return 0;
+}
+
 static LIST_HEAD(xdma_block_cb_list);
 
 static int xdma_setup_tc_block_cb(enum tc_setup_type type, void *type_data, void *cb_priv) {
