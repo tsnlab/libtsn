@@ -68,6 +68,9 @@ int xdma_netdev_open(struct net_device *ndev)
 
         netif_carrier_on(ndev);
         netif_start_queue(ndev);
+        for (int i = 0; i < TX_QUEUE_COUNT; i++) {
+                netif_start_subqueue(ndev, i);
+        }
 
         /* Set the RX descriptor */
         priv->rx_desc->src_addr_lo = cpu_to_le32(PCI_DMA_L(priv->res_dma_addr));
@@ -94,6 +97,9 @@ int xdma_netdev_close(struct net_device *ndev)
         struct xdma_private *priv = netdev_priv(ndev);
         iowrite32(DMA_ENGINE_STOP, &priv->rx_engine->regs->control);
         netif_stop_queue(ndev);
+        for (int i = 0; i < TX_QUEUE_COUNT; i++) {
+                netif_stop_subqueue(ndev, i);
+        }
         pr_info("xdma_netdev_close\n");
         netif_carrier_off(ndev);
         pr_info("netif_carrier_off\n");
@@ -113,9 +119,12 @@ netdev_tx_t xdma_netdev_start_xmit(struct sk_buff *skb,
         struct tx_buffer* tx_buffer;
         struct tx_metadata* tx_metadata;
         u32 to_value;
+        u16 q;
+
 
         /* Check desc count */
-        netif_stop_queue(ndev);
+        q = skb_get_queue_mapping(skb);
+        netif_stop_subqueue(ndev, q);
         xdma_debug("xdma_netdev_start_xmit(skb->len : %d)\n", skb->len);
         skb->len = max((unsigned int)ETH_ZLEN, skb->len);
 
@@ -125,7 +134,7 @@ netdev_tx_t xdma_netdev_start_xmit(struct sk_buff *skb,
 
         if (skb_padto(skb, skb->len)) {
                 pr_err("skb_padto failed\n");
-                netif_wake_queue(ndev);
+                netif_wake_subqueue(ndev, q);
                 dev_kfree_skb(skb);
                 return NETDEV_TX_OK;
         }
@@ -133,7 +142,7 @@ netdev_tx_t xdma_netdev_start_xmit(struct sk_buff *skb,
         /* Jumbo frames not supported */
         if (skb->len > XDMA_BUFFER_SIZE) {
                 pr_err("Jumbo frames not supported\n");
-                netif_wake_queue(ndev);
+                netif_wake_subqueue(ndev, q);
                 dev_kfree_skb(skb);
                 return NETDEV_TX_OK;
         }
@@ -143,7 +152,7 @@ netdev_tx_t xdma_netdev_start_xmit(struct sk_buff *skb,
 #ifdef __LIBXDMA_DEBUG__
                 pr_err("pskb_expand_head failed\n");
 #endif
-                netif_wake_queue(ndev);
+                netif_wake_subqueue(ndev, q);
                 dev_kfree_skb(skb);
                 return NETDEV_TX_OK;
         }
@@ -168,7 +177,7 @@ netdev_tx_t xdma_netdev_start_xmit(struct sk_buff *skb,
 #ifdef __LIBXDMA_DEBUG__
                 pr_warn("tsn_fill_metadata failed\n");
 #endif
-                netif_wake_queue(ndev);
+                netif_wake_subqueue(ndev, q);
                 return NETDEV_TX_BUSY;
         }
 
@@ -180,7 +189,7 @@ netdev_tx_t xdma_netdev_start_xmit(struct sk_buff *skb,
         dma_addr = dma_map_single(&xdev->pdev->dev, skb->data, skb->len, DMA_TO_DEVICE);
         if (unlikely(dma_mapping_error(&xdev->pdev->dev, dma_addr))) {
                 pr_err("dma_map_single failed\n");
-                netif_wake_queue(ndev);
+                netif_wake_subqueue(ndev, q);
                 return NETDEV_TX_BUSY;
         }
 
