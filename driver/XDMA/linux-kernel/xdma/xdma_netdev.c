@@ -244,7 +244,8 @@ netdev_tx_t xdma_netdev_start_xmit(struct sk_buff *skb,
 }
 
 u16 xdma_select_queue(struct net_device *ndev, struct sk_buff *skb, struct net_device *sb_dev) {
-	return 0;
+        /* Always use the first subqueue */
+        return 0;
 }
 
 static LIST_HEAD(xdma_block_cb_list);
