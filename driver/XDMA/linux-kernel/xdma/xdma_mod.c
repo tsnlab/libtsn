@@ -226,6 +226,7 @@ static const struct net_device_ops xdma_netdev_ops = {
 	.ndo_start_xmit = xdma_netdev_start_xmit,
 	.ndo_setup_tc = xdma_netdev_setup_tc,
 	.ndo_eth_ioctl = xdma_netdev_ioctl,
+	.ndo_select_queue = xdma_select_queue,
 };
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)

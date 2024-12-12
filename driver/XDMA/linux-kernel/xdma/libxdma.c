@@ -1401,6 +1401,7 @@ static irqreturn_t xdma_isr(int irq, void *dev_id)
 {
 	u32 ch_irq;
 	u32 mask;
+	u16 q;
 	int skb_len;
 	unsigned long flag;
 	struct interrupt_regs *irq_regs;
@@ -1507,13 +1508,15 @@ static irqreturn_t xdma_isr(int irq, void *dev_id)
 
 		engine_status_read(engine, 1, 0);
 
+		q = skb_get_queue_mapping(priv->tx_skb);
+
 		/* Free last resource */
 		dma_unmap_single(&xdev->pdev->dev, priv->tx_dma_addr, priv->tx_skb->len, DMA_TO_DEVICE);
 		dev_kfree_skb_any(priv->tx_skb);
 		priv->tx_skb = NULL;
 
 		iowrite32(DMA_ENGINE_STOP, &engine->regs->control);
-		netif_wake_queue(ndev);
+		netif_wake_subqueue(ndev, q);
 		channel_interrupts_enable(engine->xdev, engine->irq_bitmask);
 	}
 	xdev->irq_count++;
