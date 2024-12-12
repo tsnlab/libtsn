@@ -65,10 +65,11 @@ int xdma_netdev_open(struct net_device *ndev)
         struct xdma_private *priv = netdev_priv(ndev);
         u32 lo, hi;
         unsigned long flag;
+        int i;
 
         netif_carrier_on(ndev);
         netif_start_queue(ndev);
-        for (int i = 0; i < TX_QUEUE_COUNT; i++) {
+        for (i = 0; i < TX_QUEUE_COUNT; i++) {
                 netif_start_subqueue(ndev, i);
         }
 
@@ -94,10 +95,11 @@ int xdma_netdev_open(struct net_device *ndev)
 
 int xdma_netdev_close(struct net_device *ndev)
 {
+        int i;
         struct xdma_private *priv = netdev_priv(ndev);
         iowrite32(DMA_ENGINE_STOP, &priv->rx_engine->regs->control);
         netif_stop_queue(ndev);
-        for (int i = 0; i < TX_QUEUE_COUNT; i++) {
+        for (i = 0; i < TX_QUEUE_COUNT; i++) {
                 netif_stop_subqueue(ndev, i);
         }
         pr_info("xdma_netdev_close\n");
