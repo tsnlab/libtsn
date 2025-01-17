@@ -1,0 +1,23 @@
+name: Check all
+
+on:
+  - push
+  - pull_request
+
+jobs:
+  check-all:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Check all
+        uses: tsnlab/check@main
+        with:
+          python_version: '3.12'
+          rust_version: 'stable'
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          shellcheck_ignore_paths: >-
+            driver/QDMA/linux-kernel/scripts
+            driver/XDMA/linux-kernel/tests
