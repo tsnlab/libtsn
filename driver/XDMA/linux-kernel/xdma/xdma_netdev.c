@@ -12,6 +12,13 @@
 #include "tsn.h"
 #include "alinx_arch.h"
 #include "frer.h"
+#include "se_rtc.h"
+
+/* rx_ts_gptp: se_mode 수신 하드웨어 시각을 gPTP 시각(curtime + RTC offset)으로 준다.
+ * 0 이면 예전처럼 curtime 그대로 준다(A/B 용). */
+static uint rx_ts_gptp = 1;
+module_param(rx_ts_gptp, uint, 0644);
+MODULE_PARM_DESC(rx_ts_gptp, "se_mode RX hwtstamp: 1 = gPTP time (curtime + RTC offset, default), 0 = raw curtime");
 
 /* S2(2026-08-14): H2C 디스크립터 인접 프리페치. 2-1 규명(소프레임 TX는 per-desc
  * PCIe 왕복지연 바운드, x86 루트콤플렉스 지연이 x1 HAT보다 큼)의 실행편. 엔진이
@@ -54,6 +61,36 @@ module_param(se_tx_dest_port, uint, 0644);
 MODULE_PARM_DESC(se_tx_dest_port,
 	"CPU port TX header DEST_PORT for se_mode frames "
 	"(0=leave RTL default, 0x01=port1, 0x02=port2, 0x80=all ports for FRER dual path)");
+
+/* rx_cpu_latency_us: 인터페이스가 켜져 있는 동안 CPU 깨어남 지연 상한을 요청한다.
+ *
+ * 보드 수신 경로는 약 11.5 KB = 회선 속도로 약 90 us 만 담는다. 호스트 CPU 가 깊은 절전 상태
+ * (깨어나는 데 100 us - 1 ms 인 C-state)에 있으면 덩어리로 오는 프레임(예: 영상 1 프레임)을 C2H 가 받기 전에
+ * 보드 수신 버퍼가 넘친다. 데스크톱 CPU PC 에서 영상 수신 손실 약 5 % 가 이 요청으로 0 이 됨을 확인했다.
+ * 기본 20 us(C1 은 허용, 깊은 상태는 막음). 시스템 전체 요청이라 그동안 호스트 CPU 전력이 늘어난다.
+ * 0 이하 = 요청하지 않음(예전 동작). 적용은 다음 첫 open 부터. */
+static int rx_cpu_latency_us = 20;
+module_param(rx_cpu_latency_us, int, 0644);
+MODULE_PARM_DESC(rx_cpu_latency_us,
+	"CPU wakeup latency limit (us) requested while the interface is up, "
+	"so bursts are not lost while the host leaves deep idle (default 20, <=0 = no request)");
+
+static void xdma_rx_lat_qos_start(struct xdma_private_common *common)
+{
+	if (rx_cpu_latency_us <= 0 || common->rx_lat_qos_on)
+		return;
+	cpu_latency_qos_add_request(&common->rx_lat_qos, rx_cpu_latency_us);
+	common->rx_lat_qos_on = true;
+	pr_info("xdma: cpu latency limit %d us while up (rx_cpu_latency_us)\n", rx_cpu_latency_us);
+}
+
+static void xdma_rx_lat_qos_stop(struct xdma_private_common *common)
+{
+	if (!common->rx_lat_qos_on)
+		return;
+	cpu_latency_qos_remove_request(&common->rx_lat_qos);
+	common->rx_lat_qos_on = false;
+}
 
 /* 인접 개수(Nxt_adj) 산정 — 표준 libxdma xdma_get_next_adj 복제 + 원형 링 상한.
  *   remaining : 이 디스크립터 뒤로 체인에 남은 개수(desc_num - k - 1). <=1이면 0.
@@ -559,8 +596,17 @@ static void xdma_rx_process_slot(struct xdma_private_common *common, u32 idx, u3
                 /* HAT 모드: rx_metadata.timestamp = 코어→CPU 헤더 유래
                  * {ts_sec[63:32], ts_ns[31:0]} (se_rx_host_adapter가 팩) */
                 u64 se_ts = rx_buf->metadata.timestamp;
-                skb_hwtstamps(skb)->hwtstamp =
-                        ktime_set((s64)(se_ts >> 32), (u32)(se_ts & 0xFFFFFFFF));
+
+                /* rx_ts_gptp=1 인데 offset 이 확인 전이면 시각을 붙이지 않는다
+                 * (curtime 을 gPTP 시각처럼 넘기지 않음, se_rtc.c 받는 규칙). */
+                if (rx_ts_gptp) {
+                        if (se_rtc_usable(&common->rtc))
+                                skb_hwtstamps(skb)->hwtstamp =
+                                        se_rtc_to_gptp(se_ts >> 32, (u32)(se_ts & 0xFFFFFFFF),
+                                                       &common->rtc.cur);
+                } else
+                        skb_hwtstamps(skb)->hwtstamp =
+                                ktime_set((s64)(se_ts >> 32), (u32)(se_ts & 0xFFFFFFFF));
         } else if (filter_rx_timestamp(common, skb)) {
                 xpdev = dev_get_drvdata(&xdev->pdev->dev);
                 ptp_data = xpdev ? xpdev->ptp : NULL;
@@ -613,6 +659,14 @@ static int xdma_rx_napi_poll(struct napi_struct *napi, int budget)
         u32 status, cmpl;
         int work = 0;
         bool more;
+
+        /* 수신 시각 보정용 RTC offset 을 읽는다(읽기 전용, 1 ms 에 한 번, se_rtc.h).
+         * 시각 기록이 켜져 있고 처리할 슬롯이 있을 때만 읽는다. */
+        if (se_mode && rx_ts_gptp && xdev->bar[0] &&
+            common->tstamp_config.rx_filter != HWTSTAMP_FILTER_NONE &&
+            common->rx_tail != common->rx_head &&
+            READ_ONCE(common->rx_res[common->rx_tail & RX_RING_MASK].status))
+                se_rtc_ofs_update(xdev->bar[0], &common->rtc);
 
         /* 수확: writeback(status != 0)이 도착한 슬롯을 순서대로 처리.
          * tail/슬롯 내용의 소비자는 NAPI 단독이라 락 불필요. */
@@ -808,6 +862,7 @@ int xdma_netdev_open(struct net_device *ndev)
 
         /* A2: RX 링 체인 제출로 시동 */
         xdma_rx_ring_start(common);
+        xdma_rx_lat_qos_start(common);
 
         return 0;
 }
@@ -824,8 +879,10 @@ int xdma_netdev_close(struct net_device *ndev)
         }
         /* A2: 마지막 close에서만 RX 엔진 정지 (구 코드는 매 close마다 정지 —
          * 다른 포트가 아직 up인데 RX가 죽는 결함이었다) */
-        if (--common->open_cnt == 0)
+        if (--common->open_cnt == 0) {
                 xdma_rx_ring_stop(common);
+                xdma_rx_lat_qos_stop(common);
+        }
         pr_info("xdma_netdev_close\n");
         netif_carrier_off(ndev);
         return 0;
@@ -1172,6 +1229,31 @@ static int xdma_set_ts_config(struct net_device *ndev, struct ifreq *ifr) {
 
         return copy_from_user(config, ifr->ifr_data, sizeof(*config)) ? -EFAULT : 0;
 }
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
+/* 6.6 이후 커널은 SIOCGHWTSTAMP·SIOCSHWTSTAMP 를 ndo_hwtstamp_get/set 으로 넘긴다.
+ * 7.0 커널에서는 ndo_eth_ioctl 로 넘기지 않아 EOPNOTSUPP 가 났다.
+ * 저장 값은 ioctl 경로와 같다(검사 없이 그대로 저장). */
+int xdma_hwtstamp_get(struct net_device *ndev, struct kernel_hwtstamp_config *kcfg) {
+        struct xdma_private *priv = netdev_priv(ndev);
+        struct hwtstamp_config *config = &priv->common->tstamp_config;
+
+        kcfg->flags = config->flags;
+        kcfg->tx_type = config->tx_type;
+        kcfg->rx_filter = config->rx_filter;
+        return 0;
+}
+
+int xdma_hwtstamp_set(struct net_device *ndev, struct kernel_hwtstamp_config *kcfg, struct netlink_ext_ack *extack) {
+        struct xdma_private *priv = netdev_priv(ndev);
+        struct hwtstamp_config *config = &priv->common->tstamp_config;
+
+        config->flags = kcfg->flags;
+        config->tx_type = kcfg->tx_type;
+        config->rx_filter = kcfg->rx_filter;
+        return 0;
+}
+#endif
 
 static int frer_ioctl_add_stream(struct net_device *ndev, struct ifreq *ifr, void *data) {
 	struct xdma_private *priv = netdev_priv(ndev);

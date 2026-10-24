@@ -8,8 +8,10 @@
 #include <linux/mutex.h>
 #include <linux/spinlock.h>
 #include <linux/net_tstamp.h>
+#include <linux/pm_qos.h>
 
 #include "xdma_mod.h"
+#include "se_rtc.h"
 
 #define DESC_REG_LO (SGDMA_OFFSET_FROM_CHANNEL + 0x80)
 #define DESC_REG_HI (SGDMA_OFFSET_FROM_CHANNEL + 0x84)
@@ -110,6 +112,7 @@ struct xdma_private_common {
         sysclock_t tx_work_start_after[TSN_TIMESTAMP_ID_MAX];
         sysclock_t tx_work_wait_until[TSN_TIMESTAMP_ID_MAX];
         struct hwtstamp_config tstamp_config;
+        struct se_rtc_state rtc;        /* se_mode 수신 시각 -> gPTP 시각(se_rtc.h) */
         sysclock_t last_tx_tstamp[TSN_TIMESTAMP_ID_MAX];
 
         struct delayed_work rx_poll_work;
@@ -127,6 +130,9 @@ struct xdma_private_common {
         uint64_t last_to_overflow_timeout;
 
         int open_cnt;
+        /* 첫 open 부터 마지막 close 까지 CPU 깨어남 지연 상한(rx_cpu_latency_us) 요청 */
+        struct pm_qos_request rx_lat_qos;
+        bool rx_lat_qos_on;
         unsigned long state;
 
         atomic_t next_normal_tstamp_id;
@@ -239,6 +245,10 @@ netdev_tx_t xdma_netdev_start_xmit(struct sk_buff *skb,
 int xdma_netdev_setup_tc(struct net_device *ndev, enum tc_setup_type type, void *type_data);
 
 int xdma_netdev_ioctl(struct net_device *ndev, struct ifreq *ifr, int cmd);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
+int xdma_hwtstamp_get(struct net_device *ndev, struct kernel_hwtstamp_config *kcfg);
+int xdma_hwtstamp_set(struct net_device *ndev, struct kernel_hwtstamp_config *kcfg, struct netlink_ext_ack *extack);
+#endif
 int xdma_netdev_siocdevprivate(struct net_device *ndev, struct ifreq *ifr, void *data, int cmd);
 u16 xdma_select_queue(struct net_device *ndev, struct sk_buff *skb, struct net_device *sb_dev);
 

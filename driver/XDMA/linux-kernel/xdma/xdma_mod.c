@@ -23,6 +23,7 @@
 #include <linux/aer.h>
 #include <linux/ethtool.h>
 #include <uapi/linux/net_tstamp.h>
+#include <linux/delay.h>
 /* include early, to verify it depends only on the headers above */
 #include "libxdma_api.h"
 #include "libxdma.h"
@@ -33,13 +34,15 @@
 #include "alinx_ptp.h"
 #include "alinx_arch.h"
 #include "frer.h"
+#include "host_mac.h"
 
 #define DRV_MODULE_NAME		"xdma"
 #define DRV_MODULE_DESC		"Xilinx XDMA Reference Driver"
 
-/* build43+: read-only AXI GPIO in the existing 1 MiB user BAR.
- * channel 1 DATA = adapter drop, channel 2 DATA = adapter emitted data. */
-#define SE_RXSTATS_GPIO_OFFSET	0x00080000
+/* Read-only RX adapter counters (AXI GPIO): channel 1 DATA = dropped frames,
+ * channel 2 DATA = data frames sent to the host. At BAR0 0xB0000 from image v3.5.
+ * Read only when the firmware status block (format 3 or later) sets feature bit 0. */
+#define SE_RXSTATS_GPIO_OFFSET	0x000B0000
 #define SE_RXSTATS_DROP_OFFSET	(SE_RXSTATS_GPIO_OFFSET + 0x0)
 #define SE_RXSTATS_DATA_OFFSET	(SE_RXSTATS_GPIO_OFFSET + 0x8)
 
@@ -103,45 +106,67 @@ end:
 	return result;
 }
 
-static uint64_t hash(unsigned long hostid, unsigned long num) {
-	// Note that these magic numbers are well known constants for hashing
-	// See splitmix64
-	uint64_t hash = hostid;
-	hash = ((hash >> 30) ^ (hash ^ num)) * U64_C(0xbf58476d1ce4e5b9);
-	hash = ((hash >> 27) ^ hash) * U64_C(0x94d049bb133111eb);
-	hash = (hash >> 31) ^ hash;
+/* 보드 DNA(57 비트). v3 이후 이미지의 펌웨어가 PCIe 상태 블록(BAR0 0x80100, 'SEST')에 써 둔다.
+ * +0x08 seq(짝수 = 다 씀), +0x48 DNA 하위 32 비트, +0x4C [31] 유효·[24:0] 상위 25 비트(tsnctl status 와 같은 배치). */
+#define SE_STATUS_OFF		0x80100
+#define SE_STATUS_MAGIC		0x53455354
+#define SE_STATUS_SEQ		0x08
+#define SE_STATUS_DNA_LO	0x48
+#define SE_STATUS_DNA_HI	0x4C
+#define SE_STATUS_FORMAT	0x04
+#define SE_STATUS_FEATURES	0x64	/* 형식 3 이상 */
+#define SE_FEAT_RXSTATS		BIT(0)
 
-	return hash;
+/* 보드 DNA 를 읽는다. 상태 블록이 없는 이전 이미지면 바로 false. 블록은 있는데 펌웨어가 아직 DNA 를
+ * 안 썼으면 최대 약 2 s 다시 읽는다(probe 직후 MicroBlaze 가 늦을 수 있음). */
+static bool read_board_dna(struct xdma_dev *xdev, uint64_t *dna)
+{
+	void __iomem *st;
+	u32 s1, s2, lo, hi;
+	int i;
+
+	if (!se_mode || !xdev->bar[0])
+		return false;
+	st = xdev->bar[0] + SE_STATUS_OFF;
+	if (ioread32(st) != SE_STATUS_MAGIC)
+		return false;
+	for (i = 0; i < 40; i++) {
+		s1 = ioread32(st + SE_STATUS_SEQ);
+		lo = ioread32(st + SE_STATUS_DNA_LO);
+		hi = ioread32(st + SE_STATUS_DNA_HI);
+		s2 = ioread32(st + SE_STATUS_SEQ);
+		if (s1 == s2 && !(s1 & 1) && (hi >> 31)) {
+			*dna = ((uint64_t)(hi & 0x1FFFFFF) << 32) | lo;
+			return true;
+		}
+		msleep(50);
+	}
+	return false;
 }
 
 extern unsigned int rtag_duplicate_mac;
-static void get_mac_address(char* mac_addr, struct xdma_dev *xdev, int port_id) {
-	int i;
+/* 호스트 netdev MAC(host_mac.h). 보드 DNA 가 있으면 DNA 로 만든다(같은 보드면 슬롯·인식 순서·PC 가 바뀌어도 같음).
+ * DNA 를 못 읽으면(이전 이미지 등) 예전처럼 machine-id 해시와 인식 순서. 어느 쪽인지 dmesg 에 남긴다.
+ * 두 경우 모두 첫 바이트 = 유니캐스트 + 로컬 관리. 보드 포트 MAC(펌웨어, DNA 기반 02:xx)과는 다른 값이다. */
+static void get_mac_address(char* mac_addr, struct xdma_dev *xdev, int port_id, bool have_dna, uint64_t dna) {
 	uint64_t hashed_num;
 	unsigned long long machine_id;
-	unsigned char pcie_num = xdev->idx; // FIXME: Use proper PCIe number
+	unsigned char pcie_num = xdev->idx;
 
-	if (get_host_id(&machine_id) == false) {
-		machine_id = 0; // Fallback value
-	}
-
-	// Hashing
-	hashed_num = hash(machine_id, pcie_num);
-
-	// Convert to MAC address
-	for (i = 0; i < ETH_ALEN; i++) {
-		mac_addr[i] = (hashed_num >> (i * 8)) & 0xFF;
+	if (have_dna) {
+		hashed_num = host_mac_hash(dna ^ HOST_MAC_DNA_SALT, 0);
+	} else {
+		if (get_host_id(&machine_id) == false) {
+			machine_id = 0; // Fallback value
+		}
+		hashed_num = host_mac_hash(machine_id, pcie_num);
 	}
 
 	if (port_id >= XDMA_NUM_PORTS && rtag_duplicate_mac) {
 		port_id = 0;
 	}
 
-	mac_addr[5] += port_id;
-
-	// Adjust U/L, I/G bits
-	mac_addr[0] &= ~0x1; // Unicast
-	mac_addr[0] &= ~0x2; // Global
+	host_mac_compose(hashed_num, port_id, (unsigned char *)mac_addr);
 }
 
 static const struct pci_device_id pci_ids[] = {
@@ -255,6 +280,10 @@ static const struct net_device_ops xdma_netdev_ops = {
 	.ndo_start_xmit = xdma_netdev_start_xmit,
 	.ndo_setup_tc = xdma_netdev_setup_tc,
 	.ndo_eth_ioctl = xdma_netdev_ioctl,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
+	.ndo_hwtstamp_get = xdma_hwtstamp_get,
+	.ndo_hwtstamp_set = xdma_hwtstamp_set,
+#endif
 	.ndo_siocdevprivate = xdma_netdev_siocdevprivate,
 	.ndo_select_queue = xdma_select_queue,
 };
@@ -297,7 +326,47 @@ static int xdma_ethtool_get_link_ksettings(struct net_device *netdev, struct eth
 static const char xdma_se_stat_names[][ETH_GSTRING_LEN] = {
 	"se_rx_adapter_drop",
 	"se_rx_adapter_data",
+	"se_rx_ts_ofs_valid",
+	"se_rx_ts_ofs_updates",
+	"se_rx_ts_ofs_retries",
+	"se_rx_ts_ofs_rejects",
 };
+
+/* 이 이미지에 수신 어댑터 계수 GPIO 가 있는가(상태 블록 형식 3 이상 + 기능 비트). 이전 이미지는 false. */
+static bool se_has_rxstats(struct xdma_dev *xdev)
+{
+	void __iomem *st = xdev->bar[0] + SE_STATUS_OFF;
+	u32 s1, s2, fmt, feat;
+	int i;
+
+	if (ioread32(st) != SE_STATUS_MAGIC)
+		return false;
+	for (i = 0; i < 8; i++) {
+		s1 = ioread32(st + SE_STATUS_SEQ);
+		fmt = ioread32(st + SE_STATUS_FORMAT);
+		feat = ioread32(st + SE_STATUS_FEATURES);
+		s2 = ioread32(st + SE_STATUS_SEQ);
+		if (s1 == s2 && !(s1 & 1))
+			return fmt >= 3 && (feat & SE_FEAT_RXSTATS);
+	}
+	return false;
+}
+
+/* 계수는 sys_clk 에서 gray 로 넘어온다. 버린 수는 두 계수의 합이라 같은 클럭에 2 가 늘면 그 순간 표본이
+ * 틀릴 수 있어 같은 값이 두 번 읽힐 때까지 읽는다(바쁠 때는 마지막 값). */
+static u32 se_rd_stable(void __iomem *a)
+{
+	u32 v = ioread32(a), w;
+	int i;
+
+	for (i = 0; i < 8; i++) {
+		w = ioread32(a);
+		if (w == v)
+			break;
+		v = w;
+	}
+	return v;
+}
 
 static int xdma_ethtool_get_sset_count(struct net_device *ndev, int stringset)
 {
@@ -323,13 +392,21 @@ static void xdma_ethtool_get_stats(struct net_device *ndev,
 	/* BAR0 has unrelated TSNv3 semantics outside se_mode. Return zero rather
 	 * than touching those addresses. The GPIO is read-only in the FPGA. */
 	if (!se_mode || !xdev->bar[0]) {
-		data[0] = 0;
-		data[1] = 0;
+		memset(data, 0, sizeof(u64) * ARRAY_SIZE(xdma_se_stat_names));
 		return;
 	}
 
-	data[0] = ioread32(xdev->bar[0] + SE_RXSTATS_DROP_OFFSET);
-	data[1] = ioread32(xdev->bar[0] + SE_RXSTATS_DATA_OFFSET);
+	if (se_has_rxstats(xdev)) {
+		data[0] = se_rd_stable(xdev->bar[0] + SE_RXSTATS_DROP_OFFSET);
+		data[1] = se_rd_stable(xdev->bar[0] + SE_RXSTATS_DATA_OFFSET);
+	} else {
+		data[0] = 0;
+		data[1] = 0;
+	}
+	data[2] = se_rtc_usable(&priv->common->rtc);
+	data[3] = priv->common->rtc.updates;
+	data[4] = priv->common->rtc.retries;
+	data[5] = priv->common->rtc.rejects;
 }
 
 static const struct ethtool_ops xdma_ethtool_ops = {
@@ -351,6 +428,8 @@ static int probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
 	struct xdma_private_common *common = NULL;
 	struct ptp_device_data *ptp_data = NULL;
 	unsigned char mac_addr[ETH_ALEN];
+	uint64_t board_dna = 0;
+	bool have_dna;
 
 	xpdev = xpdev_alloc(pdev);
 	if (!xpdev) {
@@ -522,6 +601,13 @@ static int probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
 		xpdev->ptp = ptp_data;
 	}
 
+	have_dna = read_board_dna(xdev, &board_dna);
+	if (have_dna)
+		pr_info("%s: netdev MAC from board DNA %015llX\n", dev_name(&pdev->dev), (unsigned long long)board_dna);
+	else
+		pr_info("%s: board DNA not available (old image or firmware not ready), netdev MAC from machine-id + index %d\n",
+			dev_name(&pdev->dev), xdev->idx);
+
 	for (int i = 0; i < XDMA_NUM_TOTAL_PORTS; i++) {
 		/* Allocate the network device */
 		/* TC command requires multiple TX queues */
@@ -571,7 +657,7 @@ static int probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
 		}
 
 		/* Set the MAC address */
-		get_mac_address(mac_addr, xdev, i);
+		get_mac_address(mac_addr, xdev, i, have_dna, board_dna);
 		dev_addr_set(ndev[i], mac_addr);
 	}
 

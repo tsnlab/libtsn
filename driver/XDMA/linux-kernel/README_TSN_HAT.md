@@ -95,7 +95,30 @@ TSN HAT은 Raspberry Pi에서 전원을 받는다.
    sudo ip link set eth1 up
    ```
 
-부팅할 때마다 드라이버를 적재하려면 `xdma.ko`를 고정 위치에 두십시오. 그 다음 systemd 서비스로 4단계와 6단계를 실행하십시오.
+부팅할 때마다 드라이버를 적재하려면 DKMS로 설치하십시오. DKMS는 커널을 갱신할 때 드라이버를 다시 빌드한다.
+
+1. DKMS를 설치하십시오.
+
+   ```
+   sudo apt install -y dkms
+   ```
+
+2. 드라이버를 설치하십시오. `<버전>`에는 소스의 git 커밋을 넣으십시오.
+
+   ```
+   cd tsn-sdk/driver/XDMA/linux-kernel/dkms
+   sudo ./install.sh --version $(git rev-parse --short HEAD)
+   ```
+
+3. 드라이버를 적재하십시오. 다음 부팅부터는 자동으로 적재된다.
+
+   ```
+   sudo modprobe -r xdma; sudo modprobe xdma
+   ```
+
+4. 6단계와 같이 IP 주소를 설정하십시오.
+
+`install.sh`는 권장 파라미터를 `/etc/modprobe.d/tsn-xdma.conf`에 쓴다. 제거하려면 `sudo ./install.sh --uninstall`을 실행하십시오.
 
 ### 모듈 파라미터
 
@@ -106,6 +129,8 @@ TSN HAT은 Raspberry Pi에서 전원을 받는다.
 | `pmac_rx_enable` | 1 | 프레임 선점(802.3br) 수신 경로를 사용한다. |
 | `tx_prefetch` | 1 | 송신 디스크립터를 미리 읽는다. 작은 프레임의 처리량이 올라간다. |
 | `se_tx_dest_port` | 0 | 송신 포트를 선택한다. 0 = 기본 포트(`eth1`). 0x80 = 두 포트로 송신(FRER 이중 경로). |
+| `rx_ts_gptp` | 1 | 수신 하드웨어 타임스탬프를 gPTP 시각으로 준다. 0이면 보드 내부 카운터 값을 준다. |
+| `rx_cpu_latency_us` | 20 | 인터페이스가 켜져 있는 동안 호스트 CPU의 깨어남 지연 상한(us)을 요청한다. CPU가 깊은 절전 상태에서 늦게 깨어나면 보드 수신 버퍼가 넘쳐 프레임을 잃는다. 0 이하이면 요청하지 않는다. 이 요청은 호스트 CPU 전력을 늘린다. |
 
 ## 4. TSN 기능 설정 (USB-C UART)
 
@@ -155,5 +180,13 @@ tas on
 - 이전 TSNv3 드라이버는 `tsnv3` 브랜치에 보존한다.
 
 ## 6. 변경 기록
+
+- 2026-10-24: 다음 기능을 추가했다.
+  - 수신 하드웨어 타임스탬프를 gPTP 시각으로 준다(`rx_ts_gptp`).
+  - 커널 6.6 이상에서 하드웨어 타임스탬프 설정(`SIOCSHWTSTAMP`)이 동작한다.
+  - 호스트 인터페이스 MAC 주소를 보드 고유 번호(DNA)로 만든다. 같은 보드는 슬롯이나 PC가 바뀌어도 같은 MAC을 쓴다. MAC 첫 바이트는 유니캐스트·로컬 관리 주소이다.
+  - 호스트 CPU 깨어남 지연 상한을 요청한다(`rx_cpu_latency_us`). 데스크톱 CPU PC에서 영상 수신 손실이 없어졌다.
+  - 보드 수신 계수(`ethtool -S`의 `se_rx_adapter_drop`, `se_rx_adapter_data`)를 FPGA 이미지 v3.5 이상에서 읽는다. 이전 이미지에서는 0을 표시한다.
+  - DKMS 설치 스크립트를 추가했다(`dkms/install.sh`).
 
 - 2026-10-07: 드라이버 빌드에서 FPU/SIMD 옵션을 뺐다. 이전 버전 드라이버는 송신 중 같은 CPU의 다른 프로그램을 손상시킬 수 있다(x86 PC에서 확인). 이전 버전을 쓰면 이 버전으로 다시 빌드하십시오.
